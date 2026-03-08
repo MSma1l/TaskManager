@@ -1,0 +1,29 @@
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+from app.models.base import generate_cuid
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(String, primary_key=True, default=generate_cuid)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 1=Mon, 7=Sun
+    scheduled_date = Column(DateTime, nullable=True)
+    reminder_time = Column(String, nullable=True)  # "HH:MM"
+    is_recurring = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    priority = Column(String, default="MEDIUM", nullable=False)
+    estimated_minutes = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+
+    category = relationship("Category", back_populates="tasks")
+    completions = relationship("TaskCompletion", back_populates="task")
+    project = relationship("Project", back_populates="tasks")

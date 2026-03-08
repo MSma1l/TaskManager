@@ -1,0 +1,105 @@
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.core.security import verify_token
+from app.schemas.task import TaskCreate, TaskUpdate
+from app.services import task_service
+
+router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+security = HTTPBearer()
+
+
+def task_to_dict(task):
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "categoryId": task.category_id,
+        "category": {
+            "id": task.category.id,
+            "name": task.category.name,
+            "icon": task.category.icon,
+            "color": task.category.color,
+        },
+        "dayOfWeek": task.day_of_week,
+        "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
+        "reminderTime": task.reminder_time,
+        "isRecurring": task.is_recurring,
+        "isActive": task.is_active,
+        "priority": task.priority,
+        "estimatedMinutes": task.estimated_minutes,
+        "projectId": task.project_id,
+        "completions": [
+            {
+                "id": c.id,
+                "taskId": c.task_id,
+                "weekStart": c.week_start.isoformat(),
+                "status": c.status.value if hasattr(c.status, 'value') else c.status,
+                "completedAt": c.completed_at.isoformat() if c.completed_at else None,
+                "movedToDate": c.moved_to_date.isoformat() if c.moved_to_date else None,
+                "skipReason": c.skip_reason,
+                "note": c.note,
+            }
+            for c in (task.completions or [])
+        ],
+    }
+
+
+@router.get("")
+async def get_tasks(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    await verify_token(credentials)
+    tasks = task_service.get_all_tasks(db)
+    return [task_to_dict(t) for t in tasks]
+
+
+@router.get("/week")
+async def get_week_tasks(
+    date: str = None,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    await verify_token(credentials)
+    tasks = task_service.get_tasks_for_week(db, date)
+    return [task_to_dict(t) for t in tasks]
+
+
+@router.post("")
+async def create_task(
+    data: TaskCreate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    await verify_token(credentials)
+    task = task_service.create_task(db, data.model_dump())
+    return task_to_dict(task)
+
+
+@router.put("/{task_id}")
+async def update_task(
+    task_id: str,
+    data: TaskUpdate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    await verify_token(credentials)
+    task = task_service.update_task(db, task_id, data.model_dump(exclude_unset=True))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task_to_dict(task)
+
+
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    await verify_token(credentials)
+    success = task_service.delete_task(db, task_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"message": "Task deleted"}
