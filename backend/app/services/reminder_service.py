@@ -32,6 +32,7 @@ def check_reminders():
         day_of_week = now.isoweekday()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
+        from sqlalchemy.orm import joinedload
         tasks = (
             db.query(Task)
             .filter(
@@ -39,6 +40,7 @@ def check_reminders():
                 Task.reminder_time == current_time,
                 Task.day_of_week == day_of_week,
             )
+            .options(joinedload(Task.category))
             .all()
         )
 
@@ -56,11 +58,24 @@ def check_reminders():
             if existing:
                 continue
 
-            # Send reminder
-            asyncio.create_task(_send_telegram(
-                f"Reminder: {task.title}\n"
-                f"Categorie: {task.category.icon} {task.category.name}" if task.category else f"Reminder: {task.title}"
-            ))
+            # Build rich message
+            lines = [f"Reminder: {task.title}"]
+            if task.description:
+                lines.append(task.description)
+            if task.category:
+                lines.append(f"Categorie: {task.category.icon} {task.category.name}")
+            if task.priority and task.priority != "MEDIUM":
+                priority_labels = {"LOW": "Mica", "HIGH": "Mare", "URGENT": "URGENT"}
+                lines.append(f"Prioritate: {priority_labels.get(task.priority, task.priority)}")
+            if task.estimated_minutes:
+                if task.estimated_minutes >= 60:
+                    dur = f"{task.estimated_minutes // 60}h{task.estimated_minutes % 60}m" if task.estimated_minutes % 60 else f"{task.estimated_minutes // 60}h"
+                else:
+                    dur = f"{task.estimated_minutes}m"
+                lines.append(f"Durata: ~{dur}")
+            lines.append(f"Ora: {task.reminder_time}")
+
+            asyncio.create_task(_send_telegram("\n".join(lines)))
 
             # Log
             log = ReminderLog(task_id=task.id, channel="telegram")

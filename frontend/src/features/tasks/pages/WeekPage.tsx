@@ -5,14 +5,16 @@ import { Task, CreateTaskData } from '../api/tasks';
 import WeekGrid from '../components/WeekGrid';
 import AddTaskModal from '../components/AddTaskModal';
 import MarkTaskModal from '../components/MarkTaskModal';
+import EditTaskModal from '../components/EditTaskModal';
 import { formatWeekRange } from '../../../shared/utils/dates';
 
 export default function WeekPage() {
   const { weekDays, weekStartISO, goNext, goPrev, goToday, offset } = useWeek();
-  const { tasks, loading, refetch, createTask, deleteTask } = useTasks(weekStartISO);
+  const { tasks, loading, refetch, createTask, updateTask, deleteTask } = useTasks(weekStartISO);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState<Date | undefined>();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editTask, setEditTask] = useState<Task | null>(null);
   const [slideDir, setSlideDir] = useState<'left' | 'right' | 'none'>('none');
 
   const weekLabel = formatWeekRange(weekDays[0], weekDays[6]);
@@ -45,6 +47,15 @@ export default function WeekPage() {
   const handleMarkDone = () => {
     setSelectedTask(null);
     refetch();
+  };
+
+  const handleEdit = (task: Task) => {
+    setSelectedTask(null);
+    setEditTask(task);
+  };
+
+  const handleEditSave = async (taskId: string, data: Partial<CreateTaskData>) => {
+    await updateTask(taskId, data);
   };
 
   return (
@@ -135,6 +146,15 @@ export default function WeekPage() {
           onClose={() => setSelectedTask(null)}
           onDone={handleMarkDone}
           onDelete={deleteTask}
+          onEdit={handleEdit}
+        />
+      )}
+
+      {editTask && (
+        <EditTaskModal
+          task={editTask}
+          onClose={() => { setEditTask(null); refetch(); }}
+          onSave={handleEditSave}
         />
       )}
     </div>

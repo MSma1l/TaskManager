@@ -29,6 +29,14 @@ export function useTasks(weekDate?: string) {
     [fetchTasks]
   );
 
+  const updateTask = useCallback(
+    async (id: string, data: Partial<CreateTaskData>) => {
+      await tasksApi.update(id, data);
+      await fetchTasks();
+    },
+    [fetchTasks]
+  );
+
   const deleteTask = useCallback(
     async (id: string) => {
       await tasksApi.delete(id);
@@ -37,5 +45,5 @@ export function useTasks(weekDate?: string) {
     [fetchTasks]
   );
 
-  return { tasks, loading, refetch: fetchTasks, createTask, deleteTask };
+  return { tasks, loading, refetch: fetchTasks, createTask, updateTask, deleteTask };
 }

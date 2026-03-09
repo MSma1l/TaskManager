@@ -6,6 +6,7 @@ import { tasksApi } from '../../tasks/api/tasks';
 import TaskCard from '../../tasks/components/TaskCard';
 import MarkTaskModal from '../../tasks/components/MarkTaskModal';
 import AddTaskModal from '../../tasks/components/AddTaskModal';
+import EditTaskModal from '../../tasks/components/EditTaskModal';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -13,6 +14,7 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editTask, setEditTask] = useState<Task | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState('');
@@ -48,6 +50,16 @@ export default function ProjectDetailPage() {
 
   const handleTaskDone = () => {
     setSelectedTask(null);
+    fetchProject();
+  };
+
+  const handleEditTask = (task: Task) => {
+    setSelectedTask(null);
+    setEditTask(task);
+  };
+
+  const handleEditTaskSave = async (taskId: string, data: Partial<CreateTaskData>) => {
+    await tasksApi.update(taskId, data);
     fetchProject();
   };
 
@@ -193,6 +205,15 @@ export default function ProjectDetailPage() {
           onClose={() => setSelectedTask(null)}
           onDone={handleTaskDone}
           onDelete={handleDeleteTask}
+          onEdit={handleEditTask}
+        />
+      )}
+
+      {editTask && (
+        <EditTaskModal
+          task={editTask}
+          onClose={() => { setEditTask(null); fetchProject(); }}
+          onSave={handleEditTaskSave}
         />
       )}
 
