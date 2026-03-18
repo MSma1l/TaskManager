@@ -5,6 +5,8 @@ import WeekPage from '../features/tasks/pages/WeekPage';
 import StatsPage from '../features/stats/pages/StatsPage';
 import ProjectsPage from '../features/projects/pages/ProjectsPage';
 import ProjectDetailPage from '../features/projects/pages/ProjectDetailPage';
+import NotebookPage from '../features/notebook/pages/NotebookPage';
+import CalendarPage from '../features/calendar/pages/CalendarPage';
 import AppLayout from '../shared/components/layout/AppLayout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -29,6 +31,8 @@ export default function AppRoutes() {
         <Route path="stats" element={<StatsPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="notebook" element={<NotebookPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

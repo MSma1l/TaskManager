@@ -12,6 +12,7 @@ from app.telegram.conversations import (
     handle_conversation, handle_callback_conversation,
 )
 from app.telegram.free_text import handle_free_text
+from app.telegram.notebook_handler import cmd_notes, handle_notebook_callback, handle_notebook_text
 from app.services import completion_service, task_service
 
 application: Application | None = None
@@ -24,6 +25,7 @@ MENU_BUTTON_MAP = {
     "statistici": cmd_stats,
     "marcheaza facut": cmd_done,
     "ajutor": cmd_help,
+    "carnet": cmd_notes,
 }
 
 
@@ -38,6 +40,19 @@ async def _handle_message(update: Update, context):
     if text in MENU_BUTTON_MAP:
         await MENU_BUTTON_MAP[text](update, context)
         return
+
+    # Check for notebook conversation state first
+    chat_id = str(update.effective_chat.id)
+    db_check = SessionLocal()
+    try:
+        from app.telegram.conversations import get_session
+        session_state = get_session(db_check, chat_id)
+        if session_state and session_state.get("flow") == "notebook":
+            db_check.close()
+            await handle_notebook_text(update, context, session_state)
+            return
+    finally:
+        db_check.close()
 
     # Check for active conversation first
     handled = await handle_conversation(update, context)
@@ -58,6 +73,12 @@ async def _handle_callback(update: Update, context):
         return
 
     data = query.data
+
+    # Route all nb_ prefixed callbacks to notebook handler
+    if data.startswith("nb_"):
+        await handle_notebook_callback(update, context)
+        return
+
     await query.answer()
 
     # Handle task action callbacks
@@ -203,6 +224,7 @@ async def _setup_commands(app: Application):
         BotCommand("notdone", "Marcheaza ca nefacut"),
         BotCommand("delete", "Sterge un task"),
         BotCommand("stats", "Statistici"),
+        BotCommand("notes", "Carnetul meu"),
         BotCommand("help", "Ajutor"),
     ]
     await app.bot.set_my_commands(commands)
@@ -225,6 +247,7 @@ def create_bot() -> Application:
     application.add_handler(CommandHandler("notdone", cmd_notdone))
     application.add_handler(CommandHandler("delete", cmd_delete))
     application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("notes", cmd_notes))
 
     # Callback query handler
     application.add_handler(CallbackQueryHandler(_handle_callback))

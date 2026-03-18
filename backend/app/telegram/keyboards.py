@@ -7,7 +7,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [
             [KeyboardButton("Taskuri azi"), KeyboardButton("Saptamana")],
             [KeyboardButton("Adauga task"), KeyboardButton("Statistici")],
-            [KeyboardButton("Marcheaza facut"), KeyboardButton("Ajutor")],
+            [KeyboardButton("Marcheaza facut"), KeyboardButton("Carnet")],
+            [KeyboardButton("Ajutor")],
         ],
         resize_keyboard=True,
         is_persistent=True,
