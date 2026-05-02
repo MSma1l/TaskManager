@@ -51,4 +51,23 @@ export const notebookApi = {
   updateNote: (id: string, data: { content?: string; taskStatus?: string }) =>
     client.put<Note>(`/notebook/notes/${id}`, data).then((r) => r.data),
   deleteNote: (id: string) => client.delete(`/notebook/notes/${id}`),
+
+  // Sketches
+  listSketches: () => client.get<Sketch[]>('/notebook/sketches').then((r) => r.data),
+  createSketch: (data: { title?: string; topicId?: string | null; imageData: string; width?: number; height?: number }) =>
+    client.post<Sketch>('/notebook/sketches', data).then((r) => r.data),
+  updateSketch: (id: string, data: { title?: string; topicId?: string | null; imageData?: string }) =>
+    client.put<Sketch>(`/notebook/sketches/${id}`, data).then((r) => r.data),
+  deleteSketch: (id: string) => client.delete(`/notebook/sketches/${id}`),
 };
+
+export interface Sketch {
+  id: string;
+  title: string | null;
+  topicId: string | null;
+  imageData: string;
+  width: number | null;
+  height: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}

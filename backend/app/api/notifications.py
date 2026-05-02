@@ -1,11 +1,14 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import verify_token, get_current_user
 from app.models.task import Task
 from app.models.reminder import ReminderLog
+from app.models.calendar import CalendarEvent, CalendarReminderLog
+from app.models.user import User
+from app.services import calendar_service
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 security = HTTPBearer()
@@ -68,3 +71,106 @@ async def get_pending_notifications(
         db.commit()
 
     return notifications
+
+
+EVENT_LABELS = {
+    "meeting_online": "Sedinta online",
+    "meeting_in_person": "Sedinta",
+    "appointment": "Programare",
+    "reminder": "Reminder",
+    "personal": "Eveniment",
+    "task": "Task",
+}
+
+
+@router.get("/calendar-pending")
+async def get_pending_calendar_notifications(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return calendar-event reminders that should fire right now for THIS user.
+
+    Behavior mirrors the Telegram scheduler but the channel is "web". Each (event, occurrence,
+    offset) gets logged so the browser only pops it once.
+    """
+    settings_dict = user.notification_settings or {}
+    if settings_dict.get("web") is False:
+        return []
+
+    now = datetime.utcnow()
+    today = now.date()
+    horizon = today + timedelta(days=7)
+
+    masters = (
+        db.query(CalendarEvent)
+        .filter(
+            CalendarEvent.user_id == user.id,
+            CalendarEvent.is_deleted == False,
+            CalendarEvent.event_status != "CANCELLED",
+            CalendarEvent.event_date <= horizon,
+        )
+        .all()
+    )
+
+    out = []
+    for event in masters:
+        offsets = event.reminder_minutes or []
+        if not offsets:
+            continue
+
+        for occ in calendar_service._occurrences_in_range(event, today, horizon):
+            try:
+                h, m = (event.start_time or "00:00").split(":")
+                occ_dt = datetime(occ.year, occ.month, occ.day, int(h), int(m))
+            except Exception:
+                continue
+
+            for offset in offsets:
+                try:
+                    offset = int(offset)
+                except (TypeError, ValueError):
+                    continue
+                fire_at = occ_dt - timedelta(minutes=offset)
+                # Allow a ±60s window so a poll that lands a bit late still picks it up
+                delta = (fire_at - now).total_seconds()
+                if abs(delta) > 60:
+                    continue
+
+                already = (
+                    db.query(CalendarReminderLog)
+                    .filter(
+                        CalendarReminderLog.event_id == event.id,
+                        CalendarReminderLog.occurrence_date == occ,
+                        CalendarReminderLog.minutes_before == str(offset),
+                        CalendarReminderLog.channel == "web",
+                    )
+                    .first()
+                )
+                if already:
+                    continue
+
+                out.append({
+                    "id": f"{event.id}::{occ.isoformat()}::{offset}",
+                    "title": event.title,
+                    "type": event.event_type,
+                    "typeLabel": EVENT_LABELS.get(event.event_type or "personal", "Eveniment"),
+                    "occurrenceDate": occ.isoformat(),
+                    "startTime": event.start_time,
+                    "endTime": event.end_time,
+                    "minutesBefore": offset,
+                    "location": event.location,
+                    "meetingUrl": event.meeting_url,
+                    "description": event.description,
+                    "color": event.color,
+                })
+
+                db.add(CalendarReminderLog(
+                    event_id=event.id,
+                    occurrence_date=occ,
+                    minutes_before=str(offset),
+                    channel="web",
+                ))
+
+    if out:
+        db.commit()
+    return out

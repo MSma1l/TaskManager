@@ -197,6 +197,45 @@ def _user_chat(db: Session, user_id: str) -> str | None:
     return None
 
 
+def _get_user(db: Session, user_id: str) -> User | None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        return user
+    # Legacy: try matching by chat id
+    return db.query(User).filter(User.telegram_chat_id == user_id).first()
+
+
+def _telegram_allowed(user: User | None, now: datetime) -> bool:
+    """Check the user's notification_settings: telegram channel + do-not-disturb window."""
+    if not user:
+        return True  # legacy single-user, no preferences
+    settings_dict = user.notification_settings or {}
+    if settings_dict.get("telegram") is False:
+        return False
+    start = (settings_dict.get("doNotDisturbStart") or "").strip()
+    end = (settings_dict.get("doNotDisturbEnd") or "").strip()
+    if not start or not end:
+        return True
+    return not _in_dnd_window(start, end, now)
+
+
+def _in_dnd_window(start: str, end: str, now: datetime) -> bool:
+    """Both 'HH:MM'. Window can wrap midnight (e.g. 22:00 - 07:00)."""
+    try:
+        sh, sm = map(int, start.split(":"))
+        eh, em = map(int, end.split(":"))
+    except Exception:
+        return False
+    cur = now.hour * 60 + now.minute
+    s = sh * 60 + sm
+    e = eh * 60 + em
+    if s == e:
+        return False
+    if s < e:
+        return s <= cur < e
+    return cur >= s or cur < e
+
+
 def check_calendar_reminders():
     """Fire reminders for calendar events whose offset matches the current minute."""
     db = SessionLocal()
@@ -254,6 +293,17 @@ def check_calendar_reminders():
                         .first()
                     )
                     if already:
+                        continue
+
+                    user_obj = _get_user(db, event.user_id)
+                    if not _telegram_allowed(user_obj, now):
+                        # Still mark as fired so we don't retry on the next minute
+                        db.add(CalendarReminderLog(
+                            event_id=event.id,
+                            occurrence_date=occ,
+                            minutes_before=str(offset),
+                            channel="telegram_skipped",
+                        ))
                         continue
 
                     text = _format_event_message(event, occ, offset)

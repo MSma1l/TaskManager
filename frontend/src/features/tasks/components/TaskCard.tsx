@@ -49,6 +49,16 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
               name={task.category.name}
               color={task.category.color}
             />
+            {task.project && (
+              <span
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1 truncate max-w-[140px]"
+                style={{ backgroundColor: `${task.project.color}30`, color: task.project.color, border: `1px solid ${task.project.color}50` }}
+                title={`Proiect: ${task.project.name}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: task.project.color }} />
+                <span className="truncate">{task.project.name}</span>
+              </span>
+            )}
             {task.priority && task.priority !== 'MEDIUM' && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                 task.priority === 'URGENT' ? 'bg-red-600/30 text-red-300' :

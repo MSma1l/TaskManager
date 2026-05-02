@@ -11,6 +11,13 @@ security = HTTPBearer()
 
 
 def task_to_dict(task):
+    project_dict = None
+    if task.project:
+        project_dict = {
+            "id": task.project.id,
+            "name": task.project.name,
+            "color": task.project.color,
+        }
     return {
         "id": task.id,
         "title": task.title,
@@ -30,6 +37,7 @@ def task_to_dict(task):
         "priority": task.priority,
         "estimatedMinutes": task.estimated_minutes,
         "projectId": task.project_id,
+        "project": project_dict,
         "completions": [
             {
                 "id": c.id,

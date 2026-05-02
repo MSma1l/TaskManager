@@ -142,6 +142,49 @@ async def set_pin(data: PinInput, user: User = Depends(get_current_user), db: Se
     return {"ok": True}
 
 
+@router.post("/me/link-code")
+async def generate_my_link_code(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """User generates their own /link code (no admin needed)."""
+    from datetime import datetime, timedelta
+    from app.core.security import generate_login_code
+    from app.models.user import LoginCode
+
+    db.query(LoginCode).filter(
+        LoginCode.user_id == user.id,
+        LoginCode.purpose == "link",
+        LoginCode.used_at.is_(None),
+    ).update({"used_at": datetime.utcnow()})
+
+    code = generate_login_code()
+    record = LoginCode(
+        user_id=user.id,
+        code_hash=hash_secret(code),
+        purpose="link",
+        expires_at=datetime.utcnow() + timedelta(minutes=30),
+    )
+    db.add(record)
+    db.commit()
+    return {
+        "code": code,
+        "expiresAt": record.expires_at,
+        "instructions": (
+            f"Trimite pe botul de Telegram: /link {code}\n"
+            f"Cod valabil 30 min."
+        ),
+    }
+
+
+@router.delete("/me/telegram")
+async def unlink_telegram(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    user.telegram_chat_id = None
+    db.commit()
+    return {"ok": True}
+
+
 # ── Legacy endpoint (kept so old single-PIN clients keep working) ─────────────
 
 @router.post("/login-legacy", response_model=TokenOut)

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { notebookApi, Topic, Note } from '../api/notebook';
+import { notebookApi, Topic, Note, Sketch } from '../api/notebook';
+import SketchPad from '../components/SketchPad';
 
-type Tab = 'time' | 'ideas';
+type Tab = 'time' | 'ideas' | 'sketches';
 type TimeSubTab = 'steps' | 'tasks';
 
 export default function NotebookPage() {
@@ -22,6 +23,11 @@ export default function NotebookPage() {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [ideas, setIdeas] = useState<Note[]>([]);
   const [newIdea, setNewIdea] = useState('');
+
+  // Sketches
+  const [sketches, setSketches] = useState<Sketch[]>([]);
+  const [showSketchPad, setShowSketchPad] = useState(false);
+  const [editingSketch, setEditingSketch] = useState<Sketch | null>(null);
 
   // Modals
   const [showAddTopic, setShowAddTopic] = useState(false);
@@ -48,6 +54,13 @@ export default function NotebookPage() {
     setTopics(data);
   }, []);
 
+  const fetchSketches = useCallback(async () => {
+    try {
+      const data = await notebookApi.listSketches();
+      setSketches(data);
+    } catch { /* ignore */ }
+  }, []);
+
   const fetchIdeas = useCallback(async (topicId: string) => {
     const data = await notebookApi.getIdeas(topicId);
     setIdeas(data);
@@ -57,10 +70,40 @@ export default function NotebookPage() {
     if (tab === 'time') {
       if (timeSubTab === 'steps') fetchSteps();
       else fetchTasks();
-    } else {
+    } else if (tab === 'ideas') {
       fetchTopics();
+    } else if (tab === 'sketches') {
+      fetchSketches();
     }
-  }, [tab, timeSubTab, fetchSteps, fetchTasks, fetchTopics]);
+  }, [tab, timeSubTab, fetchSteps, fetchTasks, fetchTopics, fetchSketches]);
+
+  // ── Sketch handlers ──
+  const handleSaveSketch = async (dataUrl: string, width: number, height: number) => {
+    if (editingSketch) {
+      await notebookApi.updateSketch(editingSketch.id, { imageData: dataUrl });
+    } else {
+      await notebookApi.createSketch({ imageData: dataUrl, width, height });
+    }
+    setShowSketchPad(false);
+    setEditingSketch(null);
+    fetchSketches();
+  };
+
+  const handleDeleteSketch = async (id: string) => {
+    if (!confirm('Stergi schita?')) return;
+    await notebookApi.deleteSketch(id);
+    fetchSketches();
+  };
+
+  const openNewSketch = () => {
+    setEditingSketch(null);
+    setShowSketchPad(true);
+  };
+
+  const openEditSketch = (s: Sketch) => {
+    setEditingSketch(s);
+    setShowSketchPad(true);
+  };
 
   useEffect(() => {
     if (selectedTopic) fetchIdeas(selectedTopic.id);
@@ -253,7 +296,75 @@ export default function NotebookPage() {
         >
           Idei
         </button>
+        <button
+          onClick={() => setTab('sketches')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            tab === 'sketches' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+          }`}
+        >
+          Schite
+        </button>
       </div>
+
+      {/* ── SCHITE ── */}
+      {tab === 'sketches' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-slate-400">{sketches.length} schite — scrie cu degetul sau stylus</p>
+            <button
+              onClick={openNewSketch}
+              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-sm font-semibold"
+            >
+              + Schita noua
+            </button>
+          </div>
+          {sketches.length === 0 ? (
+            <div className="text-center py-16 bg-slate-800/40 rounded-xl border border-slate-700/40">
+              <p className="text-slate-400 mb-2">Nicio schita inca</p>
+              <p className="text-sm text-slate-500">Foloseste degetul sau un stylus pe ecran tactil</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {sketches.map((s) => (
+                <div
+                  key={s.id}
+                  className="bg-slate-800/60 border border-slate-700/40 rounded-xl overflow-hidden group relative"
+                >
+                  <button
+                    onClick={() => openEditSketch(s)}
+                    className="block w-full aspect-square bg-white/90"
+                  >
+                    <img
+                      src={s.imageData}
+                      alt={s.title || 'sketch'}
+                      className="w-full h-full object-contain"
+                    />
+                  </button>
+                  <div className="px-2 py-1.5 flex items-center justify-between text-xs">
+                    <span className="text-slate-400 truncate">
+                      {s.createdAt ? new Date(s.createdAt).toLocaleDateString('ro-RO') : ''}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteSketch(s.id)}
+                      className="text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showSketchPad && (
+            <SketchPad
+              initialImageData={editingSketch?.imageData}
+              onSave={handleSaveSketch}
+              onCancel={() => { setShowSketchPad(false); setEditingSketch(null); }}
+            />
+          )}
+        </div>
+      )}
 
       {/* ── TIME MANAGEMENT ── */}
       {tab === 'time' && (

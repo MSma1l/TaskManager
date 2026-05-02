@@ -18,6 +18,12 @@ export interface Completion {
   note: string | null;
 }
 
+export interface ProjectRef {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -32,6 +38,7 @@ export interface Task {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   estimatedMinutes: number | null;
   projectId: string | null;
+  project: ProjectRef | null;
   completions: Completion[];
 }
 

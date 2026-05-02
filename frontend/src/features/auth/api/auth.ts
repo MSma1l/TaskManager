@@ -52,5 +52,10 @@ export const authApi = {
 
   setPin: (pin: string) => client.put('/auth/pin', { pin }).then((r) => r.data),
 
+  generateMyLinkCode: (): Promise<{ code: string; expiresAt: string; instructions: string }> =>
+    client.post('/auth/me/link-code').then((r) => r.data),
+
+  unlinkTelegram: () => client.delete('/auth/me/telegram').then((r) => r.data),
+
   logout: () => client.post('/auth/logout').then((r) => r.data),
 };

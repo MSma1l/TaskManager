@@ -60,3 +60,19 @@ class NotebookNoteHistory(Base):
     edited_at = Column(DateTime, default=datetime.utcnow)
 
     note = relationship("NotebookNote", back_populates="history")
+
+
+class NotebookSketch(Base):
+    """Hand-drawn sketches (stylus / finger input) attached to the notebook."""
+    __tablename__ = "nb_sketches"
+
+    id = Column(String, primary_key=True, default=generate_cuid)
+    user_id = Column(String, nullable=False, index=True)
+    topic_id = Column(String, ForeignKey("nb_topics.id"), nullable=True)
+    title = Column(String(150), nullable=True)
+    image_data = Column(Text, nullable=False)  # data:image/png;base64,...
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

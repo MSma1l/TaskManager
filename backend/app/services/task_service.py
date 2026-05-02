@@ -16,7 +16,7 @@ def get_all_tasks(db: Session):
     return (
         db.query(Task)
         .filter(Task.is_active == True)
-        .options(joinedload(Task.category))
+        .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
         .all()
     )
@@ -33,7 +33,7 @@ def get_tasks_for_week(db: Session, date_str: str | None = None):
     tasks = (
         db.query(Task)
         .filter(Task.is_active == True)
-        .options(joinedload(Task.category))
+        .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
         .all()
     )
@@ -155,7 +155,7 @@ def get_tasks_for_day(db: Session, day_of_week: int, date: datetime | None = Non
     all_day_tasks = (
         db.query(Task)
         .filter(Task.is_active == True, Task.day_of_week == day_of_week)
-        .options(joinedload(Task.category))
+        .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.title)
         .all()
     )

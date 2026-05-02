@@ -221,3 +221,122 @@ async def delete_note(
     if not success:
         raise HTTPException(status_code=404, detail="Note not found")
     return {"message": "Note deleted"}
+
+
+# ── SKETCHES (stylus / hand-drawn notes) ────────────────────────────────
+
+from datetime import datetime
+from app.core.security import get_current_user
+from app.models.user import User as _AuthUser
+from app.models.notebook import NotebookSketch
+from pydantic import BaseModel
+from typing import Optional
+
+
+class SketchCreate(BaseModel):
+    title: Optional[str] = None
+    topicId: Optional[str] = None
+    imageData: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class SketchUpdate(BaseModel):
+    title: Optional[str] = None
+    topicId: Optional[str] = None
+    imageData: Optional[str] = None
+
+
+def _sketch_to_dict(s: NotebookSketch) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "topicId": s.topic_id,
+        "imageData": s.image_data,
+        "width": s.width,
+        "height": s.height,
+        "createdAt": s.created_at.isoformat() if s.created_at else None,
+        "updatedAt": s.updated_at.isoformat() if s.updated_at else None,
+    }
+
+
+@router.get("/sketches")
+async def list_sketches(user: _AuthUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    sketches = (
+        db.query(NotebookSketch)
+        .filter(NotebookSketch.user_id == user.id, NotebookSketch.is_deleted == False)
+        .order_by(NotebookSketch.created_at.desc())
+        .all()
+    )
+    return [_sketch_to_dict(s) for s in sketches]
+
+
+@router.post("/sketches")
+async def create_sketch(
+    data: SketchCreate,
+    user: _AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not data.imageData or not data.imageData.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="imageData trebuie sa fie data URL")
+    if len(data.imageData) > 4_000_000:  # ~3MB after base64
+        raise HTTPException(status_code=413, detail="Imagine prea mare (max ~3MB)")
+    sketch = NotebookSketch(
+        user_id=user.id,
+        title=(data.title or "").strip()[:150] or None,
+        topic_id=data.topicId or None,
+        image_data=data.imageData,
+        width=data.width,
+        height=data.height,
+    )
+    db.add(sketch)
+    db.commit()
+    db.refresh(sketch)
+    return _sketch_to_dict(sketch)
+
+
+@router.put("/sketches/{sketch_id}")
+async def update_sketch(
+    sketch_id: str,
+    data: SketchUpdate,
+    user: _AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    s = (
+        db.query(NotebookSketch)
+        .filter(NotebookSketch.id == sketch_id, NotebookSketch.user_id == user.id, NotebookSketch.is_deleted == False)
+        .first()
+    )
+    if not s:
+        raise HTTPException(status_code=404, detail="Schita inexistenta")
+    if data.title is not None:
+        s.title = data.title.strip()[:150] or None
+    if data.topicId is not None:
+        s.topic_id = data.topicId or None
+    if data.imageData is not None:
+        if not data.imageData.startswith("data:image/"):
+            raise HTTPException(status_code=400, detail="imageData trebuie sa fie data URL")
+        s.image_data = data.imageData
+    s.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(s)
+    return _sketch_to_dict(s)
+
+
+@router.delete("/sketches/{sketch_id}")
+async def delete_sketch(
+    sketch_id: str,
+    user: _AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    s = (
+        db.query(NotebookSketch)
+        .filter(NotebookSketch.id == sketch_id, NotebookSketch.user_id == user.id, NotebookSketch.is_deleted == False)
+        .first()
+    )
+    if not s:
+        raise HTTPException(status_code=404, detail="Schita inexistenta")
+    s.is_deleted = True
+    s.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}

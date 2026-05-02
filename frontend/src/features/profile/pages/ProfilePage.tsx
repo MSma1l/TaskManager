@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { authApi, MeResponse } from '../../auth/api/auth';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
+import Tour from '../../../shared/components/tour/Tour';
 
 interface NotificationPrefs {
   telegram?: boolean;
@@ -30,6 +31,14 @@ export default function ProfilePage() {
   const [notif, setNotif] = useState<NotificationPrefs>(DEFAULT_NOTIF);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [linkInfo, setLinkInfo] = useState<{ code: string; expiresAt: string; instructions: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  const restartTour = () => {
+    localStorage.removeItem('tour:done');
+    setTourOpen(true);
+  };
 
   useEffect(() => {
     authApi.me()
@@ -81,6 +90,35 @@ export default function ProfilePage() {
     window.location.href = '/login';
   };
 
+  const handleGenerateLink = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await authApi.generateMyLinkCode();
+      setLinkInfo(data);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Eroare generare cod');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUnlinkTelegram = async () => {
+    if (!confirm('Sigur dezlegi Telegram-ul de la cont? Nu vei mai primi reminderuri pana cand nu il legi din nou.')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await authApi.unlinkTelegram();
+      const data = await authApi.me();
+      setMe(data);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Eroare dezlegare');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-5 space-y-6">
       <div>
@@ -99,14 +137,43 @@ export default function ProfilePage() {
         <Field label="Email">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
         </Field>
-        <p className="text-xs text-muted">
-          Telegram: {me?.telegramLinked ? 'legat' : 'nelegat (cere admin un cod /link)'}
-        </p>
         <div className="pt-2">
           <button onClick={saveProfile} className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 text-sm">
             Salveaza profil
           </button>
         </div>
+      </Card>
+
+      {/* Telegram link */}
+      <Card title="Telegram">
+        {me?.telegramLinked ? (
+          <>
+            <p className="text-sm text-emerald-500">✓ Cont legat la Telegram</p>
+            <p className="text-xs text-muted">Primesti coduri de logare 2FA si reminderurile aici.</p>
+            <div className="pt-1">
+              <button
+                onClick={handleUnlinkTelegram}
+                disabled={busy}
+                className="bg-red-600/15 hover:bg-red-600/25 text-red-500 rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+              >
+                Dezleaga
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm">Nelegat. Genereaza un cod si trimite-l botului ca <code className="bg-input px-1 rounded">/link &lt;cod&gt;</code>.</p>
+            <div className="pt-1">
+              <button
+                onClick={handleGenerateLink}
+                disabled={busy}
+                className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {busy ? 'Se genereaza...' : 'Genereaza cod /link'}
+              </button>
+            </div>
+          </>
+        )}
       </Card>
 
       {/* Theme */}
@@ -165,6 +232,39 @@ export default function ProfilePage() {
           </button>
         </div>
       </Card>
+
+      {linkInfo && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setLinkInfo(null)}>
+          <div className="bg-surface rounded-xl p-5 border border-border max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold mb-2">Cod /link</h3>
+            <p className="text-xs text-muted mb-3 whitespace-pre-line">{linkInfo.instructions}</p>
+            <div className="bg-input rounded-lg p-3 text-center text-3xl font-mono tracking-widest mb-3">
+              {linkInfo.code}
+            </div>
+            <p className="text-xs text-muted">Expira: {new Date(linkInfo.expiresAt).toLocaleString()}</p>
+            <button onClick={() => setLinkInfo(null)} className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm">
+              Inchide
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ghid */}
+      <Card title="Ghid prin aplicatie">
+        <p className="text-sm text-muted">
+          Tour interactiv care explica fiecare zona — taskuri, proiecte, calendar, schite, profil.
+        </p>
+        <div className="pt-1">
+          <button
+            onClick={restartTour}
+            className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 text-sm"
+          >
+            Reia ghidul
+          </button>
+        </div>
+      </Card>
+
+      {tourOpen && <Tour forceOpen onClose={() => setTourOpen(false)} />}
 
       {/* Security */}
       <Card title="Securitate">
