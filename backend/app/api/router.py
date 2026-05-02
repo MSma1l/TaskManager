@@ -1,9 +1,10 @@
 from fastapi import APIRouter
-from app.api import auth, tasks, completions, categories, stats, projects, notifications, notebook, calendar
+from app.api import auth, tasks, completions, categories, stats, projects, notifications, notebook, calendar, users
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
+api_router.include_router(users.router)
 api_router.include_router(tasks.router)
 api_router.include_router(completions.router)
 api_router.include_router(categories.router)

@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.telegram.commands import (
     cmd_start, cmd_help, cmd_today, cmd_week, cmd_tasks,
-    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete,
+    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link,
 )
 from app.telegram.conversations import (
     handle_conversation, handle_callback_conversation,
@@ -225,6 +225,7 @@ async def _setup_commands(app: Application):
         BotCommand("delete", "Sterge un task"),
         BotCommand("stats", "Statistici"),
         BotCommand("notes", "Carnetul meu"),
+        BotCommand("link", "Leaga acest chat de un cont"),
         BotCommand("help", "Ajutor"),
     ]
     await app.bot.set_my_commands(commands)
@@ -248,6 +249,7 @@ def create_bot() -> Application:
     application.add_handler(CommandHandler("delete", cmd_delete))
     application.add_handler(CommandHandler("stats", cmd_stats))
     application.add_handler(CommandHandler("notes", cmd_notes))
+    application.add_handler(CommandHandler("link", cmd_link))
 
     # Callback query handler
     application.add_handler(CallbackQueryHandler(_handle_callback))
@@ -264,11 +266,11 @@ async def setup_bot_commands():
         await _setup_commands(application)
 
 
-async def send_message(text: str, reply_markup=None):
-    """Send a message to the configured chat."""
+async def send_message(text: str, reply_markup=None, chat_id: str | None = None):
+    """Send a message. Defaults to the legacy single-user TELEGRAM_CHAT_ID when none given."""
     if application and application.bot:
         await application.bot.send_message(
-            chat_id=settings.TELEGRAM_CHAT_ID,
+            chat_id=chat_id or settings.TELEGRAM_CHAT_ID,
             text=text,
             reply_markup=reply_markup,
         )

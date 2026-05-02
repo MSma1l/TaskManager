@@ -1,14 +1,71 @@
-import { useState, useCallback } from 'react';
-import client from '../../../shared/api/client';
+import { useCallback, useEffect, useState } from 'react';
+import { authApi, AuthSession } from '../api/auth';
+
+interface AuthState {
+  isAuthenticated: boolean;
+  username: string | null;
+  role: 'USER' | 'ADMIN' | null;
+  expiresAt: number | null; // ms epoch
+}
+
+function readState(): AuthState {
+  const token = localStorage.getItem('token');
+  const username = localStorage.getItem('username');
+  const role = localStorage.getItem('userRole') as 'USER' | 'ADMIN' | null;
+  const exp = localStorage.getItem('tokenExpiresAt');
+  return {
+    isAuthenticated: !!token,
+    username,
+    role,
+    expiresAt: exp ? parseInt(exp, 10) : null,
+  };
+}
+
+function writeSession(session: AuthSession) {
+  localStorage.setItem('token', session.token);
+  if (session.username) localStorage.setItem('username', session.username);
+  if (session.role) localStorage.setItem('userRole', session.role);
+  if (session.expiresAt) {
+    const ms = new Date(session.expiresAt).getTime();
+    localStorage.setItem('tokenExpiresAt', String(ms));
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('tokenExpiresAt');
+  // Keep username + role so we can pre-fill the re-login screen
+}
 
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem('token'));
+  const [state, setState] = useState<AuthState>(readState);
 
-  const login = useCallback(async (pin: string): Promise<boolean> => {
+  useEffect(() => {
+    const refresh = () => setState(readState());
+    window.addEventListener('auth:expired', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('auth:expired', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
+  const verifyCode = useCallback(async (challengeId: string, code: string): Promise<boolean> => {
     try {
-      const res = await client.post('/auth/login', { pin });
-      localStorage.setItem('token', res.data.token);
-      setIsAuthenticated(true);
+      const session = await authApi.verifyCode(challengeId, code);
+      writeSession(session);
+      setState(readState());
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const refreshWithPin = useCallback(async (username: string, pin: string): Promise<boolean> => {
+    try {
+      const session = await authApi.refreshWithPin(username, pin);
+      writeSession(session);
+      setState(readState());
       return true;
     } catch {
       return false;
@@ -16,9 +73,17 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    setIsAuthenticated(false);
+    clearSession();
+    localStorage.removeItem('username');
+    localStorage.removeItem('userRole');
+    setState(readState());
   }, []);
 
-  return { isAuthenticated, login, logout };
+  return {
+    ...state,
+    isAdmin: state.role === 'ADMIN',
+    verifyCode,
+    refreshWithPin,
+    logout,
+  };
 }

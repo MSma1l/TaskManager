@@ -1,0 +1,34 @@
+from datetime import datetime
+from sqlalchemy import Column, String, Boolean, DateTime, Integer
+from app.core.database import Base
+from app.models.base import generate_cuid
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=generate_cuid)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(150), unique=True, nullable=True, index=True)
+    full_name = Column(String(150), nullable=True)
+    telegram_chat_id = Column(String(50), nullable=True, index=True)
+    role = Column(String(20), nullable=False, default="USER")  # USER | ADMIN
+    pin_hash = Column(String(200), nullable=True)  # hashed fallback PIN (sha256)
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LoginCode(Base):
+    """One-time 6-digit code sent via Telegram for 2FA login or token refresh."""
+    __tablename__ = "login_codes"
+
+    id = Column(String, primary_key=True, default=generate_cuid)
+    user_id = Column(String, nullable=False, index=True)
+    code_hash = Column(String(200), nullable=False)
+    purpose = Column(String(20), nullable=False, default="login")  # login | refresh | admin
+    attempts = Column(Integer, default=0, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -2,10 +2,12 @@ from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 from app.core.database import SessionLocal
+from app.core.security import verify_secret
 from app.models.task import Task
 from app.models.completion import TaskCompletion
 from app.models.base import TaskStatus
 from app.models.category import Category
+from app.models.user import User, LoginCode
 from app.services import task_service, completion_service, stats_service
 from app.telegram.keyboards import (
     task_actions_keyboard, week_days_keyboard, pending_tasks_keyboard, days_keyboard,
@@ -353,6 +355,56 @@ async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Alege taskul de sters:",
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
+    finally:
+        db.close()
+
+
+async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bind this Telegram chat to a user account via a one-time code from the admin."""
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "Foloseste: /link <cod>\n"
+            "Codul ti-l da admin-ul din pagina de utilizatori."
+        )
+        return
+
+    raw_code = args[0].strip()
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        candidates = (
+            db.query(LoginCode)
+            .filter(
+                LoginCode.purpose == "link",
+                LoginCode.used_at.is_(None),
+                LoginCode.expires_at > datetime.utcnow(),
+            )
+            .all()
+        )
+        match = next((c for c in candidates if verify_secret(raw_code, c.code_hash)), None)
+        if not match:
+            await update.message.reply_text("Cod invalid sau expirat.")
+            return
+
+        user = db.query(User).filter(User.id == match.user_id).first()
+        if not user:
+            await update.message.reply_text("Utilizatorul nu mai exista.")
+            return
+
+        # If another user is bound to this chat, unbind it first
+        db.query(User).filter(
+            User.telegram_chat_id == chat_id, User.id != user.id
+        ).update({"telegram_chat_id": None})
+
+        user.telegram_chat_id = chat_id
+        match.used_at = datetime.utcnow()
+        db.commit()
+
+        await update.message.reply_text(
+            f"Cont legat: @{user.username}\n"
+            f"De acum primesti aici codurile de logare si notificarile."
+        )
     finally:
         db.close()
 

@@ -12,6 +12,7 @@ from app.models.task import Task  # noqa
 from app.models.completion import TaskCompletion  # noqa
 from app.models.reminder import ReminderLog  # noqa
 from app.models.session import TelegramSession  # noqa
+from app.models.user import User, LoginCode  # noqa
 
 config = context.config
 

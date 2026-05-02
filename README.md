@@ -19,9 +19,10 @@ cp .env.example .env
 
 2. Completeaza `.env`:
    - `TELEGRAM_BOT_TOKEN` - de la @BotFather pe Telegram
-   - `TELEGRAM_CHAT_ID` - ID-ul tau de chat Telegram
-   - `APP_PIN` - PIN-ul de acces la aplicatie (ex: 1234)
+   - `TELEGRAM_CHAT_ID` - chat ID-ul folosit pentru a seeda admin-ul initial
+   - `APP_PIN` - PIN-ul initial al admin-ului (folosit la refresh dupa 12h)
    - `JWT_SECRET` - un string random lung
+   - `ADMIN_USERNAME` - username-ul admin-ului seedat (default `admin`)
 
 3. Porneste aplicatia:
 ```bash
@@ -29,9 +30,22 @@ docker compose up --build
 ```
 
 4. Acceseaza:
-   - Web App: http://localhost (prin Nginx) sau http://localhost:3000 (direct Vite)
+   - Web App utilizator: http://localhost
+   - **Pagina admin: http://localhost/admin_task_manager** (login separat, rol ADMIN)
    - API: http://localhost:3001
    - Pe iPhone: Safari > Share > "Add to Home Screen"
+
+## Logare
+
+- **Token-ul JWT expira la 12 ore** (configurabil cu `JWT_EXPIRE_HOURS`).
+- La logare, userul tasteaza username-ul, primeste un cod de 6 cifre pe **Telegram** (2FA), il introduce si primeste token-ul.
+- Cand token-ul expira: alege intre logare cu cod nou pe Telegram **sau** PIN-ul personal (setat din profil sau de admin).
+
+## Useri si admin
+
+- Admin-ul initial e creat la `seed.py` din `ADMIN_USERNAME` + `TELEGRAM_CHAT_ID` + `APP_PIN`.
+- Adminii suplimentari, userii noi se creeaza din **/admin_task_manager/users**.
+- Pentru a lega un user la un chat de Telegram: admin genereaza un cod /link, userul trimite `/link <cod>` botului.
 
 ## Cum obtii Telegram Token si Chat ID
 
