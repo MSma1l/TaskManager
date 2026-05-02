@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_t
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
@@ -7,18 +7,20 @@ from app.models.task import Task
 from app.models.completion import TaskCompletion
 from app.models.reminder import ReminderLog
 from app.models.session import TelegramSession
+from app.models.calendar import CalendarEvent, CalendarReminderLog
+from app.models.user import User
 from app.models.base import TaskStatus
-from app.services import task_service, stats_service
+from app.services import task_service, stats_service, calendar_service
 
 scheduler = AsyncIOScheduler()
 
 DAYS_RO = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
 
 
-async def _send_telegram(text: str):
+async def _send_telegram(text: str, chat_id: str | None = None):
     from app.telegram.bot import send_message
     try:
-        await send_message(text)
+        await send_message(text, chat_id=chat_id)
     except Exception as e:
         print(f"Failed to send telegram message: {e}")
 
@@ -151,6 +153,127 @@ def weekly_report():
         db.close()
 
 
+EVENT_TYPE_LABELS = {
+    "meeting_online": "Sedinta online",
+    "meeting_in_person": "Sedinta",
+    "appointment": "Programare",
+    "reminder": "Reminder",
+    "personal": "Eveniment",
+    "task": "Task",
+}
+
+
+def _format_event_message(event: CalendarEvent, occurrence: date_t, minutes_before: int) -> str:
+    label = EVENT_TYPE_LABELS.get(event.event_type or "personal", "Eveniment")
+
+    if minutes_before == 0:
+        when = "incepe ACUM"
+    elif minutes_before < 60:
+        when = f"in {minutes_before} min"
+    elif minutes_before % 60 == 0:
+        when = f"in {minutes_before // 60}h"
+    else:
+        when = f"in {minutes_before} min"
+
+    lines = [f"{label}: {event.title} {when}"]
+    lines.append(f"Cand: {occurrence.strftime('%d.%m.%Y')} {event.start_time}–{event.end_time}")
+    if event.location:
+        lines.append(f"Unde: {event.location}")
+    if event.meeting_url:
+        lines.append(f"Link: {event.meeting_url}")
+    if event.description:
+        lines.append("")
+        lines.append(event.description.strip()[:500])
+    return "\n".join(lines)
+
+
+def _user_chat(db: Session, user_id: str) -> str | None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if user and user.telegram_chat_id:
+        return user.telegram_chat_id
+    # Legacy: user_id may already be a chat id (single-tenant migration)
+    if user_id and user_id.lstrip("-").isdigit():
+        return user_id
+    return None
+
+
+def check_calendar_reminders():
+    """Fire reminders for calendar events whose offset matches the current minute."""
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today = now.date()
+        # Look ahead 7 days max — covers most reminder offsets (max ~10080 min = 7 days)
+        horizon = today + timedelta(days=7)
+
+        masters = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.is_deleted == False,
+                CalendarEvent.event_status != "CANCELLED",
+                CalendarEvent.event_date <= horizon,
+            )
+            .all()
+        )
+
+        for event in masters:
+            offsets = event.reminder_minutes or []
+            if not offsets:
+                continue
+
+            # Compute next occurrences in the next 8 days for recurrence
+            occurrences = calendar_service._occurrences_in_range(event, today, horizon)
+
+            for occ in occurrences:
+                try:
+                    h, m = (event.start_time or "00:00").split(":")
+                    occ_dt = datetime(occ.year, occ.month, occ.day, int(h), int(m))
+                except Exception:
+                    continue
+
+                for offset in offsets:
+                    try:
+                        offset = int(offset)
+                    except (TypeError, ValueError):
+                        continue
+
+                    fire_at = occ_dt - timedelta(minutes=offset)
+                    # Match within ±30 sec of the current minute
+                    delta = abs((fire_at - now).total_seconds())
+                    if delta > 30:
+                        continue
+
+                    already = (
+                        db.query(CalendarReminderLog)
+                        .filter(
+                            CalendarReminderLog.event_id == event.id,
+                            CalendarReminderLog.occurrence_date == occ,
+                            CalendarReminderLog.minutes_before == str(offset),
+                            CalendarReminderLog.channel == "telegram",
+                        )
+                        .first()
+                    )
+                    if already:
+                        continue
+
+                    text = _format_event_message(event, occ, offset)
+                    chat_id = _user_chat(db, event.user_id)
+                    if chat_id:
+                        asyncio.create_task(_send_telegram(text, chat_id=chat_id))
+
+                    db.add(CalendarReminderLog(
+                        event_id=event.id,
+                        occurrence_date=occ,
+                        minutes_before=str(offset),
+                        channel="telegram",
+                    ))
+        db.commit()
+    except Exception as e:
+        print(f"Calendar reminder check error: {e}")
+    finally:
+        db.close()
+
+
 def cleanup_sessions():
     """Expire telegram sessions older than 10 minutes."""
     db = SessionLocal()
@@ -165,8 +288,10 @@ def cleanup_sessions():
 
 
 def start_scheduler():
-    # Every minute - check reminders
+    # Every minute - check task reminders
     scheduler.add_job(check_reminders, 'cron', minute='*', id='check_reminders')
+    # Every minute - check calendar event reminders
+    scheduler.add_job(check_calendar_reminders, 'cron', minute='*', id='check_calendar_reminders')
     # Monday 09:00 - weekly summary
     scheduler.add_job(weekly_summary, 'cron', day_of_week='mon', hour=9, minute=0, id='weekly_summary')
     # Sunday 20:00 - weekly report

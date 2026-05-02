@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON
 from app.core.database import Base
 from app.models.base import generate_cuid
 
@@ -13,9 +13,16 @@ class User(Base):
     full_name = Column(String(150), nullable=True)
     telegram_chat_id = Column(String(50), nullable=True, index=True)
     role = Column(String(20), nullable=False, default="USER")  # USER | ADMIN
-    pin_hash = Column(String(200), nullable=True)  # hashed fallback PIN (sha256)
+    pin_hash = Column(String(200), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
+
+    # Preferences
+    theme = Column(String(20), nullable=False, default="dark")  # dark | light
+    notification_settings = Column(JSON, nullable=True)
+    # { "telegram": true, "web": true, "doNotDisturbStart": "22:00", "doNotDisturbEnd": "07:00",
+    #   "defaultReminderMinutes": [15] }
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

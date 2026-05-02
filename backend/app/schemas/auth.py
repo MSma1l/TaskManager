@@ -49,3 +49,12 @@ class MeOut(BaseModel):
     telegramLinked: bool
     hasPin: bool
     lastLoginAt: Optional[datetime] = None
+    theme: str = "dark"
+    notificationSettings: Optional[dict] = None
+
+
+class UpdateMeRequest(BaseModel):
+    fullName: Optional[str] = None
+    email: Optional[str] = None
+    theme: Optional[str] = None  # "dark" | "light"
+    notificationSettings: Optional[dict] = None

@@ -8,6 +8,7 @@ import ProjectsPage from '../features/projects/pages/ProjectsPage';
 import ProjectDetailPage from '../features/projects/pages/ProjectDetailPage';
 import NotebookPage from '../features/notebook/pages/NotebookPage';
 import CalendarPage from '../features/calendar/pages/CalendarPage';
+import ProfilePage from '../features/profile/pages/ProfilePage';
 import AppLayout from '../shared/components/layout/AppLayout';
 import AdminLayout from '../features/admin/components/AdminLayout';
 import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
@@ -61,6 +62,7 @@ export default function AppRoutes() {
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="notebook" element={<NotebookPage />} />
         <Route path="calendar" element={<CalendarPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

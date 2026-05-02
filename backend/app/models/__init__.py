@@ -6,7 +6,7 @@ from app.models.completion import TaskCompletion
 from app.models.reminder import ReminderLog
 from app.models.session import TelegramSession
 from app.models.notebook import NotebookTopic, NotebookNote, NotebookNoteHistory
-from app.models.calendar import CalendarEvent
+from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLog
 from app.models.user import User, LoginCode
 
 __all__ = [
@@ -22,6 +22,8 @@ __all__ = [
     "NotebookNote",
     "NotebookNoteHistory",
     "CalendarEvent",
+    "EventCategory",
+    "CalendarReminderLog",
     "User",
     "LoginCode",
 ]

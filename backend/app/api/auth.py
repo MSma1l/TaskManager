@@ -13,6 +13,7 @@ from app.schemas.auth import (
     VerifyCodeRequest,
     RefreshRequest,
     MeOut,
+    UpdateMeRequest,
 )
 from app.services import auth_service
 
@@ -29,6 +30,8 @@ def _user_to_me(user: User) -> dict:
         "telegramLinked": bool(user.telegram_chat_id),
         "hasPin": bool(user.pin_hash),
         "lastLoginAt": user.last_login_at,
+        "theme": user.theme or "dark",
+        "notificationSettings": user.notification_settings or None,
     }
 
 
@@ -104,6 +107,27 @@ async def logout(user: User = Depends(get_current_user)):
 
 @router.get("/me", response_model=MeOut)
 async def me(user: User = Depends(get_current_user)):
+    return _user_to_me(user)
+
+
+@router.put("/me", response_model=MeOut)
+async def update_me(
+    data: UpdateMeRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if data.fullName is not None:
+        user.full_name = data.fullName.strip()[:150] or None
+    if data.email is not None:
+        user.email = data.email.strip()[:150] or None
+    if data.theme is not None:
+        if data.theme not in {"dark", "light"}:
+            raise HTTPException(status_code=400, detail="Tema trebuie sa fie 'dark' sau 'light'")
+        user.theme = data.theme
+    if data.notificationSettings is not None:
+        user.notification_settings = data.notificationSettings
+    db.commit()
+    db.refresh(user)
     return _user_to_me(user)
 
 

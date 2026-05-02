@@ -2,10 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme tokens (RGB triplets so Tailwind alpha modifiers work) ───────── */
+:root,
+[data-theme="dark"] {
+  --color-bg: 15 23 42;          /* slate-900 */
+  --color-surface: 30 41 59;     /* slate-800 */
+  --color-elevated: 51 65 85;    /* slate-700 */
+  --color-input: 30 41 59;       /* slate-800 */
+  --color-fg: 248 250 252;       /* slate-50 */
+  --color-muted: 148 163 184;    /* slate-400 */
+  --color-border: 51 65 85;      /* slate-700 */
+}
+
+[data-theme="light"] {
+  --color-bg: 248 250 252;       /* slate-50 */
+  --color-surface: 255 255 255;
+  --color-elevated: 241 245 249; /* slate-100 */
+  --color-input: 248 250 252;
+  --color-fg: 15 23 42;          /* slate-900 */
+  --color-muted: 100 116 139;    /* slate-500 */
+  --color-border: 226 232 240;   /* slate-200 */
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html, body {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-fg));
 }
 
 body {
@@ -13,30 +42,51 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: rgb(var(--color-elevated));
   border-radius: 3px;
 }
 
-/* Shake animation for wrong PIN */
+/* ── Light-theme overrides for legacy hardcoded slate utilities ─────────
+   The calendar/profile/login pages use semantic tokens above. The other
+   pages (tasks/projects/notebook/stats) still use slate-XXX classes from
+   when the app was dark-only. These rules flip them when light is active. */
+
+[data-theme="light"] .bg-slate-900 { background-color: rgb(var(--color-bg)) !important; }
+[data-theme="light"] .bg-slate-800 { background-color: rgb(var(--color-surface)) !important; }
+[data-theme="light"] .bg-slate-700 { background-color: rgb(var(--color-elevated)) !important; }
+[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(241, 245, 249, 0.7) !important; }
+[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(241, 245, 249, 0.6) !important; }
+[data-theme="light"] .bg-slate-700\/50 { background-color: rgba(226, 232, 240, 0.6) !important; }
+[data-theme="light"] .text-white,
+[data-theme="light"] .text-slate-50,
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-slate-200 { color: rgb(var(--color-fg)) !important; }
+[data-theme="light"] .text-slate-300 { color: #334155 !important; }
+[data-theme="light"] .text-slate-400 { color: rgb(var(--color-muted)) !important; }
+[data-theme="light"] .text-slate-500 { color: #64748b !important; }
+[data-theme="light"] .text-slate-600 { color: #475569 !important; }
+[data-theme="light"] .border-slate-700 { border-color: rgb(var(--color-border)) !important; }
+[data-theme="light"] .border-slate-700\/60,
+[data-theme="light"] .border-slate-700\/50,
+[data-theme="light"] .border-slate-700\/30,
+[data-theme="light"] .border-slate-700\/15 { border-color: rgba(203, 213, 225, 0.7) !important; }
+[data-theme="light"] .border-slate-600 { border-color: rgb(var(--color-border)) !important; }
+[data-theme="light"] .placeholder-slate-400::placeholder { color: rgb(var(--color-muted)) !important; }
+
+/* Animations */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
   20%, 40%, 60%, 80% { transform: translateX(4px); }
 }
-.animate-shake {
-  animation: shake 0.5s ease-in-out;
-}
+.animate-shake { animation: shake 0.5s ease-in-out; }
 
-/* Slide animations for week navigation */
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(40px); }
   to { opacity: 1; transform: translateX(0); }
@@ -45,18 +95,11 @@ body {
   from { opacity: 0; transform: translateX(-40px); }
   to { opacity: 1; transform: translateX(0); }
 }
-.slide-in-right {
-  animation: slideInRight 0.35s ease-out;
-}
-.slide-in-left {
-  animation: slideInLeft 0.35s ease-out;
-}
+.slide-in-right { animation: slideInRight 0.35s ease-out; }
+.slide-in-left { animation: slideInLeft 0.35s ease-out; }
 
-/* Fade in for day columns */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.fade-in-up {
-  animation: fadeInUp 0.4s ease-out both;
-}
+.fade-in-up { animation: fadeInUp 0.4s ease-out both; }

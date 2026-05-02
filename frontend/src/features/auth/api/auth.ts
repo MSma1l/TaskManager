@@ -24,6 +24,8 @@ export interface MeResponse {
   telegramLinked: boolean;
   hasPin: boolean;
   lastLoginAt?: string;
+  theme?: 'dark' | 'light';
+  notificationSettings?: Record<string, unknown> | null;
 }
 
 export const authApi = {
@@ -40,6 +42,13 @@ export const authApi = {
     client.post('/auth/refresh', { username, pin }).then((r) => r.data),
 
   me: (): Promise<MeResponse> => client.get('/auth/me').then((r) => r.data),
+
+  updateMe: (data: {
+    fullName?: string;
+    email?: string;
+    theme?: 'dark' | 'light';
+    notificationSettings?: Record<string, unknown> | null;
+  }): Promise<MeResponse> => client.put('/auth/me', data).then((r) => r.data),
 
   setPin: (pin: string) => client.put('/auth/pin', { pin }).then((r) => r.data),
 

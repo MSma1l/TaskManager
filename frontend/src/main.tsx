@@ -2,8 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app/App';
 import './index.css';
+import { bootstrapTheme } from './shared/hooks/useTheme';
 
-// Register service worker
+bootstrapTheme();
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
