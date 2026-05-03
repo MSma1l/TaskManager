@@ -63,7 +63,10 @@ def create_login_challenge(db: Session, user: User, purpose: str = "login") -> t
 
 
 def _deliver_code(user: User, code: str, purpose: str) -> str:
-    """Send the code to the user via Telegram. Falls back to console log if no chat linked."""
+    """Send the code to the user via Telegram. Falls back to console log if no chat linked.
+
+    Admins use the dedicated admin bot when configured; regular users use the main bot.
+    """
     label = {
         "login": "logare",
         "refresh": "reinnoire sesiune",
@@ -71,7 +74,6 @@ def _deliver_code(user: User, code: str, purpose: str) -> str:
     }.get(purpose, purpose)
 
     if not user.telegram_chat_id:
-        # No chat bound — print to server log so the admin/user can still proceed
         print(
             f"[AUTH] {user.username} ({label}) cod={code} — Telegram nelegat, "
             f"deschide pe server consola pentru cod."
@@ -83,8 +85,8 @@ def _deliver_code(user: User, code: str, purpose: str) -> str:
         f"Valabil {settings.LOGIN_CODE_TTL_MINUTES} min. Nu il trimite nimanui."
     )
     try:
-        from app.telegram.bot import application as bot_app
-
+        from app.telegram.bot import _bot_for_role
+        bot_app = _bot_for_role(user.role)
         if bot_app and bot_app.bot:
             asyncio.create_task(
                 bot_app.bot.send_message(chat_id=user.telegram_chat_id, text=text)

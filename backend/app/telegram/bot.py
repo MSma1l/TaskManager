@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.telegram.commands import (
     cmd_start, cmd_help, cmd_today, cmd_week, cmd_tasks,
-    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link,
+    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link, cmd_attended,
 )
 from app.telegram.conversations import (
     handle_conversation, handle_callback_conversation,
@@ -15,7 +15,8 @@ from app.telegram.free_text import handle_free_text
 from app.telegram.notebook_handler import cmd_notes, handle_notebook_callback, handle_notebook_text
 from app.services import completion_service, task_service
 
-application: Application | None = None
+application: Application | None = None       # main user-facing bot
+admin_application: Application | None = None  # optional separate admin bot
 
 # Map bottom menu button text to command handlers
 MENU_BUTTON_MAP = {
@@ -231,46 +232,73 @@ async def _setup_commands(app: Application):
     await app.bot.set_my_commands(commands)
 
 
+def _wire_handlers(app: Application):
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("week", cmd_week))
+    app.add_handler(CommandHandler("tasks", cmd_tasks))
+    app.add_handler(CommandHandler("add", cmd_add))
+    app.add_handler(CommandHandler("done", cmd_done))
+    app.add_handler(CommandHandler("skip", cmd_skip))
+    app.add_handler(CommandHandler("notdone", cmd_notdone))
+    app.add_handler(CommandHandler("delete", cmd_delete))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("notes", cmd_notes))
+    app.add_handler(CommandHandler("link", cmd_link))
+    app.add_handler(CommandHandler("attended", cmd_attended))
+    app.add_handler(CallbackQueryHandler(_handle_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_message))
+
+
 def create_bot() -> Application:
+    """Create the main user-facing bot."""
     global application
-    app_builder = Application.builder().token(settings.TELEGRAM_BOT_TOKEN)
-    application = app_builder.build()
-
-    # Command handlers
-    application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("help", cmd_help))
-    application.add_handler(CommandHandler("today", cmd_today))
-    application.add_handler(CommandHandler("week", cmd_week))
-    application.add_handler(CommandHandler("tasks", cmd_tasks))
-    application.add_handler(CommandHandler("add", cmd_add))
-    application.add_handler(CommandHandler("done", cmd_done))
-    application.add_handler(CommandHandler("skip", cmd_skip))
-    application.add_handler(CommandHandler("notdone", cmd_notdone))
-    application.add_handler(CommandHandler("delete", cmd_delete))
-    application.add_handler(CommandHandler("stats", cmd_stats))
-    application.add_handler(CommandHandler("notes", cmd_notes))
-    application.add_handler(CommandHandler("link", cmd_link))
-
-    # Callback query handler
-    application.add_handler(CallbackQueryHandler(_handle_callback))
-
-    # Message handler (menu buttons + conversations + free text)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_message))
-
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    _wire_handlers(application)
     return application
 
 
+def create_admin_bot() -> Application | None:
+    """Create the optional admin-only bot (separate token). Returns None if not configured."""
+    global admin_application
+    token = (settings.ADMIN_TELEGRAM_BOT_TOKEN or "").strip()
+    if not token or token == "your_bot_token_here":
+        return None
+    admin_application = Application.builder().token(token).build()
+    _wire_handlers(admin_application)
+    return admin_application
+
+
 async def setup_bot_commands():
-    """Call after bot is initialized to register command menu."""
+    """Register command menu on both bots (whichever exist)."""
     if application:
         await _setup_commands(application)
+    if admin_application:
+        await _setup_commands(admin_application)
 
 
-async def send_message(text: str, reply_markup=None, chat_id: str | None = None):
-    """Send a message. Defaults to the legacy single-user TELEGRAM_CHAT_ID when none given."""
-    if application and application.bot:
-        await application.bot.send_message(
-            chat_id=chat_id or settings.TELEGRAM_CHAT_ID,
-            text=text,
-            reply_markup=reply_markup,
-        )
+def _bot_for_role(role: str | None) -> Application | None:
+    """Pick which bot to use for sending. Admin → admin bot if available; else main bot."""
+    if role == "ADMIN" and admin_application:
+        return admin_application
+    return application
+
+
+async def send_message(
+    text: str,
+    reply_markup=None,
+    chat_id: str | None = None,
+    role: str | None = None,
+):
+    """Send a message via the appropriate bot for the user's role."""
+    bot_app = _bot_for_role(role)
+    if not bot_app or not bot_app.bot:
+        return
+    target = chat_id or (
+        settings.ADMIN_TELEGRAM_CHAT_ID if role == "ADMIN" and settings.ADMIN_TELEGRAM_CHAT_ID
+        else settings.TELEGRAM_CHAT_ID
+    )
+    if not target:
+        return
+    await bot_app.bot.send_message(chat_id=target, text=text, reply_markup=reply_markup)

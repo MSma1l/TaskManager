@@ -4,6 +4,10 @@ import { categoriesApi } from '../api/categories';
 import { Project, projectsApi } from '../../projects/api/projects';
 import { DAYS_RO } from '../../../shared/utils/constants';
 import { formatISO, getDayOfWeek } from '../../../shared/utils/dates';
+import { useLocalDraft } from '../../../shared/hooks/useLocalDraft';
+
+const DRAFT_KEY = 'add-task-modal';
+interface TaskDraft { title: string; description: string; categoryId: string; projectId: string; }
 
 interface AddTaskModalProps {
   defaultDate?: Date;
@@ -27,13 +31,17 @@ export default function AddTaskModal({ defaultDate, defaultProjectId, onClose, o
   const defaultDayOfWeek = defaultDate ? getDayOfWeek(defaultDate) : undefined;
   const defaultDateISO = defaultDate ? formatISO(defaultDate) : '';
 
+  const [draft, setDraft, clearDraft] = useLocalDraft<TaskDraft>(DRAFT_KEY, {
+    title: '', description: '', categoryId: '', projectId: '',
+  });
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(draft.title);
   const [titleTouched, setTitleTouched] = useState(false);
-  const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [projectId, setProjectId] = useState(defaultProjectId || '');
+  const [description, setDescription] = useState(draft.description);
+  const [categoryId, setCategoryId] = useState(draft.categoryId);
+  const [projectId, setProjectId] = useState(defaultProjectId || draft.projectId || '');
   const [selectedDays, setSelectedDays] = useState<number[]>(defaultDayOfWeek ? [defaultDayOfWeek] : []);
   const [daysTouched, setDaysTouched] = useState(!!defaultDayOfWeek);
   const [reminderTime, setReminderTime] = useState('');
@@ -54,6 +62,11 @@ export default function AddTaskModal({ defaultDate, defaultProjectId, onClose, o
       setCategoryId(categories[0].id);
     }
   }, [categories, categoryId]);
+
+  // Live-save the form so a typed title/description survives reload
+  useEffect(() => {
+    setDraft({ title, description, categoryId, projectId });
+  }, [setDraft, title, description, categoryId, projectId]);
 
   const toggleDay = (day: number) => {
     setDaysTouched(true);
@@ -112,6 +125,7 @@ export default function AddTaskModal({ defaultDate, defaultProjectId, onClose, o
           });
         }
       }
+      clearDraft();
       onClose();
     } catch {
       setError('Eroare la salvare. Incearca din nou.');

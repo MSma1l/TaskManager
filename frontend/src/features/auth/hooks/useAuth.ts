@@ -72,6 +72,17 @@ export function useAuth() {
     }
   }, []);
 
+  const adminPasswordLogin = useCallback(async (username: string, password: string): Promise<boolean> => {
+    try {
+      const session = await authApi.adminPasswordLogin(username, password);
+      writeSession(session);
+      setState(readState());
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     localStorage.removeItem('username');
@@ -84,6 +95,7 @@ export function useAuth() {
     isAdmin: state.role === 'ADMIN',
     verifyCode,
     refreshWithPin,
+    adminPasswordLogin,
     logout,
   };
 }

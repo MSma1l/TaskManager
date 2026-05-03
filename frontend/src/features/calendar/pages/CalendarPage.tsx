@@ -161,7 +161,7 @@ export default function CalendarPage() {
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
-          <div className="hidden sm:flex items-center bg-input rounded-lg p-0.5 ml-2">
+          <div data-tour="calendar-views" className="hidden sm:flex items-center bg-input rounded-lg p-0.5 ml-2">
             {(['day', 'week', 'month'] as ViewMode[]).map((v) => (
               <button
                 key={v}

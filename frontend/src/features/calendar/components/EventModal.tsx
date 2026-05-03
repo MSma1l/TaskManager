@@ -2,6 +2,34 @@ import { useEffect, useState } from 'react';
 import {
   CalendarEvent, CreateEventData, EventCategory, EventType, RecurrenceRule, Attendee,
 } from '../api/calendar';
+import { useLocalDraft } from '../../../shared/hooks/useLocalDraft';
+
+const DRAFT_KEY = 'event-modal-new';
+
+interface DraftSnapshot {
+  title: string;
+  description: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  color: string;
+  eventType: EventType;
+  location: string;
+  meetingUrl: string;
+  isAllDay: boolean;
+  recurrence: RecurrenceRule;
+  recurrenceUntil: string;
+  reminders: number[];
+  categoryId: string;
+  attendees: Attendee[];
+}
+
+const EMPTY_DRAFT: DraftSnapshot = {
+  title: '', description: '', eventDate: '', startTime: '09:00', endTime: '10:00',
+  color: '#3b82f6', eventType: 'personal', location: '', meetingUrl: '',
+  isAllDay: false, recurrence: 'NONE', recurrenceUntil: '',
+  reminders: [15], categoryId: '', attendees: [],
+};
 
 const EVENT_COLORS = [
   '#3b82f6', '#22c55e', '#ef4444', '#eab308', '#a855f7', '#ec4899', '#06b6d4', '#f97316',
@@ -53,6 +81,9 @@ export default function EventModal({
 }: Props) {
   const [tab, setTab] = useState<'general' | 'reminders' | 'attendees'>('general');
 
+  // Persistent draft for new events (so a typed title/description survives reload).
+  const [draft, setDraft, clearDraft] = useLocalDraft<DraftSnapshot>(DRAFT_KEY, EMPTY_DRAFT);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState(defaultDate);
@@ -89,24 +120,41 @@ export default function EventModal({
       setCategoryId(initialEvent.categoryId || '');
       setAttendees(initialEvent.attendees || []);
     } else {
-      setTitle('');
-      setDescription('');
-      setEventDate(defaultDate);
-      setStartTime(defaultStart);
-      setEndTime(defaultEnd);
-      setColor(EVENT_COLORS[0]);
-      setEventType('personal');
-      setLocation('');
-      setMeetingUrl('');
-      setIsAllDay(false);
-      setRecurrence('NONE');
-      setRecurrenceUntil('');
-      setReminders([15]);
+      // Restore persistent draft if the user was typing one earlier (cloud-like memory).
+      const hasDraft = draft.title.trim() !== '' || draft.description.trim() !== '' || draft.attendees.length > 0;
+      setTitle(hasDraft ? draft.title : '');
+      setDescription(hasDraft ? draft.description : '');
+      setEventDate(hasDraft && draft.eventDate ? draft.eventDate : defaultDate);
+      setStartTime(hasDraft && draft.startTime ? draft.startTime : defaultStart);
+      setEndTime(hasDraft && draft.endTime ? draft.endTime : defaultEnd);
+      setColor(hasDraft ? draft.color : EVENT_COLORS[0]);
+      setEventType(hasDraft ? draft.eventType : 'personal');
+      setLocation(hasDraft ? draft.location : '');
+      setMeetingUrl(hasDraft ? draft.meetingUrl : '');
+      setIsAllDay(hasDraft ? draft.isAllDay : false);
+      setRecurrence(hasDraft ? draft.recurrence : 'NONE');
+      setRecurrenceUntil(hasDraft ? draft.recurrenceUntil : '');
+      setReminders(hasDraft && draft.reminders.length ? draft.reminders : [15]);
       const def = categories.find((c) => c.isDefault) || categories[0];
-      setCategoryId(def?.id || '');
-      setAttendees([]);
+      setCategoryId(hasDraft && draft.categoryId ? draft.categoryId : (def?.id || ''));
+      setAttendees(hasDraft ? draft.attendees : []);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialEvent, defaultDate, defaultStart, defaultEnd, categories]);
+
+  // Live-save the draft on every change while creating a new event.
+  useEffect(() => {
+    if (!open || initialEvent) return;
+    setDraft({
+      title, description, eventDate, startTime, endTime, color, eventType,
+      location, meetingUrl, isAllDay, recurrence, recurrenceUntil,
+      reminders, categoryId, attendees,
+    });
+  }, [
+    open, initialEvent, setDraft, title, description, eventDate, startTime, endTime,
+    color, eventType, location, meetingUrl, isAllDay, recurrence, recurrenceUntil,
+    reminders, categoryId, attendees,
+  ]);
 
   if (!open) return null;
 
@@ -129,6 +177,8 @@ export default function EventModal({
       categoryId: categoryId || null,
       attendees,
     };
+    // Clear draft for new events on successful submit; editing doesn't touch the draft
+    if (!initialEvent) clearDraft();
     onSave(data);
   };
 

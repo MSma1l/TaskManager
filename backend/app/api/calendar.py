@@ -89,26 +89,39 @@ def _build_create_kwargs(data: CalendarEventCreate) -> dict:
 
 
 def _build_update_kwargs(data: CalendarEventUpdate) -> dict:
+    """Use exclude_unset so passing `null` actually clears nullable fields,
+    while skipping fields the client didn't include at all."""
+    sent = data.model_dump(exclude_unset=True)
+    mapping = {
+        "title": "title",
+        "description": "description",
+        "color": "color",
+        "eventType": "event_type",
+        "location": "location",
+        "meetingUrl": "meeting_url",
+        "isAllDay": "is_all_day",
+        "eventStatus": "event_status",
+        "recurrenceRule": "recurrence_rule",
+        "reminderMinutes": "reminder_minutes",
+        "categoryId": "category_id",
+        "startTime": "start_time",
+        "endTime": "end_time",
+    }
     out: dict = {}
-    if data.title is not None: out["title"] = data.title
-    if data.description is not None: out["description"] = data.description or None
-    if data.color is not None: out["color"] = data.color
-    if data.eventType is not None: out["event_type"] = data.eventType
-    if data.location is not None: out["location"] = data.location or None
-    if data.meetingUrl is not None: out["meeting_url"] = data.meetingUrl or None
-    if data.isAllDay is not None: out["is_all_day"] = data.isAllDay
-    if data.eventStatus is not None: out["event_status"] = data.eventStatus
-    if data.recurrenceRule is not None:
-        out["recurrence_rule"] = data.recurrenceRule or None
-    if data.recurrenceUntil is not None:
-        out["recurrence_until"] = date.fromisoformat(data.recurrenceUntil) if data.recurrenceUntil else None
-    if data.reminderMinutes is not None: out["reminder_minutes"] = data.reminderMinutes
-    if data.attendees is not None:
-        out["attendees"] = [a.model_dump() for a in (data.attendees or [])]
-    if data.categoryId is not None: out["category_id"] = data.categoryId or None
-    if data.eventDate is not None: out["event_date"] = date.fromisoformat(data.eventDate)
-    if data.startTime is not None: out["start_time"] = data.startTime
-    if data.endTime is not None: out["end_time"] = data.endTime
+    for camel, snake in mapping.items():
+        if camel in sent:
+            value = sent[camel]
+            # Empty string on nullable fields → None
+            if snake in {"description", "location", "meeting_url", "recurrence_rule", "category_id"}:
+                value = value or None
+            out[snake] = value
+    if "eventDate" in sent and sent["eventDate"]:
+        out["event_date"] = date.fromisoformat(sent["eventDate"])
+    if "recurrenceUntil" in sent:
+        v = sent["recurrenceUntil"]
+        out["recurrence_until"] = date.fromisoformat(v) if v else None
+    if "attendees" in sent:
+        out["attendees"] = sent["attendees"] or None
     return out
 
 

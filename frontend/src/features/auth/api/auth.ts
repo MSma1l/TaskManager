@@ -41,6 +41,12 @@ export const authApi = {
   refreshWithPin: (username: string, pin: string): Promise<AuthSession> =>
     client.post('/auth/refresh', { username, pin }).then((r) => r.data),
 
+  adminPasswordLogin: (username: string, password: string): Promise<AuthSession> =>
+    client.post('/auth/admin/password-login', { username, password }).then((r) => r.data),
+
+  setAdminPassword: (password: string) =>
+    client.put('/auth/admin/password', { password }).then((r) => r.data),
+
   me: (): Promise<MeResponse> => client.get('/auth/me').then((r) => r.data),
 
   updateMe: (data: {

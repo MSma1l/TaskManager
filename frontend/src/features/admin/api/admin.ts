@@ -37,6 +37,33 @@ export interface LinkCodeResponse {
   instructions: string;
 }
 
+export interface UserStatsBlock {
+  total: number;
+  done?: number;
+  past?: number;
+  attended?: number;
+  withNote?: number;
+  upcoming?: number;
+  skipped?: number;
+  notDone?: number;
+  pending?: number;
+  donePercent?: number;
+  attendedPercent?: number;
+}
+
+export interface UserStatRow {
+  user: AdminUser;
+  tasks: UserStatsBlock;
+  meetings: UserStatsBlock;
+}
+
+export interface StatsOverview {
+  windowDays: number;
+  since: string;
+  until: string;
+  users: UserStatRow[];
+}
+
 export const adminApi = {
   listUsers: (): Promise<AdminUser[]> => client.get('/users').then((r) => r.data),
   createUser: (data: CreateUserPayload): Promise<AdminUser> =>
@@ -46,4 +73,8 @@ export const adminApi = {
   deleteUser: (id: string) => client.delete(`/users/${id}`).then((r) => r.data),
   generateLinkCode: (id: string): Promise<LinkCodeResponse> =>
     client.post(`/users/${id}/link-code`).then((r) => r.data),
+  statsOverview: (days = 7): Promise<StatsOverview> =>
+    client.get(`/users/stats/overview?days=${days}`).then((r) => r.data),
+  userStats: (id: string, days = 30): Promise<UserStatRow & { windowDays: number }> =>
+    client.get(`/users/${id}/stats?days=${days}`).then((r) => r.data),
 };

@@ -36,6 +36,7 @@ export default function AdminLayout() {
         <nav className="max-w-6xl mx-auto px-4 pb-3 flex gap-2">
           <NavLink to="/admin_task_manager/dashboard" className={linkClass}>Dashboard</NavLink>
           <NavLink to="/admin_task_manager/users" className={linkClass}>Utilizatori</NavLink>
+          <NavLink to="/admin_task_manager/stats" className={linkClass}>Statistici</NavLink>
           <NavLink to="/" className={linkClass} end>App utilizator</NavLink>
         </nav>
       </header>

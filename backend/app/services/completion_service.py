@@ -27,12 +27,21 @@ def _get_or_create_completion(db: Session, task_id: str, week_start: datetime) -
     return completion
 
 
-def mark_done(db: Session, task_id: str, note: str | None = None) -> TaskCompletion | None:
+def _resolve_week_start(week_start_iso: str | None) -> datetime:
+    if week_start_iso:
+        try:
+            return get_week_start(datetime.fromisoformat(week_start_iso))
+        except ValueError:
+            pass
+    return get_week_start(datetime.utcnow())
+
+
+def mark_done(db: Session, task_id: str, note: str | None = None, week_start_iso: str | None = None) -> TaskCompletion | None:
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         return None
 
-    week_start = get_week_start(datetime.utcnow())
+    week_start = _resolve_week_start(week_start_iso)
     completion = _get_or_create_completion(db, task_id, week_start)
     completion.status = TaskStatus.DONE
     completion.completed_at = datetime.utcnow()
@@ -43,12 +52,12 @@ def mark_done(db: Session, task_id: str, note: str | None = None) -> TaskComplet
     return completion
 
 
-def mark_skip(db: Session, task_id: str, moved_to_date: str, skip_reason: str | None = None) -> TaskCompletion | None:
+def mark_skip(db: Session, task_id: str, moved_to_date: str, skip_reason: str | None = None, week_start_iso: str | None = None) -> TaskCompletion | None:
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         return None
 
-    week_start = get_week_start(datetime.utcnow())
+    week_start = _resolve_week_start(week_start_iso)
     completion = _get_or_create_completion(db, task_id, week_start)
     completion.status = TaskStatus.SKIPPED
     completion.moved_to_date = datetime.fromisoformat(moved_to_date)
@@ -77,12 +86,12 @@ def mark_skip(db: Session, task_id: str, moved_to_date: str, skip_reason: str | 
     return completion
 
 
-def mark_not_done(db: Session, task_id: str, skip_reason: str) -> TaskCompletion | None:
+def mark_not_done(db: Session, task_id: str, skip_reason: str, week_start_iso: str | None = None) -> TaskCompletion | None:
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         return None
 
-    week_start = get_week_start(datetime.utcnow())
+    week_start = _resolve_week_start(week_start_iso)
     completion = _get_or_create_completion(db, task_id, week_start)
     completion.status = TaskStatus.NOT_DONE
     completion.skip_reason = skip_reason
@@ -92,5 +101,5 @@ def mark_not_done(db: Session, task_id: str, skip_reason: str) -> TaskCompletion
     return completion
 
 
-def move_task(db: Session, task_id: str, moved_to_date: str, note: str | None = None) -> TaskCompletion | None:
-    return mark_skip(db, task_id, moved_to_date, note)
+def move_task(db: Session, task_id: str, moved_to_date: str, note: str | None = None, week_start_iso: str | None = None) -> TaskCompletion | None:
+    return mark_skip(db, task_id, moved_to_date, note, week_start_iso)

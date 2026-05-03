@@ -40,6 +40,15 @@ class RefreshRequest(BaseModel):
     username: Optional[str] = None  # required when token has fully expired
 
 
+class AdminPasswordLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+
+
 class MeOut(BaseModel):
     id: str
     username: str

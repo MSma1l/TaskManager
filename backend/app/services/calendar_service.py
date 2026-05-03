@@ -206,30 +206,27 @@ def update_event(db: Session, user_id: str, event_id: str, **fields):
     event = get_event(db, user_id, event_id)
     if not event:
         return None
-    mapping = {
-        "title": "title",
-        "description": "description",
-        "color": "color",
-        "event_type": "event_type",
-        "location": "location",
-        "meeting_url": "meeting_url",
-        "is_all_day": "is_all_day",
-        "event_status": "event_status",
-        "recurrence_rule": "recurrence_rule",
-        "recurrence_until": "recurrence_until",
-        "reminder_minutes": "reminder_minutes",
-        "attendees": "attendees",
-        "category_id": "category_id",
-        "event_date": "event_date",
-        "start_time": "start_time",
-        "end_time": "end_time",
+    # Fields where None is a meaningful "clear" value (nullable columns)
+    nullable = {
+        "description", "location", "meeting_url",
+        "recurrence_rule", "recurrence_until",
+        "reminder_minutes", "attendees", "category_id",
     }
-    for key, attr in mapping.items():
-        if key in fields and fields[key] is not None:
-            value = fields[key]
-            if attr == "title":
+    # Non-nullable fields — None means "don't touch"
+    non_nullable = {
+        "title", "color", "event_type", "is_all_day", "event_status",
+        "event_date", "start_time", "end_time",
+    }
+    for key, value in fields.items():
+        if key in non_nullable:
+            if value is None:
+                continue
+            if key == "title":
                 value = value.strip()[:200] if value else value
-            setattr(event, attr, value)
+            setattr(event, key, value)
+        elif key in nullable:
+            # Pass-through; None clears the field
+            setattr(event, key, value)
     event.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(event)

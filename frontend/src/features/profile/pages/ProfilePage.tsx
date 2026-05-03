@@ -34,6 +34,8 @@ export default function ProfilePage() {
   const [linkInfo, setLinkInfo] = useState<{ code: string; expiresAt: string; instructions: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminPasswordSavedAt, setAdminPasswordSavedAt] = useState<string | null>(null);
 
   const restartTour = () => {
     localStorage.removeItem('tour:done');
@@ -98,6 +100,24 @@ export default function ProfilePage() {
       setLinkInfo(data);
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Eroare generare cod');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveAdminPassword = async () => {
+    setError(null);
+    if (adminPassword.length < 6) {
+      setError('Parola admin trebuie sa aiba minim 6 caractere');
+      return;
+    }
+    setBusy(true);
+    try {
+      await authApi.setAdminPassword(adminPassword);
+      setAdminPassword('');
+      setAdminPasswordSavedAt(new Date().toLocaleTimeString());
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Eroare la salvare parola');
     } finally {
       setBusy(false);
     }
@@ -265,6 +285,36 @@ export default function ProfilePage() {
       </Card>
 
       {tourOpen && <Tour forceOpen onClose={() => setTourOpen(false)} />}
+
+      {/* Admin password (only visible to admins) */}
+      {me?.role === 'ADMIN' && (
+        <Card title="Parola admin">
+          <p className="text-sm text-muted">
+            Foloseste-o pe pagina <code className="bg-input px-1 rounded">/admin_task_manager</code> pentru logare directa, fara cod Telegram.
+          </p>
+          <Field label="Parola noua (minim 6 caractere)">
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              placeholder="parola admin"
+              className={inputCls}
+            />
+          </Field>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveAdminPassword}
+              disabled={busy || !adminPassword}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm"
+            >
+              {busy ? 'Se salveaza...' : 'Salveaza parola admin'}
+            </button>
+            {adminPasswordSavedAt && (
+              <span className="text-xs text-emerald-500 self-center">Salvat la {adminPasswordSavedAt}</span>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Security */}
       <Card title="Securitate">

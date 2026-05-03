@@ -1,20 +1,17 @@
+from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
 from app.core.database import get_db
-from app.core.security import verify_token
-from app.core.config import settings
+from app.core.security import get_current_user
+from app.models.user import User
+from app.models.notebook import NotebookSketch
 from app.schemas.notebook import TopicCreate, TopicUpdate, NoteCreate, NoteUpdate
 from app.services import notebook_service
 
 router = APIRouter(prefix="/api/notebook", tags=["notebook"])
-security = HTTPBearer()
-
-
-def _get_user_id():
-    """For now, use the configured chat_id as user_id (single-user setup).
-    In a multi-user setup, this would come from the JWT token."""
-    return settings.TELEGRAM_CHAT_ID
 
 
 def _topic_to_dict(topic):
@@ -44,31 +41,20 @@ def _note_to_dict(note):
 # ── TOPICS ──────────────────────────────────────────
 
 @router.get("/topics")
-async def get_topics(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    notebook_service.ensure_predefined_topics(db, user_id)
-    topics = notebook_service.get_topics(db, user_id)
+async def get_topics(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    notebook_service.ensure_predefined_topics(db, user.id)
+    topics = notebook_service.get_topics(db, user.id)
     result = []
     for t in topics:
         d = _topic_to_dict(t)
-        d["ideaCount"] = notebook_service.count_ideas_in_topic(db, user_id, t.id)
+        d["ideaCount"] = notebook_service.count_ideas_in_topic(db, user.id, t.id)
         result.append(d)
     return result
 
 
 @router.post("/topics")
-async def create_topic(
-    data: TopicCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    topic = notebook_service.create_topic(db, user_id, data.name, data.emoji, data.description)
+async def create_topic(data: TopicCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    topic = notebook_service.create_topic(db, user.id, data.name, data.emoji, data.description)
     if not topic:
         raise HTTPException(status_code=400, detail="Topic already exists")
     return _topic_to_dict(topic)
@@ -76,14 +62,9 @@ async def create_topic(
 
 @router.put("/topics/{topic_id}")
 async def update_topic(
-    topic_id: str,
-    data: TopicUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    topic_id: str, data: TopicUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    topic = notebook_service.update_topic(db, user_id, topic_id, data.name, data.emoji, data.description)
+    topic = notebook_service.update_topic(db, user.id, topic_id, data.name, data.emoji, data.description)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
     return _topic_to_dict(topic)
@@ -91,13 +72,9 @@ async def update_topic(
 
 @router.delete("/topics/{topic_id}")
 async def delete_topic(
-    topic_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    topic_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    success = notebook_service.delete_topic(db, user_id, topic_id)
+    success = notebook_service.delete_topic(db, user.id, topic_id)
     if not success:
         raise HTTPException(status_code=404, detail="Topic not found")
     return {"message": "Topic deleted"}
@@ -106,25 +83,13 @@ async def delete_topic(
 # ── STEPS (time management) ────────────────────────
 
 @router.get("/steps")
-async def get_steps(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    steps = notebook_service.get_steps(db, user_id)
-    return [_note_to_dict(s) for s in steps]
+async def get_steps(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return [_note_to_dict(s) for s in notebook_service.get_steps(db, user.id)]
 
 
 @router.post("/steps")
-async def add_step(
-    data: NoteCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    note = notebook_service.add_step(db, user_id, data.content)
+async def add_step(data: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    note = notebook_service.add_step(db, user.id, data.content)
     if not note:
         raise HTTPException(status_code=400, detail="Content cannot be empty")
     return _note_to_dict(note)
@@ -134,25 +99,16 @@ async def add_step(
 
 @router.get("/tasks")
 async def get_notebook_tasks(
-    status: str = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    status: str = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    tasks = notebook_service.get_tasks(db, user_id, status)
-    return [_note_to_dict(t) for t in tasks]
+    return [_note_to_dict(t) for t in notebook_service.get_tasks(db, user.id, status)]
 
 
 @router.post("/tasks")
 async def add_notebook_task(
-    data: NoteCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    data: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    note = notebook_service.add_task_note(db, user_id, data.content, data.taskStatus or "todo")
+    note = notebook_service.add_task_note(db, user.id, data.content, data.taskStatus or "todo")
     if not note:
         raise HTTPException(status_code=400, detail="Content cannot be empty")
     return _note_to_dict(note)
@@ -162,26 +118,16 @@ async def add_notebook_task(
 
 @router.get("/ideas/{topic_id}")
 async def get_ideas(
-    topic_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    topic_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    ideas = notebook_service.get_ideas_by_topic(db, user_id, topic_id)
-    return [_note_to_dict(i) for i in ideas]
+    return [_note_to_dict(i) for i in notebook_service.get_ideas_by_topic(db, user.id, topic_id)]
 
 
 @router.post("/ideas/{topic_id}")
 async def add_idea(
-    topic_id: str,
-    data: NoteCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    topic_id: str, data: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    note = notebook_service.add_idea(db, user_id, topic_id, data.content)
+    note = notebook_service.add_idea(db, user.id, topic_id, data.content)
     if not note:
         raise HTTPException(status_code=400, detail="Invalid topic or empty content")
     return _note_to_dict(note)
@@ -191,17 +137,12 @@ async def add_idea(
 
 @router.put("/notes/{note_id}")
 async def update_note(
-    note_id: str,
-    data: NoteUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    note_id: str, data: NoteUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
     if data.content is not None:
-        note = notebook_service.edit_note(db, user_id, note_id, data.content)
+        note = notebook_service.edit_note(db, user.id, note_id, data.content)
     elif data.taskStatus is not None:
-        note = notebook_service.update_task_status(db, user_id, note_id, data.taskStatus)
+        note = notebook_service.update_task_status(db, user.id, note_id, data.taskStatus)
     else:
         raise HTTPException(status_code=400, detail="Nothing to update")
     if not note:
@@ -211,27 +152,15 @@ async def update_note(
 
 @router.delete("/notes/{note_id}")
 async def delete_note(
-    note_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    note_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    await verify_token(credentials)
-    user_id = _get_user_id()
-    success = notebook_service.delete_note(db, user_id, note_id)
+    success = notebook_service.delete_note(db, user.id, note_id)
     if not success:
         raise HTTPException(status_code=404, detail="Note not found")
     return {"message": "Note deleted"}
 
 
 # ── SKETCHES (stylus / hand-drawn notes) ────────────────────────────────
-
-from datetime import datetime
-from app.core.security import get_current_user
-from app.models.user import User as _AuthUser
-from app.models.notebook import NotebookSketch
-from pydantic import BaseModel
-from typing import Optional
-
 
 class SketchCreate(BaseModel):
     title: Optional[str] = None
@@ -261,7 +190,7 @@ def _sketch_to_dict(s: NotebookSketch) -> dict:
 
 
 @router.get("/sketches")
-async def list_sketches(user: _AuthUser = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_sketches(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     sketches = (
         db.query(NotebookSketch)
         .filter(NotebookSketch.user_id == user.id, NotebookSketch.is_deleted == False)
@@ -274,7 +203,7 @@ async def list_sketches(user: _AuthUser = Depends(get_current_user), db: Session
 @router.post("/sketches")
 async def create_sketch(
     data: SketchCreate,
-    user: _AuthUser = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if not data.imageData or not data.imageData.startswith("data:image/"):
@@ -299,7 +228,7 @@ async def create_sketch(
 async def update_sketch(
     sketch_id: str,
     data: SketchUpdate,
-    user: _AuthUser = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     s = (
@@ -326,7 +255,7 @@ async def update_sketch(
 @router.delete("/sketches/{sketch_id}")
 async def delete_sketch(
     sketch_id: str,
-    user: _AuthUser = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     s = (

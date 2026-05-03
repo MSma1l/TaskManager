@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user, hash_secret
+from app.core.security import get_current_user, hash_secret, verify_secret
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import (
@@ -14,6 +14,8 @@ from app.schemas.auth import (
     RefreshRequest,
     MeOut,
     UpdateMeRequest,
+    AdminPasswordLoginRequest,
+    SetPasswordRequest,
 )
 from app.services import auth_service
 
@@ -68,6 +70,38 @@ async def admin_login_request_code(data: LoginRequest, db: Session = Depends(get
         "deliveredVia": delivered_via,
         "hint": auth_service.telegram_hint(user),
     }
+
+
+@router.post("/admin/password-login", response_model=TokenOut)
+async def admin_password_login(data: AdminPasswordLoginRequest, db: Session = Depends(get_db)):
+    """Admin direct login with username + password. Bypasses Telegram 2FA."""
+    user = auth_service.get_user_by_username(db, data.username)
+    if not user or user.role != "ADMIN":
+        raise HTTPException(status_code=401, detail="Credentiale admin invalide")
+    if not user.password_hash or not verify_secret(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Credentiale admin invalide")
+    from datetime import datetime
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    return auth_service.issue_session(user)
+
+
+@router.put("/admin/password", response_model=MeOut)
+async def set_admin_password(
+    data: SetPasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Set / change admin password. Admin-only and applies to the calling admin's own account."""
+    if user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Doar adminii pot seta parola")
+    pwd = (data.password or "").strip()
+    if len(pwd) < 6:
+        raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
+    user.password_hash = hash_secret(pwd)
+    db.commit()
+    db.refresh(user)
+    return _user_to_me(user)
 
 
 @router.post("/verify", response_model=TokenOut)

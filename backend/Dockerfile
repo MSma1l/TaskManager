@@ -2,9 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+# psycopg2-binary, pyjwt, etc. are all pure-Python or come as wheels — no system
+# build deps needed. Skipping apt-get also avoids DNS/network issues at build time.
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

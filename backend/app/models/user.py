@@ -14,6 +14,7 @@ class User(Base):
     telegram_chat_id = Column(String(50), nullable=True, index=True)
     role = Column(String(20), nullable=False, default="USER")  # USER | ADMIN
     pin_hash = Column(String(200), nullable=True)
+    password_hash = Column(String(200), nullable=True)  # admins log in with username + password (skips Telegram 2FA)
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 

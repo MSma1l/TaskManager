@@ -359,6 +359,57 @@ async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
 
+async def cmd_attended(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mark a meeting as attended, optionally with a note appended after the event id."""
+    args = context.args
+    if not args:
+        await update.message.reply_text("Foloseste: /attended <event_id> [nota]")
+        return
+
+    from app.models.calendar import CalendarEvent
+    event_id = args[0].split("::", 1)[0]
+    note = " ".join(args[1:]).strip()
+    chat_id = str(update.effective_chat.id)
+
+    db = SessionLocal()
+    try:
+        event = (
+            db.query(CalendarEvent)
+            .filter(CalendarEvent.id == event_id, CalendarEvent.is_deleted == False)
+            .first()
+        )
+        if not event:
+            await update.message.reply_text("Eveniment negasit.")
+            return
+
+        # Verify the chat is bound to the event's user
+        bound_user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
+        if not bound_user or bound_user.id != event.user_id:
+            # Fallback for legacy single-tenant
+            if event.user_id != chat_id:
+                await update.message.reply_text("Acest eveniment nu este al tau.")
+                return
+
+        prefix = "ATTENDED"
+        existing = (event.description or "").strip()
+        body = f"[{prefix}] {note}" if note else f"[{prefix}]"
+        if existing:
+            event.description = f"{body}\n---\n{existing}" if prefix not in existing else (
+                f"{existing}\n{body}" if note else existing
+            )
+        else:
+            event.description = body
+        event.updated_at = datetime.utcnow()
+        db.commit()
+
+        await update.message.reply_text(
+            f"Confirmat: ai fost la \"{event.title}\". Nota salvata." if note
+            else f"Confirmat: ai fost la \"{event.title}\"."
+        )
+    finally:
+        db.close()
+
+
 async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Bind this Telegram chat to a user account via a one-time code from the admin."""
     args = context.args

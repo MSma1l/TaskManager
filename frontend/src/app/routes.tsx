@@ -13,6 +13,7 @@ import AppLayout from '../shared/components/layout/AppLayout';
 import AdminLayout from '../features/admin/components/AdminLayout';
 import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
 import AdminUsersPage from '../features/admin/pages/AdminUsersPage';
+import AdminStatsPage from '../features/admin/pages/AdminStatsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -45,6 +46,7 @@ export default function AppRoutes() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
         <Route path="users" element={<AdminUsersPage />} />
+        <Route path="stats" element={<AdminStatsPage />} />
       </Route>
 
       {/* User app */}

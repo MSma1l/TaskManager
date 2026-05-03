@@ -10,17 +10,17 @@ from app.models.session import TelegramSession
 from app.models.calendar import CalendarEvent, CalendarReminderLog
 from app.models.user import User
 from app.models.base import TaskStatus
-from app.services import task_service, stats_service, calendar_service
+from app.services import task_service, stats_service, calendar_service, completion_service
 
 scheduler = AsyncIOScheduler()
 
 DAYS_RO = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
 
 
-async def _send_telegram(text: str, chat_id: str | None = None):
+async def _send_telegram(text: str, chat_id: str | None = None, role: str | None = None):
     from app.telegram.bot import send_message
     try:
-        await send_message(text, chat_id=chat_id)
+        await send_message(text, chat_id=chat_id, role=role)
     except Exception as e:
         print(f"Failed to send telegram message: {e}")
 
@@ -309,7 +309,8 @@ def check_calendar_reminders():
                     text = _format_event_message(event, occ, offset)
                     chat_id = _user_chat(db, event.user_id)
                     if chat_id:
-                        asyncio.create_task(_send_telegram(text, chat_id=chat_id))
+                        role = user_obj.role if user_obj else None
+                        asyncio.create_task(_send_telegram(text, chat_id=chat_id, role=role))
 
                     db.add(CalendarReminderLog(
                         event_id=event.id,
@@ -320,6 +321,163 @@ def check_calendar_reminders():
         db.commit()
     except Exception as e:
         print(f"Calendar reminder check error: {e}")
+    finally:
+        db.close()
+
+
+def post_meeting_prompts():
+    """Right after each event ends, ask the attendee on Telegram to confirm presence and add a quick note.
+
+    Reuses CalendarReminderLog with channel="post_meeting" so we only ask once per occurrence.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today = now.date()
+        # Look at events that ended in the last hour (covers cron jitter / restart)
+        lower = now - timedelta(hours=1)
+
+        masters = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.is_deleted == False,
+                CalendarEvent.event_status != "CANCELLED",
+                CalendarEvent.event_date >= today - timedelta(days=1),
+                CalendarEvent.event_date <= today,
+            )
+            .all()
+        )
+
+        for event in masters:
+            # Only meeting-style events get the post prompt
+            if event.event_type not in ("meeting_online", "meeting_in_person", "appointment"):
+                continue
+
+            occurrences = calendar_service._occurrences_in_range(event, today - timedelta(days=1), today)
+            for occ in occurrences:
+                try:
+                    h, m = (event.end_time or "00:00").split(":")
+                    end_dt = datetime(occ.year, occ.month, occ.day, int(h), int(m))
+                except Exception:
+                    continue
+
+                # Fire only after the event ended, within the last hour
+                if not (lower <= end_dt <= now):
+                    continue
+
+                already = (
+                    db.query(CalendarReminderLog)
+                    .filter(
+                        CalendarReminderLog.event_id == event.id,
+                        CalendarReminderLog.occurrence_date == occ,
+                        CalendarReminderLog.channel == "post_meeting",
+                    )
+                    .first()
+                )
+                if already:
+                    continue
+
+                user_obj = _get_user(db, event.user_id)
+                chat_id = _user_chat(db, event.user_id)
+                if not chat_id or not _telegram_allowed(user_obj, now):
+                    db.add(CalendarReminderLog(
+                        event_id=event.id, occurrence_date=occ,
+                        minutes_before="post", channel="post_meeting_skipped",
+                    ))
+                    continue
+
+                lines = [
+                    f"Sedinta s-a incheiat: {event.title}",
+                    f"Cand: {occ.strftime('%d.%m.%Y')} {event.start_time}–{event.end_time}",
+                ]
+                if event.location:
+                    lines.append(f"Unde: {event.location}")
+                lines.append("")
+                lines.append("Ai participat? Daca da, raspunde aici cu o nota scurta — o salvez la eveniment.")
+                lines.append(f"Pentru a confirma rapid trimite: /attended {event.id}")
+
+                role = user_obj.role if user_obj else None
+                asyncio.create_task(_send_telegram("\n".join(lines), chat_id=chat_id, role=role))
+
+                db.add(CalendarReminderLog(
+                    event_id=event.id, occurrence_date=occ,
+                    minutes_before="post", channel="post_meeting",
+                ))
+
+        db.commit()
+    except Exception as e:
+        print(f"Post-meeting prompt error: {e}")
+    finally:
+        db.close()
+
+
+def auto_move_overdue_tasks():
+    """At 23:55 each day, move any PENDING task to the next day with a friendly Telegram nudge.
+
+    For each pending task today (recurring + one-off), mark the completion as SKIPPED
+    with moved_to_date = tomorrow, and create a one-off copy for tomorrow via
+    completion_service.mark_skip (which already handles the duplication).
+    Sends one consolidated notification per Telegram chat at the end.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today_dow = now.isoweekday()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        tomorrow_iso = (today_start + timedelta(days=1)).date().isoformat()
+
+        tasks = (
+            db.query(Task)
+            .filter(Task.is_active == True)
+            .all()
+        )
+
+        moved_today = []
+        for task in tasks:
+            # Match either recurring-on-today OR scheduled for today
+            is_today = False
+            if task.is_recurring and task.day_of_week == today_dow:
+                is_today = True
+            elif task.scheduled_date and today_start <= task.scheduled_date < today_end:
+                is_today = True
+            if not is_today:
+                continue
+
+            # Only move if completion is PENDING (no completion or status PENDING)
+            week_start = task_service.get_week_start(now)
+            completion = (
+                db.query(TaskCompletion)
+                .filter(
+                    TaskCompletion.task_id == task.id,
+                    TaskCompletion.week_start == week_start,
+                )
+                .first()
+            )
+            current_status = completion.status if completion else TaskStatus.PENDING
+            if current_status != TaskStatus.PENDING:
+                continue
+
+            try:
+                completion_service.mark_skip(
+                    db, task.id, tomorrow_iso, skip_reason="Auto-mutat: neexecutat azi"
+                )
+                moved_today.append(task)
+            except Exception as e:
+                print(f"Failed to auto-move task {task.id}: {e}")
+
+        if moved_today:
+            lines = ["Atentie — taskuri ne-executate azi mutate pe maine:"]
+            for t in moved_today[:10]:
+                lines.append(f"  · {t.title}")
+            if len(moved_today) > 10:
+                lines.append(f"  …si inca {len(moved_today) - 10}")
+            lines.append("")
+            lines.append("Maine e o noua sansa. Mult succes!")
+            asyncio.create_task(_send_telegram("\n".join(lines)))
+
+    except Exception as e:
+        print(f"Auto-move overdue error: {e}")
     finally:
         db.close()
 
@@ -342,6 +500,10 @@ def start_scheduler():
     scheduler.add_job(check_reminders, 'cron', minute='*', id='check_reminders')
     # Every minute - check calendar event reminders
     scheduler.add_job(check_calendar_reminders, 'cron', minute='*', id='check_calendar_reminders')
+    # Daily 23:55 - move all pending tasks to tomorrow + notify
+    scheduler.add_job(auto_move_overdue_tasks, 'cron', hour=23, minute=55, id='auto_move_overdue')
+    # Every minute - post-meeting attendance prompts
+    scheduler.add_job(post_meeting_prompts, 'cron', minute='*', id='post_meeting_prompts')
     # Monday 09:00 - weekly summary
     scheduler.add_job(weekly_summary, 'cron', day_of_week='mon', hour=9, minute=0, id='weekly_summary')
     # Sunday 20:00 - weekly report

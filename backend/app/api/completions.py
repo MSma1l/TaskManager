@@ -31,7 +31,7 @@ async def mark_done(
     db: Session = Depends(get_db),
 ):
     await verify_token(credentials)
-    result = completion_service.mark_done(db, task_id, data.note)
+    result = completion_service.mark_done(db, task_id, data.note, data.weekStart)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return completion_to_dict(result)
@@ -45,7 +45,7 @@ async def mark_skip(
     db: Session = Depends(get_db),
 ):
     await verify_token(credentials)
-    result = completion_service.mark_skip(db, task_id, data.movedToDate, data.skipReason)
+    result = completion_service.mark_skip(db, task_id, data.movedToDate, data.skipReason, data.weekStart)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return completion_to_dict(result)
@@ -61,7 +61,7 @@ async def mark_not_done(
     await verify_token(credentials)
     if not data.skipReason or len(data.skipReason.strip()) == 0:
         raise HTTPException(status_code=400, detail="Reason is required")
-    result = completion_service.mark_not_done(db, task_id, data.skipReason)
+    result = completion_service.mark_not_done(db, task_id, data.skipReason, data.weekStart)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return completion_to_dict(result)
@@ -75,7 +75,7 @@ async def move_task(
     db: Session = Depends(get_db),
 ):
     await verify_token(credentials)
-    result = completion_service.move_task(db, task_id, data.movedToDate, data.note)
+    result = completion_service.move_task(db, task_id, data.movedToDate, data.note, data.weekStart)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return completion_to_dict(result)

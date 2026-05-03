@@ -6,43 +6,63 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.router import api_router
 from app.services.reminder_service import start_scheduler
-from app.telegram.bot import create_bot, setup_bot_commands
+from app.telegram.bot import create_bot, create_admin_bot, setup_bot_commands
+
+
+async def _start_bot(app, label: str):
+    try:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        print(f"Telegram bot ({label}) started")
+        return app
+    except Exception as e:
+        print(f"Telegram bot ({label}) failed to start: {e}")
+        return None
+
+
+async def _stop_bot(app):
+    try:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+    except Exception:
+        pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     print("Starting Task Manager Backend...")
 
-    # Start scheduler
     start_scheduler()
 
-    # Start Telegram bot
-    bot_app = None
-    if settings.TELEGRAM_BOT_TOKEN != "your_bot_token_here":
-        try:
-            bot_app = create_bot()
-            await bot_app.initialize()
-            await bot_app.start()
-            await bot_app.updater.start_polling(drop_pending_updates=True)
-            await setup_bot_commands()
-            print("Telegram bot started with commands menu")
-        except Exception as e:
-            print(f"Telegram bot failed to start: {e}")
-            bot_app = None
+    main_bot = None
+    admin_bot = None
+
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "your_bot_token_here":
+        main_bot = await _start_bot(create_bot(), "main")
     else:
-        print("Telegram bot token not configured, skipping bot startup")
+        print("Main Telegram bot token not configured, skipping")
+
+    if settings.ADMIN_TELEGRAM_BOT_TOKEN and settings.ADMIN_TELEGRAM_BOT_TOKEN != "your_bot_token_here":
+        admin_app = create_admin_bot()
+        if admin_app:
+            admin_bot = await _start_bot(admin_app, "admin")
+    else:
+        print("Admin Telegram bot not configured (optional), admins fall back to main bot")
+
+    if main_bot or admin_bot:
+        try:
+            await setup_bot_commands()
+        except Exception as e:
+            print(f"setup_bot_commands failed: {e}")
 
     yield
 
-    # Shutdown
-    if bot_app:
-        try:
-            await bot_app.updater.stop()
-            await bot_app.stop()
-            await bot_app.shutdown()
-        except Exception:
-            pass
+    if main_bot:
+        await _stop_bot(main_bot)
+    if admin_bot:
+        await _stop_bot(admin_bot)
     print("Shutting down...")
 
 

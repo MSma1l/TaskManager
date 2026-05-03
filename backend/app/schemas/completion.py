@@ -20,17 +20,21 @@ class CompletionOut(BaseModel):
 
 class MarkDoneInput(BaseModel):
     note: Optional[str] = None
+    weekStart: Optional[str] = None  # ISO date — for backfilling past-week tasks
 
 
 class MarkSkipInput(BaseModel):
     movedToDate: str
     skipReason: Optional[str] = None
+    weekStart: Optional[str] = None
 
 
 class MarkNotDoneInput(BaseModel):
     skipReason: str
+    weekStart: Optional[str] = None
 
 
 class MoveTaskInput(BaseModel):
     movedToDate: str
     note: Optional[str] = None
+    weekStart: Optional[str] = None

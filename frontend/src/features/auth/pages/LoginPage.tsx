@@ -12,10 +12,13 @@ interface LoginPageProps {
 
 export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const navigate = useNavigate();
-  const { isAuthenticated, role, verifyCode, refreshWithPin } = useAuth();
+  const { isAuthenticated, role, verifyCode, refreshWithPin, adminPasswordLogin } = useAuth();
 
-  const [step, setStep] = useState<'username' | 'code' | 'pin'>('username');
+  const [step, setStep] = useState<'username' | 'code' | 'pin' | 'password'>(
+    mode === 'admin' ? 'password' : 'username'
+  );
   const [username, setUsername] = useState(() => localStorage.getItem('username') || '');
+  const [password, setPassword] = useState('');
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +105,31 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
     }
   };
 
+  const handleAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const u = username.trim().toLowerCase();
+    if (u.length < 3) {
+      setError('Username minim 3 caractere');
+      return;
+    }
+    if (!password) {
+      setError('Introdu parola');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    localStorage.setItem('username', u);
+    const ok = await adminPasswordLogin(u, password);
+    setBusy(false);
+    if (ok) {
+      setPassword('');
+      navigate(target, { replace: true });
+    } else {
+      setError('Username sau parola gresite');
+      setErrorKey((k) => k + 1);
+    }
+  };
+
   const titleColor = isAdmin ? 'bg-red-600' : 'bg-blue-600';
   const accentColor = isAdmin ? 'text-red-400' : 'text-blue-400';
 
@@ -126,8 +154,44 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           {step === 'username' && (isAdmin ? 'Logare administrator' : 'Introdu username-ul')}
           {step === 'code' && 'Introdu codul din Telegram'}
           {step === 'pin' && 'Introdu PIN-ul de reinnoire'}
+          {step === 'password' && 'Logare admin cu parola'}
         </p>
       </div>
+
+      {step === 'password' && isAdmin && (
+        <form onSubmit={handleAdminPassword} className="w-full max-w-xs space-y-3">
+          <input
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="username admin"
+            className="w-full bg-slate-800 border-2 border-slate-700 focus:border-red-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="parola"
+            className="w-full bg-slate-800 border-2 border-slate-700 focus:border-red-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full bg-red-600 hover:bg-red-500 text-white font-medium rounded-xl py-3 transition-colors disabled:opacity-60"
+          >
+            {busy ? 'Se verifica...' : 'Logheaza'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStep('username'); setPassword(''); setError(null); }}
+            className="w-full text-slate-400 hover:text-slate-200 text-sm"
+          >
+            Logare cu cod Telegram (2FA)
+          </button>
+        </form>
+      )}
 
       {step === 'username' && (
         <form onSubmit={handleSubmitUsername} className="w-full max-w-xs">
@@ -154,6 +218,15 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
               className="w-full text-slate-400 hover:text-slate-200 text-sm mt-3"
             >
               Am deja PIN — folosesc PIN
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => { setStep('password'); setError(null); }}
+              className="w-full text-slate-400 hover:text-slate-200 text-sm mt-3"
+            >
+              Logare cu parola
             </button>
           )}
         </form>

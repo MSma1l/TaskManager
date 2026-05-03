@@ -52,6 +52,7 @@ def seed_admin(db):
         telegram_chat_id=chat_id,
         role="ADMIN",
         pin_hash=hash_secret(pin) if pin else None,
+        password_hash=hash_secret(settings.ADMIN_PASSWORD) if settings.ADMIN_PASSWORD else None,
         is_active=True,
     )
     if chat_id:
