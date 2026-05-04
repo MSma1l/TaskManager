@@ -11,6 +11,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(150), unique=True, nullable=True, index=True)
     full_name = Column(String(150), nullable=True)
+    phone = Column(String(40), nullable=True)
     telegram_chat_id = Column(String(50), nullable=True, index=True)
     role = Column(String(20), nullable=False, default="USER")  # USER | ADMIN
     pin_hash = Column(String(200), nullable=True)

@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ADMIN_TELEGRAM_BOT_TOKEN: str = ""
     ADMIN_TELEGRAM_CHAT_ID: str = ""
     PORT: int = 3001
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http:/o/localhost:3000"
     NODE_ENV: str = "development"
 
     # Legacy single-PIN — used only for the seed of the initial admin and as fallback

@@ -77,4 +77,28 @@ export const adminApi = {
     client.get(`/users/stats/overview?days=${days}`).then((r) => r.data),
   userStats: (id: string, days = 30): Promise<UserStatRow & { windowDays: number }> =>
     client.get(`/users/${id}/stats?days=${days}`).then((r) => r.data),
+
+  // Access requests
+  listAccessRequests: (status?: string): Promise<AccessRequestRow[]> =>
+    client.get(`/access-requests${status ? `?status=${status}` : ''}`).then((r) => r.data),
+  approveAccessRequest: (id: string, data: { username: string; role?: string; pin?: string }) =>
+    client.post(`/access-requests/${id}/approve`, data).then((r) => r.data),
+  rejectAccessRequest: (id: string, reason?: string) =>
+    client.post(`/access-requests/${id}/reject`, { reason }).then((r) => r.data),
 };
+
+export interface AccessRequestRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  telegramChatId: string | null;
+  purpose: 'personal' | 'collective';
+  reason: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  createdUserId: string | null;
+}

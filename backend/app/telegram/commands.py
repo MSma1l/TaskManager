@@ -73,8 +73,33 @@ def _format_tasks_for_day(tasks: list, day_name: str, date_str: str) -> str:
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """If the chat isn't linked to any user, send the registration form URL."""
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        bound = db.query(User).filter(User.telegram_chat_id == chat_id, User.is_active == True).first()
+    finally:
+        db.close()
+
+    if not bound:
+        # First-time visitor — guide them to register
+        from app.core.config import settings
+        base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
+        # User opens local app on http://localhost; FRONTEND_URL in dev is the Vite port,
+        # so fall back to a friendlier host the user can actually reach.
+        if "3000" in base:
+            base = "http://localhost"
+        first_name = update.effective_user.first_name if update.effective_user else "vizitator"
+        await update.message.reply_text(
+            f"Buna {first_name}! Acest chat nu este legat la niciun cont Task Manager.\n\n"
+            f"Ca sa primesti acces, completeaza formularul:\n"
+            f"{base}/request-access?tg={chat_id}\n\n"
+            f"Dupa ce admin-ul aproba cererea, vei primi un mesaj aici si vei putea intra direct."
+        )
+        return
+
     await update.message.reply_text(
-        "Weekly Task Manager Bot\n\n"
+        f"Bun venit inapoi, {bound.full_name or bound.username}!\n\n"
         "Foloseste butoanele de mai jos sau comenzile:\n\n"
         "/today - Taskurile de azi\n"
         "/week - Taskurile saptamanii\n"
@@ -85,6 +110,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/notdone - Marcheaza ca nefacut\n"
         "/delete - Sterge un task\n"
         "/stats - Statistici\n"
+        "/notes - Carnet\n"
+        "/attended - Confirma o sedinta\n"
+        "/link - Leaga chat-ul la un cont\n"
         "/help - Ajutor\n\n"
         "Adaugare rapida: scrie \"task <titlu>\" direct in chat.",
         reply_markup=main_menu_keyboard(),

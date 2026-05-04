@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { authApi, LoginChallenge } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import PinInput from '../components/PinInput';
@@ -275,6 +275,14 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
       {error && (
         <p className={`${accentColor} text-sm mt-4`}>{error}</p>
+      )}
+
+      {!isAdmin && (
+        <div className="mt-8 text-center">
+          <Link to="/request-access" className="text-sm text-slate-400 hover:text-slate-200">
+            Nu ai cont? Cere acces →
+          </Link>
+        </div>
       )}
     </div>
   );

@@ -22,6 +22,7 @@ def _user_to_dict(u: User) -> dict:
         "username": u.username,
         "email": u.email,
         "fullName": u.full_name,
+        "phone": u.phone,
         "telegramChatId": u.telegram_chat_id,
         "role": u.role,
         "isActive": u.is_active,

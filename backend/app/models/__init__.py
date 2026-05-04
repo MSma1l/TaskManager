@@ -8,6 +8,7 @@ from app.models.session import TelegramSession
 from app.models.notebook import NotebookTopic, NotebookNote, NotebookNoteHistory, NotebookSketch
 from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLog
 from app.models.user import User, LoginCode
+from app.models.access_request import AccessRequest
 
 __all__ = [
     "TaskStatus",
@@ -27,4 +28,5 @@ __all__ = [
     "CalendarReminderLog",
     "User",
     "LoginCode",
+    "AccessRequest",
 ]
