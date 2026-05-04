@@ -22,6 +22,11 @@ export default function CalendarPage() {
   const [defaultStart, setDefaultStart] = useState('09:00');
   const [defaultEnd, setDefaultEnd] = useState('10:00');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState<EventCategory | null>(null);
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [catName, setCatName] = useState('');
+  const [catColor, setCatColor] = useState('#3b82f6');
+  const [catIcon, setCatIcon] = useState('');
 
   useEffect(() => { localStorage.setItem('calendarView', view); }, [view]);
 
@@ -119,6 +124,16 @@ export default function CalendarPage() {
     fetchEvents();
   };
 
+  const handleDuplicate = async (data: CreateEventData) => {
+    try {
+      await calendarApi.createEvent(data);
+      setShowModal(false);
+      fetchEvents();
+    } catch (err) {
+      console.error('Duplicate error', err);
+    }
+  };
+
   const toggleCat = async (cat: EventCategory) => {
     const next = new Set(hiddenCats);
     if (next.has(cat.id)) next.delete(cat.id); else next.add(cat.id);
@@ -126,6 +141,56 @@ export default function CalendarPage() {
     try {
       await calendarApi.updateCategory(cat.id, { isVisible: !next.has(cat.id) });
     } catch { /* ignore */ }
+  };
+
+  const startEditCat = (cat: EventCategory) => {
+    setEditingCat(cat);
+    setCatName(cat.name);
+    setCatColor(cat.color);
+    setCatIcon(cat.icon || '');
+    setShowNewCat(false);
+  };
+
+  const startNewCat = () => {
+    setEditingCat(null);
+    setCatName('');
+    setCatColor('#3b82f6');
+    setCatIcon('');
+    setShowNewCat(true);
+  };
+
+  const cancelCatEdit = () => {
+    setEditingCat(null);
+    setShowNewCat(false);
+    setCatName('');
+    setCatIcon('');
+  };
+
+  const saveCat = async () => {
+    const name = catName.trim();
+    if (!name) return;
+    try {
+      if (editingCat) {
+        await calendarApi.updateCategory(editingCat.id, { name, color: catColor, icon: catIcon || undefined });
+      } else {
+        await calendarApi.createCategory({ name, color: catColor, icon: catIcon || undefined });
+      }
+      cancelCatEdit();
+      fetchCategories();
+    } catch (err) {
+      console.error('Save category error', err);
+    }
+  };
+
+  const deleteCat = async (cat: EventCategory) => {
+    if (!confirm(`Sterge categoria "${cat.name}"? Evenimentele asociate raman, dar fara categorie.`)) return;
+    try {
+      await calendarApi.deleteCategory(cat.id);
+      fetchCategories();
+      fetchEvents();
+    } catch (err) {
+      console.error('Delete category error', err);
+    }
   };
 
   return (
@@ -193,21 +258,77 @@ export default function CalendarPage() {
         <aside
           className={`${sidebarOpen ? 'block absolute z-30 inset-y-0 left-0 top-[3.25rem]' : 'hidden'} md:block md:relative md:z-auto md:inset-auto w-56 border-r border-border bg-surface flex-shrink-0 overflow-y-auto p-3`}
         >
-          <h3 className="text-xs uppercase tracking-wide text-muted mb-2">Calendare</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs uppercase tracking-wide text-muted">Calendare</h3>
+            <button
+              onClick={startNewCat}
+              className="text-xs text-blue-500 hover:text-blue-400"
+              title="Adauga categorie noua"
+            >
+              + Nou
+            </button>
+          </div>
           <ul className="space-y-1">
             {categories.map((c) => {
               const visible = !hiddenCats.has(c.id);
               return (
-                <li key={c.id}>
-                  <label className="flex items-center gap-2 cursor-pointer text-sm py-1 px-1 rounded hover:bg-fg/5">
-                    <input type="checkbox" checked={visible} onChange={() => toggleCat(c)} />
-                    <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: c.color }} />
+                <li key={c.id} className="group">
+                  <div className="flex items-center gap-2 text-sm py-1 px-1 rounded hover:bg-fg/5">
+                    <input type="checkbox" checked={visible} onChange={() => toggleCat(c)} className="cursor-pointer" />
+                    <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.color }} />
                     <span className="flex-1 truncate">{c.icon ? `${c.icon} ` : ''}{c.name}</span>
-                  </label>
+                    <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+                      <button onClick={() => startEditCat(c)} className="text-muted hover:text-fg p-0.5" title="Editeaza">✎</button>
+                      <button onClick={() => deleteCat(c)} className="text-muted hover:text-red-500 p-0.5" title="Sterge">✕</button>
+                    </div>
+                  </div>
                 </li>
               );
             })}
           </ul>
+
+          {(showNewCat || editingCat) && (
+            <div className="mt-3 p-3 bg-elevated rounded-lg border border-border space-y-2">
+              <p className="text-xs uppercase tracking-wide text-muted">
+                {editingCat ? 'Editeaza categorie' : 'Categorie noua'}
+              </p>
+              <input
+                type="text"
+                value={catName}
+                onChange={(e) => setCatName(e.target.value)}
+                placeholder="Nume"
+                className="w-full bg-input text-fg border border-border focus:border-blue-500 outline-none rounded px-2 py-1.5 text-sm"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={catIcon}
+                onChange={(e) => setCatIcon(e.target.value)}
+                placeholder="Emoji (optional)"
+                maxLength={4}
+                className="w-full bg-input text-fg border border-border focus:border-blue-500 outline-none rounded px-2 py-1.5 text-sm"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted">Culoare:</span>
+                <input
+                  type="color"
+                  value={catColor}
+                  onChange={(e) => setCatColor(e.target.value)}
+                  className="w-8 h-7 rounded border border-border cursor-pointer"
+                />
+                <span className="text-xs text-muted font-mono">{catColor}</span>
+              </div>
+              <div className="flex gap-1.5 pt-1">
+                <button onClick={saveCat} disabled={!catName.trim()} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded py-1.5 text-xs">
+                  {editingCat ? 'Salveaza' : 'Adauga'}
+                </button>
+                <button onClick={cancelCatEdit} className="flex-1 bg-elevated hover:bg-fg/10 text-fg rounded py-1.5 text-xs border border-border">
+                  Anuleaza
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={() => openCreate(new Date())}
             className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-medium"
@@ -251,6 +372,7 @@ export default function CalendarPage() {
         defaultEnd={defaultEnd}
         categories={categories}
         onSave={handleSave}
+        onDuplicate={editingEvent ? handleDuplicate : undefined}
         onDelete={editingEvent ? handleDelete : undefined}
         onClose={() => setShowModal(false)}
       />

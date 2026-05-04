@@ -1,9 +1,22 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { adminApi } from '../api/admin';
 
 export default function AdminLayout() {
   const { username, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Refresh pending count whenever the route changes (admin opens dashboard / requests etc.)
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.listAccessRequests('PENDING')
+      .then((rows) => { if (!cancelled) setPendingCount(rows.length); })
+      .catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -11,7 +24,7 @@ export default function AdminLayout() {
   };
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `px-4 py-2 rounded-lg text-sm transition-colors ${
+    `px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
       isActive ? 'bg-red-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
     }`;
 
@@ -33,10 +46,17 @@ export default function AdminLayout() {
             Iesire
           </button>
         </div>
-        <nav className="max-w-6xl mx-auto px-4 pb-3 flex gap-2">
+        <nav className="max-w-6xl mx-auto px-4 pb-3 flex gap-2 flex-wrap">
           <NavLink to="/admin_task_manager/dashboard" className={linkClass}>Dashboard</NavLink>
           <NavLink to="/admin_task_manager/users" className={linkClass}>Utilizatori</NavLink>
-          <NavLink to="/admin_task_manager/requests" className={linkClass}>Cereri</NavLink>
+          <NavLink to="/admin_task_manager/requests" className={linkClass}>
+            Cereri
+            {pendingCount > 0 && (
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-slate-900 text-xs font-semibold">
+                {pendingCount}
+              </span>
+            )}
+          </NavLink>
           <NavLink to="/admin_task_manager/stats" className={linkClass}>Statistici</NavLink>
           <NavLink to="/" className={linkClass} end>App utilizator</NavLink>
         </nav>

@@ -14,6 +14,22 @@
   </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>
+    <script>
+      // One-time service worker cleanup. Old dev caches sometimes serve stale
+      // white-page builds; wipe before bootstrapping React.
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            for (var i = 0; i < regs.length; i++) regs[i].unregister();
+          });
+        }
+        if (typeof caches !== 'undefined') {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          });
+        }
+      } catch (e) {}
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

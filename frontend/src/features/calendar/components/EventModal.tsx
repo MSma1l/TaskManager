@@ -71,13 +71,14 @@ interface Props {
   defaultEnd: string;
   categories: EventCategory[];
   onSave: (data: CreateEventData) => void;
+  onDuplicate?: (data: CreateEventData) => void;
   onDelete?: () => void;
   onClose: () => void;
 }
 
 export default function EventModal({
   open, initialEvent, defaultDate, defaultStart, defaultEnd,
-  categories, onSave, onDelete, onClose,
+  categories, onSave, onDuplicate, onDelete, onClose,
 }: Props) {
   const [tab, setTab] = useState<'general' | 'reminders' | 'attendees'>('general');
 
@@ -184,6 +185,35 @@ export default function EventModal({
 
   const toggleReminder = (mins: number) => {
     setReminders((prev) => prev.includes(mins) ? prev.filter((m) => m !== mins) : [...prev, mins].sort((a, b) => a - b));
+  };
+
+  const duplicate = () => {
+    if (!title.trim() || !onDuplicate) return;
+    // Default the copy to the next day so the user can quickly paste it forward
+    const next = new Date(eventDate);
+    next.setDate(next.getDate() + 1);
+    const yyyy = next.getFullYear();
+    const mm = String(next.getMonth() + 1).padStart(2, '0');
+    const dd = String(next.getDate()).padStart(2, '0');
+    const data: CreateEventData = {
+      title: `${title.trim()} (copie)`,
+      description: description.trim() || undefined,
+      color,
+      eventType,
+      location: location.trim() || undefined,
+      meetingUrl: meetingUrl.trim() || undefined,
+      isAllDay,
+      eventDate: `${yyyy}-${mm}-${dd}`,
+      startTime: isAllDay ? '00:00' : startTime,
+      endTime: isAllDay ? '23:59' : endTime,
+      // Don't carry over recurrence to a copy — it would interfere with the master
+      recurrenceRule: null,
+      recurrenceUntil: null,
+      reminderMinutes: reminders,
+      categoryId: categoryId || null,
+      attendees,
+    };
+    onDuplicate(data);
   };
 
   return (
@@ -398,6 +428,15 @@ export default function EventModal({
               className="px-4 py-2 bg-red-600/15 text-red-500 rounded-lg hover:bg-red-600/25 transition-colors text-sm"
             >
               Sterge
+            </button>
+          )}
+          {initialEvent && onDuplicate && (
+            <button
+              onClick={duplicate}
+              className="px-4 py-2 bg-emerald-600/15 text-emerald-500 rounded-lg hover:bg-emerald-600/25 transition-colors text-sm"
+              title="Creeaza o copie pe ziua urmatoare"
+            >
+              📋 Copiaza
             </button>
           )}
           <div className="flex-1" />

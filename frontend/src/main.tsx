@@ -6,10 +6,15 @@ import { bootstrapTheme } from './shared/hooks/useTheme';
 
 bootstrapTheme();
 
+// Aggressively kill any cached service worker from earlier dev sessions.
+// SW caching was causing stale white-screen renders during development.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const r of regs) r.unregister().catch(() => {});
+  }).catch(() => {});
+  if (typeof caches !== 'undefined') {
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+  }
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
