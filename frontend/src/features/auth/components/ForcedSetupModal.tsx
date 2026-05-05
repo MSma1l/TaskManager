@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { authApi, MeResponse } from '../api/auth';
 
 interface Props {
@@ -6,15 +6,22 @@ interface Props {
   onDone: (updated: MeResponse) => void;
 }
 
+type UsernameState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'available'; reason?: string }
+  | { status: 'taken'; reason: string }
+  | { status: 'invalid'; reason: string };
+
 /**
  * Forced setup shown immediately after login when the user is missing
- * essentials: full name and PIN. Admins also see an optional password field.
- *
- * - PIN: required (4–8 digits) — used for fast re-login after token expiry
- * - Full name: required — used in UI / notifications
- * - Admin password: optional — used by admin password login flow
+ * essentials. Two steps:
+ *   1) Identity — username (unique) + full name
+ *   2) Security — PIN (4-8) + optional password (admin or user-side login)
  */
 export default function ForcedSetupModal({ me, onDone }: Props) {
+  const [username, setUsername] = useState(me.username);
+  const [usernameState, setUsernameState] = useState<UsernameState>({ status: 'idle' });
   const [fullName, setFullName] = useState(me.fullName || '');
   const [pin, setPin] = useState('');
   const [pin2, setPin2] = useState('');
@@ -23,9 +30,39 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
 
-  const needName = !me.fullName;
-  const needPin = !me.hasPin;
   const isAdmin = me.role === 'ADMIN';
+  const needPin = !me.hasPin;
+  const checkTimer = useRef<number | null>(null);
+
+  // Debounced availability check
+  useEffect(() => {
+    if (checkTimer.current) window.clearTimeout(checkTimer.current);
+    const candidate = username.trim().toLowerCase();
+    if (!candidate || candidate === me.username.toLowerCase()) {
+      setUsernameState({ status: 'idle' });
+      return;
+    }
+    if (!/^[a-z0-9_.]{3,30}$/.test(candidate)) {
+      setUsernameState({ status: 'invalid', reason: '3-30 caractere: a-z, 0-9, _, .' });
+      return;
+    }
+    setUsernameState({ status: 'checking' });
+    checkTimer.current = window.setTimeout(async () => {
+      try {
+        const res = await authApi.checkUsername(candidate);
+        setUsernameState(
+          res.available
+            ? { status: 'available', reason: res.reason }
+            : { status: 'taken', reason: res.reason || 'Username deja folosit' },
+        );
+      } catch {
+        setUsernameState({ status: 'idle' });
+      }
+    }, 350);
+    return () => {
+      if (checkTimer.current) window.clearTimeout(checkTimer.current);
+    };
+  }, [username, me.username]);
 
   useEffect(() => {
     setError(null);
@@ -34,34 +71,39 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
   const submitStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (needName) {
-      const trimmed = fullName.trim();
-      if (trimmed.length < 2) {
-        setError('Numele complet este obligatoriu (min 2 caractere)');
-        return;
+    const trimmedName = fullName.trim();
+    if (trimmedName.length < 2) {
+      setError('Numele complet este obligatoriu (min 2 caractere)');
+      return;
+    }
+    const newUsername = username.trim().toLowerCase();
+    const usernameChanged = newUsername !== me.username.toLowerCase();
+    if (usernameChanged && usernameState.status !== 'available') {
+      setError('Username invalid sau ocupat — alege altul');
+      return;
+    }
+    setBusy(true);
+    try {
+      if (usernameChanged) {
+        await authApi.updateUsername(newUsername);
+        // Persist new username so re-login uses it
+        localStorage.setItem('username', newUsername);
       }
-      setBusy(true);
-      try {
-        await authApi.updateMe({ fullName: trimmed });
-      } catch (err: any) {
-        setError(err?.response?.data?.detail || 'Eroare salvare nume');
-        setBusy(false);
-        return;
-      }
+      await authApi.updateMe({ fullName: trimmedName });
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Eroare salvare profil');
       setBusy(false);
+      return;
     }
-    if (needPin) {
-      setStep(2);
-    } else {
-      finalize();
-    }
+    setBusy(false);
+    if (needPin) setStep(2); else finalize();
   };
 
   const submitStep2 = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!/^\d{4,8}$/.test(pin)) {
-      setError('PIN-ul trebuie sa aiba 4–8 cifre');
+      setError('PIN-ul trebuie sa aiba 4-8 cifre');
       return;
     }
     if (pin !== pin2) {
@@ -95,6 +137,24 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
     }
   };
 
+  // Username status badge for the field
+  const usernameBadge = (() => {
+    if (usernameState.status === 'idle') return null;
+    if (usernameState.status === 'checking')
+      return <span className="text-[11px] text-slate-400">Se verifica...</span>;
+    if (usernameState.status === 'invalid')
+      return <span className="text-[11px] text-amber-500">{usernameState.reason}</span>;
+    if (usernameState.status === 'available')
+      return <span className="text-[11px] text-emerald-500">Disponibil ✓</span>;
+    return <span className="text-[11px] text-red-500">{usernameState.reason}</span>;
+  })();
+
+  const usernameBorderColor = (() => {
+    if (usernameState.status === 'available') return 'border-emerald-500/60';
+    if (usernameState.status === 'taken' || usernameState.status === 'invalid') return 'border-red-500/60';
+    return 'border-border';
+  })();
+
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-surface rounded-2xl border border-border shadow-2xl p-6 sm:p-8">
@@ -106,8 +166,8 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
           <h2 className="text-2xl font-bold">Configureaza-ti contul</h2>
           <p className="text-sm text-muted mt-1">
             {step === 1
-              ? 'Datele de baza ale contului — nume si modul de re-logare.'
-              : 'Setezi un PIN scurt (4–8 cifre) pentru re-logare rapida.'}
+              ? 'Date de baza ale contului — username, nume si modul de re-logare.'
+              : 'Setezi un PIN scurt (4-8 cifre) pentru re-logare rapida.'}
           </p>
           <div className="flex gap-1.5 mt-3">
             <span className={`h-1.5 flex-1 rounded-full ${step >= 1 ? 'bg-blue-500' : 'bg-elevated'}`} />
@@ -124,19 +184,27 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
         {step === 1 && (
           <form onSubmit={submitStep1} className="space-y-3">
             <div>
-              <label className="text-xs text-muted block mb-1">Username</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-muted">Username *</label>
+                {usernameBadge}
+              </div>
               <input
                 type="text"
-                value={me.username}
-                disabled
-                className="w-full bg-input/60 text-fg/70 rounded-lg px-3 py-2 border border-border"
+                autoFocus
+                value={username}
+                onChange={(e) => setUsername(e.target.value.replace(/[^A-Za-z0-9_.]/g, '').toLowerCase())}
+                placeholder="username"
+                autoComplete="username"
+                className={`w-full bg-input text-fg rounded-lg px-3 py-2 border-2 outline-none transition-colors ${usernameBorderColor} focus:border-blue-500`}
               />
+              <p className="text-[11px] text-muted mt-1">
+                3-30 caractere: litere mici, cifre, "_" sau "."
+              </p>
             </div>
             <div>
               <label className="text-xs text-muted block mb-1">Nume complet *</label>
               <input
                 type="text"
-                autoFocus
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Ion Popescu"
@@ -145,7 +213,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
             </div>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || usernameState.status === 'checking'}
               className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-medium rounded-lg py-2.5 mt-2"
             >
               {busy ? 'Se salveaza...' : (needPin ? 'Continua →' : 'Salveaza si intra')}
@@ -156,7 +224,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
         {step === 2 && (
           <form onSubmit={submitStep2} className="space-y-3">
             <div>
-              <label className="text-xs text-muted block mb-1">PIN nou (4–8 cifre) *</label>
+              <label className="text-xs text-muted block mb-1">PIN nou (4-8 cifre) *</label>
               <input
                 type="password"
                 inputMode="numeric"
@@ -198,15 +266,13 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
             </div>
 
             <div className="flex gap-2 pt-2">
-              {needName && (
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-4 py-2.5 bg-elevated hover:bg-fg/10 text-fg rounded-lg text-sm"
-                >
-                  ← Inapoi
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="px-4 py-2.5 bg-elevated hover:bg-fg/10 text-fg rounded-lg text-sm"
+              >
+                ← Inapoi
+              </button>
               <button
                 type="submit"
                 disabled={busy || pin.length < 4}

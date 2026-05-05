@@ -49,6 +49,10 @@ class SetPasswordRequest(BaseModel):
     password: str
 
 
+class UsernameUpdateRequest(BaseModel):
+    username: str
+
+
 class MeOut(BaseModel):
     id: str
     username: str

@@ -16,6 +16,7 @@ from app.schemas.auth import (
     UpdateMeRequest,
     AdminPasswordLoginRequest,
     SetPasswordRequest,
+    UsernameUpdateRequest,
 )
 from app.services import auth_service
 
@@ -228,6 +229,74 @@ async def set_pin(data: PinInput, user: User = Depends(get_current_user), db: Se
     user.pin_hash = hash_secret(pin)
     db.commit()
     return {"ok": True}
+
+
+# ── Username availability + change ───────────────────────────────────────────
+
+import re
+
+USERNAME_RE = re.compile(r"^[a-z0-9_.]{3,30}$")
+
+
+@router.get("/username-available")
+async def username_available(
+    username: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if a username is free. Returns {available: bool, reason?: str}.
+
+    Rules:
+      - 3–30 chars, only lowercase letters/digits/underscore/dot
+      - free if no OTHER user owns it (case-insensitive) — current user
+        always sees their own username as 'available' (no-op rename).
+    """
+    candidate = (username or "").strip().lower()
+    if not candidate:
+        return {"available": False, "reason": "Username gol"}
+    if not USERNAME_RE.match(candidate):
+        return {"available": False, "reason": "3-30 caractere: a-z, 0-9, _, ."}
+    if candidate == (user.username or "").lower():
+        return {"available": True, "reason": "Username actual"}
+    taken = (
+        db.query(User)
+        .filter(User.username == candidate, User.id != user.id)
+        .first()
+    )
+    if taken:
+        return {"available": False, "reason": "Username deja folosit"}
+    return {"available": True}
+
+
+@router.put("/username")
+async def update_username(
+    data: UsernameUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Change own username. Validates format + uniqueness."""
+    candidate = (data.username or "").strip().lower()
+    if not USERNAME_RE.match(candidate):
+        raise HTTPException(
+            status_code=400,
+            detail="Username trebuie sa aiba 3-30 caractere: a-z, 0-9, _, .",
+        )
+    if candidate == (user.username or "").lower():
+        # No-op rename; just refresh the response.
+        return _user_to_me(user)
+
+    taken = (
+        db.query(User)
+        .filter(User.username == candidate, User.id != user.id)
+        .first()
+    )
+    if taken:
+        raise HTTPException(status_code=409, detail="Username deja folosit")
+
+    user.username = candidate
+    db.commit()
+    db.refresh(user)
+    return _user_to_me(user)
 
 
 @router.post("/me/link-code")

@@ -23,7 +23,7 @@ interface LoginPageProps {
  */
 export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const navigate = useNavigate();
-  const { isAuthenticated, role, verifyCode, refreshWithPin, adminPasswordLogin, consumeSession } = useAuth();
+  const { isAuthenticated, verifyCode, refreshWithPin, adminPasswordLogin, consumeSession } = useAuth();
 
   const [step, setStep] = useState<Step>('credentials');
   const [username, setUsername] = useState(() => localStorage.getItem('username') || '');
@@ -40,10 +40,25 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
   useEffect(() => {
     if (isAuthenticated) {
-      if (isAdmin && role !== 'ADMIN') return; // wrong door
+      // Admin door: ALWAYS require fresh username + password entry, even if a
+      // session already exists. We invalidate the previous token so the form
+      // is visible and accidental shared sessions cannot bypass admin login.
+      if (isAdmin) return;
       navigate(target, { replace: true });
     }
-  }, [isAuthenticated, role, isAdmin, navigate, target]);
+  }, [isAuthenticated, isAdmin, navigate, target]);
+
+  // On entering /admin_task_manager, drop any existing session so the
+  // form is always shown and the admin must re-authenticate.
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (localStorage.getItem('token')) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('tokenExpiresAt');
+      window.dispatchEvent(new Event('auth:expired'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Countdown for code expiry
   useEffect(() => {

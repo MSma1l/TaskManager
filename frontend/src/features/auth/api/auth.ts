@@ -73,6 +73,12 @@ export const authApi = {
 
   setPin: (pin: string) => client.put('/auth/pin', { pin }).then((r) => r.data),
 
+  checkUsername: (username: string): Promise<{ available: boolean; reason?: string }> =>
+    client.get('/auth/username-available', { params: { username } }).then((r) => r.data),
+
+  updateUsername: (username: string): Promise<MeResponse> =>
+    client.put('/auth/username', { username }).then((r) => r.data),
+
   generateMyLinkCode: (): Promise<{ code: string; expiresAt: string; instructions: string }> =>
     client.post('/auth/me/link-code').then((r) => r.data),
 
