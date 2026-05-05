@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services import task_service
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
-security = HTTPBearer()
 
 
 def task_to_dict(task):
@@ -56,33 +55,30 @@ def task_to_dict(task):
 
 @router.get("")
 async def get_tasks(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    tasks = task_service.get_all_tasks(db)
+    tasks = task_service.get_all_tasks(db, user.id)
     return [task_to_dict(t) for t in tasks]
 
 
 @router.get("/week")
 async def get_week_tasks(
     date: str = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    tasks = task_service.get_tasks_for_week(db, date)
+    tasks = task_service.get_tasks_for_week(db, user.id, date)
     return [task_to_dict(t) for t in tasks]
 
 
 @router.post("")
 async def create_task(
     data: TaskCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    task = task_service.create_task(db, data.model_dump())
+    task = task_service.create_task(db, user.id, data.model_dump())
     return task_to_dict(task)
 
 
@@ -90,11 +86,10 @@ async def create_task(
 async def update_task(
     task_id: str,
     data: TaskUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    task = task_service.update_task(db, task_id, data.model_dump(exclude_unset=True))
+    task = task_service.update_task(db, user.id, task_id, data.model_dump(exclude_unset=True))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task_to_dict(task)
@@ -103,11 +98,10 @@ async def update_task(
 @router.delete("/{task_id}")
 async def delete_task(
     task_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    success = task_service.delete_task(db, task_id)
+    success = task_service.delete_task(db, user.id, task_id)
     if not success:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"message": "Task deleted"}

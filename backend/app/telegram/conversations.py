@@ -310,9 +310,23 @@ async def _handle_skip_callback(update, context, db, chat_id, step, data, state,
 
 
 async def _create_task_from_state(query, db, chat_id, data):
+    from app.models.user import User
     date_obj = datetime.fromisoformat(data["date"]) if data.get("date") else datetime.utcnow()
     cat = db.query(Category).filter(Category.id == data.get("categoryId")).first()
     cat_name = f"{cat.icon} {cat.name}" if cat else "Unknown"
+
+    bound = (
+        db.query(User)
+        .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+        .first()
+    )
+    if not bound:
+        clear_session(db, chat_id)
+        await query.edit_message_text(
+            "Acest chat nu este legat la niciun cont — taskul NU a fost creat. "
+            "Foloseste /link <cod> ca sa il legi."
+        )
+        return
 
     task_data = {
         "title": data.get("title", "Untitled"),
@@ -323,7 +337,7 @@ async def _create_task_from_state(query, db, chat_id, data):
         "isRecurring": data.get("isRecurring", False),
     }
 
-    task_service.create_task(db, task_data)
+    task_service.create_task(db, bound.id, task_data)
     clear_session(db, chat_id)
 
     reminder_text = f", reminder la {data['reminderTime']}" if data.get("reminderTime") else ""

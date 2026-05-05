@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
+from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.core.security import verify_secret
 from app.models.task import Task
 from app.models.completion import TaskCompletion
 from app.models.base import TaskStatus
-from app.models.category import Category
 from app.models.user import User, LoginCode
 from app.services import task_service, completion_service, stats_service
 from app.telegram.keyboards import (
@@ -22,6 +22,44 @@ DAYS_LOWER = ["luni", "marti", "miercuri", "joi", "vineri", "sambata", "duminica
 
 PRIORITY_LABELS = {"URGENT": "URGENT", "HIGH": "Inalta", "MEDIUM": "Medie", "LOW": "Scazuta"}
 
+
+# ── User resolution ────────────────────────────────────────────────────────
+
+def _resolve_user(db: Session, update: Update) -> User | None:
+    """Get the User account bound to this Telegram chat_id, or None."""
+    chat_id = str(update.effective_chat.id)
+    return (
+        db.query(User)
+        .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+        .first()
+    )
+
+
+async def _require_user(update: Update, db: Session) -> User | None:
+    """Resolve the bound user or send a friendly "not linked" message.
+
+    Every command except /start, /help and /link must call this so that no
+    user can read or modify another user's data via the bot.
+    """
+    user = _resolve_user(db, update)
+    if user is None:
+        from app.core.config import settings
+        base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
+        if "3000" in base:
+            base = "http://localhost"
+        chat_id = str(update.effective_chat.id)
+        await update.message.reply_text(
+            "Acest chat nu este legat la niciun cont.\n\n"
+            "Ca sa folosesti botul, leaga-l la cont:\n"
+            "  • genereaza un cod /link din profilul tau pe site, apoi\n"
+            "  • trimite aici: /link <cod>\n\n"
+            f"Fara cont nu pot sa-ti arat taskurile altor utilizatori.\n"
+            f"Cont nou? {base}/request-access?tg={chat_id}"
+        )
+    return user
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────
 
 def _status_icon(status: str) -> str:
     icons = {"DONE": "Done ", "PENDING": "Pending ", "SKIPPED": "Skipped ", "NOT_DONE": "Not Done "}
@@ -72,29 +110,30 @@ def _format_tasks_for_day(tasks: list, day_name: str, date_str: str) -> str:
     return "\n".join(lines)
 
 
+# ── Public commands ────────────────────────────────────────────────────────
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """If the chat isn't linked to any user, send the registration form URL."""
-    chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        bound = db.query(User).filter(User.telegram_chat_id == chat_id, User.is_active == True).first()
+        bound = _resolve_user(db, update)
     finally:
         db.close()
 
     if not bound:
-        # First-time visitor — guide them to register
         from app.core.config import settings
         base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
-        # User opens local app on http://localhost; FRONTEND_URL in dev is the Vite port,
-        # so fall back to a friendlier host the user can actually reach.
         if "3000" in base:
             base = "http://localhost"
+        chat_id = str(update.effective_chat.id)
         first_name = update.effective_user.first_name if update.effective_user else "vizitator"
         await update.message.reply_text(
             f"Buna {first_name}! Acest chat nu este legat la niciun cont Task Manager.\n\n"
             f"Ca sa primesti acces, completeaza formularul:\n"
             f"{base}/request-access?tg={chat_id}\n\n"
-            f"Dupa ce admin-ul aproba cererea, vei primi un mesaj aici si vei putea intra direct."
+            f"Dupa ce admin-ul aproba cererea, vei primi un mesaj aici si vei putea intra direct.\n\n"
+            f"Daca ai deja cont, genereaza un cod /link din profilul tau pe site si trimite aici:\n"
+            f"  /link <cod>"
         )
         return
 
@@ -126,16 +165,18 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
+
         now = datetime.utcnow()
         day_of_week = now.isoweekday()
-        tasks = task_service.get_tasks_for_day(db, day_of_week)
+        tasks = task_service.get_tasks_for_day(db, user.id, day_of_week)
         day_name = DAYS_RO[day_of_week - 1]
         date_str = now.strftime("%d %B")
 
         text = _format_tasks_for_day(tasks, day_name, date_str)
         await update.message.reply_text(text, reply_markup=main_menu_keyboard())
 
-        # Send action buttons for pending tasks
         for task in tasks:
             comp = task.completions[0] if task.completions else None
             status = comp.status.value if comp else "PENDING"
@@ -151,7 +192,10 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
-        tasks = task_service.get_tasks_for_week(db)
+        user = await _require_user(update, db)
+        if not user: return
+
+        tasks = task_service.get_tasks_for_week(db, user.id)
         if not tasks:
             await update.message.reply_text(
                 "Nu ai taskuri programate saptamana aceasta.",
@@ -159,7 +203,6 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Group by day
         by_day: dict[int, list] = {}
         for task in tasks:
             by_day.setdefault(task.day_of_week, []).append(task)
@@ -198,16 +241,19 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
-    if not args:
-        await update.message.reply_text(
-            "Alege ziua:",
-            reply_markup=week_days_keyboard(),
-        )
-        return
-
-    arg = args[0].lower()
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
+
+        if not args:
+            await update.message.reply_text(
+                "Alege ziua:",
+                reply_markup=week_days_keyboard(),
+            )
+            return
+
+        arg = args[0].lower()
         now = datetime.utcnow()
         if arg == "azi" or arg == "today":
             day_of_week = now.isoweekday()
@@ -217,7 +263,7 @@ async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Zi necunoscuta. Foloseste: luni, marti, ..., duminica, azi")
             return
 
-        tasks = task_service.get_tasks_for_day(db, day_of_week)
+        tasks = task_service.get_tasks_for_day(db, user.id, day_of_week)
         day_name = DAYS_RO[day_of_week - 1]
         diff = day_of_week - now.isoweekday()
         date_obj = now + timedelta(days=diff)
@@ -241,6 +287,8 @@ async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
         chat_id = str(update.effective_chat.id)
         start_add_flow(db, chat_id)
         await update.message.reply_text("Titlul taskului?")
@@ -251,20 +299,29 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
         args = context.args
         if args:
             task_id = args[0]
+            # Ownership check: only allow marking your own task
+            task = (
+                db.query(Task)
+                .filter(Task.id == task_id, Task.user_id == user.id)
+                .first()
+            )
+            if not task:
+                await update.message.reply_text("Task negasit sau nu este al tau.")
+                return
             result = completion_service.mark_done(db, task_id)
             if result:
-                task = db.query(Task).filter(Task.id == task_id).first()
-                name = task.title if task else task_id
-                await update.message.reply_text(f"Done! Task \"{name}\" marcat ca facut.")
+                await update.message.reply_text(f"Done! Task \"{task.title}\" marcat ca facut.")
             else:
                 await update.message.reply_text("Task negasit.")
         else:
             now = datetime.utcnow()
             day_of_week = now.isoweekday()
-            tasks = task_service.get_tasks_for_day(db, day_of_week)
+            tasks = task_service.get_tasks_for_day(db, user.id, day_of_week)
             pending = [(t, t.completions[0] if t.completions else None) for t in tasks]
             pending = [(t, c) for t, c in pending if not c or c.status == TaskStatus.PENDING]
 
@@ -283,12 +340,13 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
         args = context.args
         if not args:
-            # Show pending tasks for today with skip option
             now = datetime.utcnow()
             day_of_week = now.isoweekday()
-            tasks = task_service.get_tasks_for_day(db, day_of_week)
+            tasks = task_service.get_tasks_for_day(db, user.id, day_of_week)
             pending = [t for t in tasks if not t.completions or t.completions[0].status == TaskStatus.PENDING]
             if not pending:
                 await update.message.reply_text("Nu ai taskuri PENDING de azi.")
@@ -300,9 +358,9 @@ async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         task_id = args[0]
-        task = db.query(Task).filter(Task.id == task_id).first()
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
         if not task:
-            await update.message.reply_text("Task negasit.")
+            await update.message.reply_text("Task negasit sau nu este al tau.")
             return
 
         chat_id = str(update.effective_chat.id)
@@ -318,11 +376,13 @@ async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_notdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
         args = context.args
         if not args:
             now = datetime.utcnow()
             day_of_week = now.isoweekday()
-            tasks = task_service.get_tasks_for_day(db, day_of_week)
+            tasks = task_service.get_tasks_for_day(db, user.id, day_of_week)
             pending = [t for t in tasks if not t.completions or t.completions[0].status == TaskStatus.PENDING]
             if not pending:
                 await update.message.reply_text("Nu ai taskuri PENDING de azi.")
@@ -334,9 +394,9 @@ async def cmd_notdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         task_id = args[0]
-        task = db.query(Task).filter(Task.id == task_id).first()
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
         if not task:
-            await update.message.reply_text("Task negasit.")
+            await update.message.reply_text("Task negasit sau nu este al tau.")
             return
 
         chat_id = str(update.effective_chat.id)
@@ -351,20 +411,25 @@ async def cmd_notdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
         args = context.args
         if args:
             task_id = args[0]
-            task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
+            task = (
+                db.query(Task)
+                .filter(Task.id == task_id, Task.is_active == True, Task.user_id == user.id)
+                .first()
+            )
             if not task:
-                await update.message.reply_text("Task negasit.")
+                await update.message.reply_text("Task negasit sau nu este al tau.")
                 return
             await update.message.reply_text(
                 f"Sigur vrei sa stergi taskul \"{task.title}\"?",
                 reply_markup=confirm_delete_keyboard(task.id),
             )
         else:
-            # Show all active tasks to pick from
-            tasks = task_service.get_all_tasks(db)
+            tasks = task_service.get_all_tasks(db, user.id)
             if not tasks:
                 await update.message.reply_text("Nu ai taskuri active.")
                 return
@@ -399,10 +464,12 @@ async def _set_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, st
 
     event_id = args[0].split("::", 1)[0]
     note = " ".join(args[1:]).strip()
-    chat_id = str(update.effective_chat.id)
 
     db = SessionLocal()
     try:
+        user = await _require_user(update, db)
+        if not user: return
+
         event = (
             db.query(CalendarEvent)
             .filter(CalendarEvent.id == event_id, CalendarEvent.is_deleted == False)
@@ -412,11 +479,10 @@ async def _set_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, st
             await update.message.reply_text("Eveniment negasit.")
             return
 
-        bound_user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
-        if not bound_user or bound_user.id != event.user_id:
-            if event.user_id != chat_id:
-                await update.message.reply_text("Acest eveniment nu este al tau.")
-                return
+        # Strict ownership: only the event's owner can change attendance
+        if event.user_id != user.id:
+            await update.message.reply_text("Acest eveniment nu este al tau.")
+            return
 
         event.attendance_status = status
         if note:
@@ -487,7 +553,8 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"Cont legat: @{user.username}\n"
-            f"De acum primesti aici codurile de logare si notificarile."
+            f"De acum primesti aici codurile de logare si notificarile.\n"
+            f"Doar TASKURILE TALE iti vor fi vizibile in acest chat."
         )
     finally:
         db.close()
@@ -496,8 +563,11 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
-        stats = stats_service.get_weekly_stats(db)
-        streaks = stats_service.get_streaks(db)
+        user = await _require_user(update, db)
+        if not user: return
+
+        stats = stats_service.get_weekly_stats(db, user_id=user.id)
+        streaks = stats_service.get_streaks(db, user_id=user.id)
 
         bar_len = 10
         filled = round(stats['percentage'] / 100 * bar_len)

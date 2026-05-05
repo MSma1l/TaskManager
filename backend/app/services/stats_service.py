@@ -7,17 +7,23 @@ from app.models.base import TaskStatus
 from app.services.task_service import get_week_start
 
 
-def get_weekly_stats(db: Session, week_start_str: str | None = None) -> dict:
+def _user_task_ids(db: Session, user_id: str) -> list[str]:
+    rows = db.query(Task.id).filter(Task.user_id == user_id).all()
+    return [r[0] for r in rows]
+
+
+def get_weekly_stats(db: Session, week_start_str: str | None = None, user_id: str | None = None) -> dict:
     if week_start_str:
         week_start = datetime.fromisoformat(week_start_str)
     else:
         week_start = get_week_start(datetime.utcnow())
 
-    completions = (
-        db.query(TaskCompletion)
-        .filter(TaskCompletion.week_start == week_start)
-        .all()
-    )
+    q = db.query(TaskCompletion).filter(TaskCompletion.week_start == week_start)
+    if user_id is not None:
+        ids = _user_task_ids(db, user_id) or ["__none__"]
+        q = q.filter(TaskCompletion.task_id.in_(ids))
+
+    completions = q.all()
 
     total = len(completions)
     done = sum(1 for c in completions if c.status == TaskStatus.DONE)
@@ -34,18 +40,21 @@ def get_weekly_stats(db: Session, week_start_str: str | None = None) -> dict:
     }
 
 
-def get_history(db: Session, weeks: int = 8) -> list[dict]:
+def get_history(db: Session, weeks: int = 8, user_id: str | None = None) -> list[dict]:
     now = datetime.utcnow()
     current_week_start = get_week_start(now)
     history = []
 
+    user_ids = _user_task_ids(db, user_id) if user_id is not None else None
+    if user_id is not None and not user_ids:
+        user_ids = ["__none__"]
+
     for i in range(weeks):
         week_start = current_week_start - timedelta(weeks=i)
-        completions = (
-            db.query(TaskCompletion)
-            .filter(TaskCompletion.week_start == week_start)
-            .all()
-        )
+        q = db.query(TaskCompletion).filter(TaskCompletion.week_start == week_start)
+        if user_ids is not None:
+            q = q.filter(TaskCompletion.task_id.in_(user_ids))
+        completions = q.all()
         total = len(completions)
         done = sum(1 for c in completions if c.status == TaskStatus.DONE)
         percentage = round((done / total * 100) if total > 0 else 0, 1)
@@ -61,8 +70,11 @@ def get_history(db: Session, weeks: int = 8) -> list[dict]:
     return history
 
 
-def get_streaks(db: Session) -> list[dict]:
-    tasks = db.query(Task).filter(Task.is_active == True).all()
+def get_streaks(db: Session, user_id: str | None = None) -> list[dict]:
+    q = db.query(Task).filter(Task.is_active == True)
+    if user_id is not None:
+        q = q.filter(Task.user_id == user_id)
+    tasks = q.all()
     streaks = []
 
     now = datetime.utcnow()
@@ -99,14 +111,20 @@ def get_streaks(db: Session) -> list[dict]:
     return streaks
 
 
-def get_missed(db: Session) -> list[dict]:
-    results = (
+def get_missed(db: Session, user_id: str | None = None) -> list[dict]:
+    q = (
         db.query(
             TaskCompletion.task_id,
             func.count(TaskCompletion.id).label("missed_count"),
         )
         .filter(TaskCompletion.status == TaskStatus.NOT_DONE)
-        .group_by(TaskCompletion.task_id)
+    )
+    if user_id is not None:
+        ids = _user_task_ids(db, user_id) or ["__none__"]
+        q = q.filter(TaskCompletion.task_id.in_(ids))
+
+    results = (
+        q.group_by(TaskCompletion.task_id)
         .order_by(func.count(TaskCompletion.id).desc())
         .limit(5)
         .all()

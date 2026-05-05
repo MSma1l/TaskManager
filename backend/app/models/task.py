@@ -9,6 +9,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(String, primary_key=True, default=generate_cuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     category_id = Column(String, ForeignKey("categories.id"), nullable=False)

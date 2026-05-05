@@ -70,8 +70,9 @@ def mark_skip(db: Session, task_id: str, moved_to_date: str, skip_reason: str | 
     new_date = datetime.fromisoformat(moved_to_date)
     new_day_of_week = new_date.isoweekday()  # 1=Mon, 7=Sun
 
-    # Create a one-time task copy for the moved date
+    # Create a one-time task copy for the moved date — preserve ownership
     moved_task = Task(
+        user_id=task.user_id,
         title=task.title,
         description=task.description,
         category_id=task.category_id,

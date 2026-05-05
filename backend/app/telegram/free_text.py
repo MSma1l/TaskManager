@@ -41,7 +41,20 @@ async def handle_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         db = SessionLocal()
         try:
-            # Start the free_task flow
+            # Refuse if chat isn't bound to a user — prevents creating a
+            # task that ends up assigned to nobody (or to the wrong owner).
+            from app.models.user import User
+            bound = (
+                db.query(User)
+                .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+                .first()
+            )
+            if not bound:
+                await update.message.reply_text(
+                    "Acest chat nu este legat la un cont. Foloseste /link <cod>."
+                )
+                return True
+
             start_free_task_flow(db, chat_id, title)
 
             categories = db.query(Category).order_by(Category.name).all()

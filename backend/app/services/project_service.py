@@ -4,30 +4,34 @@ from app.models.project import Project
 from app.models.task import Task
 
 
-def get_all_projects(db: Session):
+def get_all_projects(db: Session, user_id: str):
     return (
         db.query(Project)
-        .filter(Project.is_active == True)
+        .filter(Project.is_active == True, Project.user_id == user_id)
         .order_by(Project.created_at.desc())
         .all()
     )
 
 
-def get_project(db: Session, project_id: str):
+def get_project(db: Session, user_id: str, project_id: str):
     return (
         db.query(Project)
-        .filter(Project.id == project_id, Project.is_active == True)
+        .filter(Project.id == project_id, Project.is_active == True, Project.user_id == user_id)
         .first()
     )
 
 
-def get_project_with_tasks(db: Session, project_id: str):
-    project = get_project(db, project_id)
+def get_project_with_tasks(db: Session, user_id: str, project_id: str):
+    project = get_project(db, user_id, project_id)
     if not project:
         return None, []
     tasks = (
         db.query(Task)
-        .filter(Task.project_id == project_id, Task.is_active == True)
+        .filter(
+            Task.project_id == project_id,
+            Task.is_active == True,
+            Task.user_id == user_id,
+        )
         .options(joinedload(Task.category))
         .order_by(Task.day_of_week, Task.title)
         .all()
@@ -35,8 +39,9 @@ def get_project_with_tasks(db: Session, project_id: str):
     return project, tasks
 
 
-def create_project(db: Session, data: dict) -> Project:
+def create_project(db: Session, user_id: str, data: dict) -> Project:
     project = Project(
+        user_id=user_id,
         name=data["name"],
         description=data.get("description"),
         github_url=data.get("githubUrl"),
@@ -48,8 +53,12 @@ def create_project(db: Session, data: dict) -> Project:
     return project
 
 
-def update_project(db: Session, project_id: str, data: dict) -> Project | None:
-    project = db.query(Project).filter(Project.id == project_id, Project.is_active == True).first()
+def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Project | None:
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.is_active == True, Project.user_id == user_id)
+        .first()
+    )
     if not project:
         return None
 
@@ -70,8 +79,12 @@ def update_project(db: Session, project_id: str, data: dict) -> Project | None:
     return project
 
 
-def delete_project(db: Session, project_id: str) -> bool:
-    project = db.query(Project).filter(Project.id == project_id).first()
+def delete_project(db: Session, user_id: str, project_id: str) -> bool:
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == user_id)
+        .first()
+    )
     if not project:
         return False
     project.is_active = False
@@ -80,5 +93,13 @@ def delete_project(db: Session, project_id: str) -> bool:
     return True
 
 
-def get_project_task_count(db: Session, project_id: str) -> int:
-    return db.query(Task).filter(Task.project_id == project_id, Task.is_active == True).count()
+def get_project_task_count(db: Session, user_id: str, project_id: str) -> int:
+    return (
+        db.query(Task)
+        .filter(
+            Task.project_id == project_id,
+            Task.is_active == True,
+            Task.user_id == user_id,
+        )
+        .count()
+    )

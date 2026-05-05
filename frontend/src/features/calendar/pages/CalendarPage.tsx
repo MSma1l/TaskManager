@@ -199,9 +199,9 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100dvh-5rem)] md:h-[calc(100vh-5rem)]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border bg-surface">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border bg-surface sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSidebarOpen((s) => !s)}
@@ -370,10 +370,12 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Floating add */}
+      {/* Floating add — positioned above BottomNav with safe-area awareness */}
       <button
         onClick={() => openCreate(cursor)}
-        className="md:hidden fixed bottom-20 right-4 w-14 h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center z-40"
+        className="md:hidden fixed right-4 w-14 h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center z-40 active:scale-95 transition-transform"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
+        aria-label="Eveniment nou"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

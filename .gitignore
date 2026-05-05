@@ -1,7 +1,23 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Local DB backups
+taskmanager_backup*.sql
+
+# Node
 node_modules/
 dist/
-build/
 .env
-*.log
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local docker volumes / data
 postgres_data/

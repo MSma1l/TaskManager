@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import project_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
-security = HTTPBearer()
 
 
 def project_to_dict(project, task_count: int = 0):
@@ -26,14 +25,13 @@ def project_to_dict(project, task_count: int = 0):
 
 @router.get("")
 async def get_projects(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    projects = project_service.get_all_projects(db)
+    projects = project_service.get_all_projects(db, user.id)
     result = []
     for p in projects:
-        count = project_service.get_project_task_count(db, p.id)
+        count = project_service.get_project_task_count(db, user.id, p.id)
         result.append(project_to_dict(p, count))
     return result
 
@@ -41,11 +39,10 @@ async def get_projects(
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    project, tasks = project_service.get_project_with_tasks(db, project_id)
+    project, tasks = project_service.get_project_with_tasks(db, user.id, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -59,11 +56,10 @@ async def get_project(
 @router.post("")
 async def create_project(
     data: ProjectCreate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    project = project_service.create_project(db, data.model_dump())
+    project = project_service.create_project(db, user.id, data.model_dump())
     return project_to_dict(project)
 
 
@@ -71,11 +67,10 @@ async def create_project(
 async def update_project(
     project_id: str,
     data: ProjectUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    project = project_service.update_project(db, project_id, data.model_dump(exclude_unset=True))
+    project = project_service.update_project(db, user.id, project_id, data.model_dump(exclude_unset=True))
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project_to_dict(project)
@@ -84,11 +79,10 @@ async def update_project(
 @router.delete("/{project_id}")
 async def delete_project(
     project_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    success = project_service.delete_project(db, project_id)
+    success = project_service.delete_project(db, user.id, project_id)
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"message": "Project deleted"}

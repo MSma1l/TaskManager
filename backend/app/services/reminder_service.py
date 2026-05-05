@@ -26,7 +26,8 @@ async def _send_telegram(text: str, chat_id: str | None = None, role: str | None
 
 
 def check_reminders():
-    """Check for tasks with reminder at current time."""
+    """Check for tasks with reminder at current time. Sends each reminder
+    ONLY to the task owner's Telegram chat (no cross-user leakage)."""
     db = SessionLocal()
     try:
         now = datetime.utcnow()
@@ -47,7 +48,6 @@ def check_reminders():
         )
 
         for task in tasks:
-            # Check if already sent today
             existing = (
                 db.query(ReminderLog)
                 .filter(
@@ -60,7 +60,14 @@ def check_reminders():
             if existing:
                 continue
 
-            # Build rich message
+            # Resolve the owner — silently skip orphan / unowned tasks rather
+            # than dumping them to a single shared chat.
+            owner = _get_user(db, task.user_id) if task.user_id else None
+            if not owner or not owner.telegram_chat_id or not _telegram_allowed(owner, now):
+                # Still log so we don't keep retrying the same minute
+                db.add(ReminderLog(task_id=task.id, channel="telegram_skipped"))
+                continue
+
             lines = [f"Reminder: {task.title}"]
             if task.description:
                 lines.append(task.description)
@@ -77,11 +84,10 @@ def check_reminders():
                 lines.append(f"Durata: ~{dur}")
             lines.append(f"Ora: {task.reminder_time}")
 
-            asyncio.create_task(_send_telegram("\n".join(lines)))
-
-            # Log
-            log = ReminderLog(task_id=task.id, channel="telegram")
-            db.add(log)
+            asyncio.create_task(_send_telegram(
+                "\n".join(lines), chat_id=owner.telegram_chat_id, role=owner.role,
+            ))
+            db.add(ReminderLog(task_id=task.id, channel="telegram"))
 
         db.commit()
     except Exception as e:
@@ -90,29 +96,43 @@ def check_reminders():
         db.close()
 
 
+def _iter_users_with_telegram(db: Session):
+    return (
+        db.query(User)
+        .filter(User.is_active == True, User.telegram_chat_id.isnot(None))
+        .all()
+    )
+
+
 def weekly_summary():
-    """Monday 09:00 - send weekly task list."""
+    """Monday 09:00 — send each user their own weekly task list (no cross-user leakage)."""
     db = SessionLocal()
     try:
-        tasks = task_service.get_tasks_for_week(db)
-        if not tasks:
-            asyncio.create_task(_send_telegram("Saptamana noua! Nu ai taskuri programate."))
-            return
+        for user in _iter_users_with_telegram(db):
+            tasks = task_service.get_tasks_for_week(db, user.id)
+            if not tasks:
+                asyncio.create_task(_send_telegram(
+                    "Saptamana noua! Nu ai taskuri programate.",
+                    chat_id=user.telegram_chat_id, role=user.role,
+                ))
+                continue
 
-        by_day: dict[int, list] = {}
-        for task in tasks:
-            by_day.setdefault(task.day_of_week, []).append(task)
+            by_day: dict[int, list] = {}
+            for task in tasks:
+                by_day.setdefault(task.day_of_week, []).append(task)
 
-        lines = ["Saptamana noua! Iata taskurile tale:\n"]
-        for day_num in sorted(by_day.keys()):
-            day_tasks = by_day[day_num]
-            day_name = DAYS_RO[day_num - 1]
-            lines.append(f"\n{day_name}:")
-            for t in day_tasks:
-                reminder = f" la {t.reminder_time}" if t.reminder_time else ""
-                lines.append(f"  - {t.title}{reminder}")
+            lines = ["Saptamana noua! Iata taskurile tale:\n"]
+            for day_num in sorted(by_day.keys()):
+                day_tasks = by_day[day_num]
+                day_name = DAYS_RO[day_num - 1]
+                lines.append(f"\n{day_name}:")
+                for t in day_tasks:
+                    reminder = f" la {t.reminder_time}" if t.reminder_time else ""
+                    lines.append(f"  - {t.title}{reminder}")
 
-        asyncio.create_task(_send_telegram("\n".join(lines)))
+            asyncio.create_task(_send_telegram(
+                "\n".join(lines), chat_id=user.telegram_chat_id, role=user.role,
+            ))
     except Exception as e:
         print(f"Weekly summary error: {e}")
     finally:
@@ -120,33 +140,36 @@ def weekly_summary():
 
 
 def weekly_report():
-    """Sunday 20:00 - send weekly report."""
+    """Sunday 20:00 — per-user report."""
     db = SessionLocal()
     try:
-        stats = stats_service.get_weekly_stats(db)
-        streaks = stats_service.get_streaks(db)
-        missed = stats_service.get_missed(db)
+        for user in _iter_users_with_telegram(db):
+            stats = stats_service.get_weekly_stats(db, user_id=user.id)
+            streaks = stats_service.get_streaks(db, user_id=user.id)
+            missed = stats_service.get_missed(db, user_id=user.id)
 
-        lines = [
-            "Raport saptamanal:\n",
-            f"Total: {stats['total']}",
-            f"Completate: {stats['done']}",
-            f"Mutate: {stats['skipped']}",
-            f"Nefacute: {stats['notDone']}",
-            f"Progres: {stats['percentage']}%",
-        ]
+            lines = [
+                "Raport saptamanal:\n",
+                f"Total: {stats['total']}",
+                f"Completate: {stats['done']}",
+                f"Mutate: {stats['skipped']}",
+                f"Nefacute: {stats['notDone']}",
+                f"Progres: {stats['percentage']}%",
+            ]
 
-        if streaks:
-            lines.append("\nStreak-uri:")
-            for s in streaks[:3]:
-                lines.append(f"  {s['taskTitle']}: {s['streak']} sapt.")
+            if streaks:
+                lines.append("\nStreak-uri:")
+                for s in streaks[:3]:
+                    lines.append(f"  {s['taskTitle']}: {s['streak']} sapt.")
 
-        if missed:
-            lines.append("\nCel mai des ratate:")
-            for m in missed[:3]:
-                lines.append(f"  {m['taskTitle']}: {m['missedCount']}x")
+            if missed:
+                lines.append("\nCel mai des ratate:")
+                for m in missed[:3]:
+                    lines.append(f"  {m['taskTitle']}: {m['missedCount']}x")
 
-        asyncio.create_task(_send_telegram("\n".join(lines)))
+            asyncio.create_task(_send_telegram(
+                "\n".join(lines), chat_id=user.telegram_chat_id, role=user.role,
+            ))
     except Exception as e:
         print(f"Weekly report error: {e}")
     finally:
@@ -419,13 +442,8 @@ def post_meeting_prompts():
 
 
 def auto_move_overdue_tasks():
-    """At 23:55 each day, move any PENDING task to the next day with a friendly Telegram nudge.
-
-    For each pending task today (recurring + one-off), mark the completion as SKIPPED
-    with moved_to_date = tomorrow, and create a one-off copy for tomorrow via
-    completion_service.mark_skip (which already handles the duplication).
-    Sends one consolidated notification per Telegram chat at the end.
-    """
+    """At 23:55 each day, move any PENDING task to the next day. Notifies
+    each owner separately so taskurile lor nu apar in chatul altui user."""
     db = SessionLocal()
     try:
         now = datetime.utcnow()
@@ -440,9 +458,8 @@ def auto_move_overdue_tasks():
             .all()
         )
 
-        moved_today = []
+        moved_by_user: dict[str, list] = {}
         for task in tasks:
-            # Match either recurring-on-today OR scheduled for today
             is_today = False
             if task.is_recurring and task.day_of_week == today_dow:
                 is_today = True
@@ -451,7 +468,6 @@ def auto_move_overdue_tasks():
             if not is_today:
                 continue
 
-            # Only move if completion is PENDING (no completion or status PENDING)
             week_start = task_service.get_week_start(now)
             completion = (
                 db.query(TaskCompletion)
@@ -469,19 +485,26 @@ def auto_move_overdue_tasks():
                 completion_service.mark_skip(
                     db, task.id, tomorrow_iso, skip_reason="Auto-mutat: neexecutat azi"
                 )
-                moved_today.append(task)
+                if task.user_id:
+                    moved_by_user.setdefault(task.user_id, []).append(task)
             except Exception as e:
                 print(f"Failed to auto-move task {task.id}: {e}")
 
-        if moved_today:
+        # Notify each owner separately
+        for user_id, user_tasks in moved_by_user.items():
+            owner = _get_user(db, user_id)
+            if not owner or not owner.telegram_chat_id or not _telegram_allowed(owner, now):
+                continue
             lines = ["Atentie — taskuri ne-executate azi mutate pe maine:"]
-            for t in moved_today[:10]:
+            for t in user_tasks[:10]:
                 lines.append(f"  · {t.title}")
-            if len(moved_today) > 10:
-                lines.append(f"  …si inca {len(moved_today) - 10}")
+            if len(user_tasks) > 10:
+                lines.append(f"  …si inca {len(user_tasks) - 10}")
             lines.append("")
             lines.append("Maine e o noua sansa. Mult succes!")
-            asyncio.create_task(_send_telegram("\n".join(lines)))
+            asyncio.create_task(_send_telegram(
+                "\n".join(lines), chat_id=owner.telegram_chat_id, role=owner.role,
+            ))
 
     except Exception as e:
         print(f"Auto-move overdue error: {e}")

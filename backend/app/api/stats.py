@@ -1,46 +1,41 @@
 from fastapi import APIRouter, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user
+from app.models.user import User
 from app.services import stats_service
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
-security = HTTPBearer()
 
 
 @router.get("/weekly")
 async def weekly_stats(
     weekStart: str = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    return stats_service.get_weekly_stats(db, weekStart)
+    return stats_service.get_weekly_stats(db, weekStart, user_id=user.id)
 
 
 @router.get("/history")
 async def history(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    return stats_service.get_history(db)
+    return stats_service.get_history(db, user_id=user.id)
 
 
 @router.get("/streaks")
 async def streaks(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    return stats_service.get_streaks(db)
+    return stats_service.get_streaks(db, user_id=user.id)
 
 
 @router.get("/missed")
 async def missed(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await verify_token(credentials)
-    return stats_service.get_missed(db)
+    return stats_service.get_missed(db, user_id=user.id)

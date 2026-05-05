@@ -82,17 +82,39 @@ async def _handle_callback(update: Update, context):
 
     await query.answer()
 
+    # Resolve owner from chat — every task action below must verify the
+    # task belongs to this chat's user before mutating anything.
+    chat_id = str(query.message.chat_id)
+
+    def _owner_check(db, task_id: str):
+        from app.models.task import Task
+        from app.models.user import User
+        bound = (
+            db.query(User)
+            .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+            .first()
+        )
+        if not bound:
+            return None, None
+        task = (
+            db.query(Task)
+            .filter(Task.id == task_id, Task.user_id == bound.id)
+            .first()
+        )
+        return bound, task
+
     # Handle task action callbacks
     if data.startswith("action_done_"):
         task_id = data[len("action_done_"):]
         db = SessionLocal()
         try:
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
+                return
             result = completion_service.mark_done(db, task_id)
             if result:
-                from app.models.task import Task
-                task = db.query(Task).filter(Task.id == task_id).first()
-                name = task.title if task else task_id
-                await query.edit_message_text(f"Done! \"{name}\" marcat ca facut.")
+                await query.edit_message_text(f"Done! \"{task.title}\" marcat ca facut.")
             else:
                 await query.edit_message_text("Task negasit.")
         finally:
@@ -102,9 +124,12 @@ async def _handle_callback(update: Update, context):
         task_id = data[len("action_skip_"):]
         db = SessionLocal()
         try:
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
+                return
             from app.telegram.conversations import start_skip_flow
             from app.telegram.keyboards import days_keyboard
-            chat_id = str(query.message.chat_id)
             start_skip_flow(db, chat_id, task_id)
             await query.edit_message_text("Muta pe:", reply_markup=days_keyboard())
         finally:
@@ -114,8 +139,11 @@ async def _handle_callback(update: Update, context):
         task_id = data[len("action_notdone_"):]
         db = SessionLocal()
         try:
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
+                return
             from app.telegram.conversations import start_notdone_flow
-            chat_id = str(query.message.chat_id)
             start_notdone_flow(db, chat_id, task_id)
             await query.edit_message_text("De ce nu ai putut face acest task? (motivul este obligatoriu)")
         finally:
@@ -125,12 +153,11 @@ async def _handle_callback(update: Update, context):
         task_id = data[len("action_delete_"):]
         db = SessionLocal()
         try:
-            from app.models.task import Task
-            from app.telegram.keyboards import confirm_delete_keyboard
-            task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
-            if not task:
-                await query.edit_message_text("Task negasit.")
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task or not task.is_active:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
                 return
+            from app.telegram.keyboards import confirm_delete_keyboard
             await query.edit_message_text(
                 f"Sigur vrei sa stergi taskul \"{task.title}\"?",
                 reply_markup=confirm_delete_keyboard(task.id),
@@ -142,7 +169,11 @@ async def _handle_callback(update: Update, context):
         task_id = data[len("confirm_delete_"):]
         db = SessionLocal()
         try:
-            success = task_service.delete_task(db, task_id)
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
+                return
+            success = task_service.delete_task(db, bound.id, task_id)
             if success:
                 await query.edit_message_text("Task sters cu succes!")
             else:
@@ -154,16 +185,15 @@ async def _handle_callback(update: Update, context):
         task_id = data[len("taskdetail_"):]
         db = SessionLocal()
         try:
-            from app.models.task import Task
+            bound, task = _owner_check(db, task_id)
+            if not bound or not task:
+                await query.edit_message_text("Task negasit sau nu este al tau.")
+                return
             from app.telegram.keyboards import task_actions_keyboard
-            task = db.query(Task).filter(Task.id == task_id).first()
-            if task:
-                await query.edit_message_text(
-                    f"{task.title}",
-                    reply_markup=task_actions_keyboard(task.id),
-                )
-            else:
-                await query.edit_message_text("Task negasit.")
+            await query.edit_message_text(
+                f"{task.title}",
+                reply_markup=task_actions_keyboard(task.id),
+            )
         finally:
             db.close()
 
@@ -173,6 +203,16 @@ async def _handle_callback(update: Update, context):
         try:
             from datetime import datetime, timedelta
             from app.telegram.keyboards import task_actions_keyboard
+            from app.models.user import User
+
+            bound = (
+                db.query(User)
+                .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+                .first()
+            )
+            if not bound:
+                await query.edit_message_text("Acest chat nu este legat la niciun cont. Foloseste /link <cod>.")
+                return
 
             now = datetime.utcnow()
             if val == "today":
@@ -180,7 +220,7 @@ async def _handle_callback(update: Update, context):
             else:
                 day_of_week = int(val)
 
-            tasks = task_service.get_tasks_for_day(db, day_of_week)
+            tasks = task_service.get_tasks_for_day(db, bound.id, day_of_week)
             days_ro = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
             day_name = days_ro[day_of_week - 1]
 

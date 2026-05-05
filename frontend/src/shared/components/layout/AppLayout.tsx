@@ -18,7 +18,6 @@ export default function AppLayout() {
       .then((data) => {
         if (!alive) return;
         setMe(data);
-        // Force setup if missing essentials (PIN + full name)
         if (!data.hasPin || !data.fullName) {
           setNeedsSetup(true);
         }
@@ -33,7 +32,14 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-bg text-fg pb-20 md:pb-20">
+    <div
+      className="min-h-screen bg-bg text-fg"
+      style={{
+        // Reserve enough space for the BottomNav + iPhone home indicator
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
+      }}
+    >
       <Outlet />
       <BottomNav />
       <Tour />

@@ -12,17 +12,31 @@ def get_week_start(date: datetime) -> datetime:
     return monday.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def get_all_tasks(db: Session):
-    return (
+def _scope_to_user(query, user_id: str | None):
+    """Restrict a Task query to rows owned by the given user.
+
+    Legacy rows with user_id IS NULL are NEVER returned to a specific user —
+    they belong to nobody. The migration assigned every existing row to the
+    oldest admin so this should not affect production.
+    """
+    if user_id is None:
+        # Caller forgot to pass a user — refuse to return anything rather
+        # than leak. Every public-facing endpoint must scope by user.
+        return query.filter(Task.id == "__none__")
+    return query.filter(Task.user_id == user_id)
+
+
+def get_all_tasks(db: Session, user_id: str | None = None):
+    q = (
         db.query(Task)
         .filter(Task.is_active == True)
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
-        .all()
     )
+    return _scope_to_user(q, user_id).all()
 
 
-def get_tasks_for_week(db: Session, date_str: str | None = None):
+def get_tasks_for_week(db: Session, user_id: str | None = None, date_str: str | None = None):
     if date_str:
         date = datetime.fromisoformat(date_str)
     else:
@@ -30,13 +44,13 @@ def get_tasks_for_week(db: Session, date_str: str | None = None):
 
     week_start = get_week_start(date)
 
-    tasks = (
+    q = (
         db.query(Task)
         .filter(Task.is_active == True)
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
-        .all()
     )
+    tasks = _scope_to_user(q, user_id).all()
 
     # Filter: recurring tasks + one-time tasks for this week
     week_end = week_start + timedelta(days=7)
@@ -81,8 +95,9 @@ def get_tasks_for_week(db: Session, date_str: str | None = None):
     return result
 
 
-def create_task(db: Session, data: dict) -> Task:
+def create_task(db: Session, user_id: str, data: dict) -> Task:
     task = Task(
+        user_id=user_id,
         title=data["title"],
         description=data.get("description"),
         category_id=data["categoryId"],
@@ -103,8 +118,12 @@ def create_task(db: Session, data: dict) -> Task:
     return task
 
 
-def update_task(db: Session, task_id: str, data: dict) -> Task | None:
-    task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
+def update_task(db: Session, user_id: str, task_id: str, data: dict) -> Task | None:
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id, Task.is_active == True, Task.user_id == user_id)
+        .first()
+    )
     if not task:
         return None
 
@@ -135,8 +154,8 @@ def update_task(db: Session, task_id: str, data: dict) -> Task | None:
     return task
 
 
-def delete_task(db: Session, task_id: str) -> bool:
-    task = db.query(Task).filter(Task.id == task_id).first()
+def delete_task(db: Session, user_id: str, task_id: str) -> bool:
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == user_id).first()
     if not task:
         return False
     task.is_active = False
@@ -145,20 +164,30 @@ def delete_task(db: Session, task_id: str) -> bool:
     return True
 
 
-def get_tasks_for_day(db: Session, day_of_week: int, date: datetime | None = None):
-    """Get tasks for a specific day of the week."""
+def get_task(db: Session, user_id: str, task_id: str) -> Task | None:
+    """Single-task lookup scoped to the owning user."""
+    return (
+        db.query(Task)
+        .filter(Task.id == task_id, Task.user_id == user_id)
+        .options(joinedload(Task.category), joinedload(Task.project))
+        .first()
+    )
+
+
+def get_tasks_for_day(db: Session, user_id: str | None, day_of_week: int, date: datetime | None = None):
+    """Get tasks for a specific day of the week, scoped to a user."""
     if date is None:
         date = datetime.utcnow()
 
     week_start = get_week_start(date)
 
-    all_day_tasks = (
+    q = (
         db.query(Task)
         .filter(Task.is_active == True, Task.day_of_week == day_of_week)
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.title)
-        .all()
     )
+    all_day_tasks = _scope_to_user(q, user_id).all()
 
     # Filter: recurring tasks always show, one-time tasks only in their scheduled week
     week_end = week_start + timedelta(days=7)
