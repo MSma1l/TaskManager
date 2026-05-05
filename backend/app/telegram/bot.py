@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.telegram.commands import (
     cmd_start, cmd_help, cmd_today, cmd_week, cmd_tasks,
-    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link, cmd_attended,
+    cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link, cmd_attended, cmd_missed,
 )
 from app.telegram.conversations import (
     handle_conversation, handle_callback_conversation,
@@ -247,6 +247,7 @@ def _wire_handlers(app: Application):
     app.add_handler(CommandHandler("notes", cmd_notes))
     app.add_handler(CommandHandler("link", cmd_link))
     app.add_handler(CommandHandler("attended", cmd_attended))
+    app.add_handler(CommandHandler("missed", cmd_missed))
     app.add_handler(CallbackQueryHandler(_handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_message))
 

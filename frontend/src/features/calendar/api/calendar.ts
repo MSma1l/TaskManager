@@ -10,6 +10,7 @@ export type EventType =
 
 export type RecurrenceRule = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 export type EventStatus = 'CONFIRMED' | 'TENTATIVE' | 'CANCELLED';
+export type AttendanceStatus = 'PENDING' | 'ATTENDED' | 'AUTO_ATTENDED' | 'MISSED';
 
 export interface Attendee {
   name: string;
@@ -28,6 +29,8 @@ export interface CalendarEvent {
   meetingUrl: string | null;
   isAllDay: boolean;
   eventStatus: EventStatus;
+  attendanceStatus: AttendanceStatus;
+  attendanceNote: string | null;
   recurrenceRule: RecurrenceRule | null;
   recurrenceUntil: string | null;
   reminderMinutes: number[];
@@ -98,4 +101,7 @@ export const calendarApi = {
 
   deleteCategory: (id: string) =>
     client.delete(`/calendar/categories/${id}`).then((r) => r.data),
+
+  setAttendance: (eventId: string, status: AttendanceStatus, note?: string | null) =>
+    client.put<CalendarEvent>(`/calendar/events/${eventId}/attendance`, { status, note }).then((r) => r.data),
 };

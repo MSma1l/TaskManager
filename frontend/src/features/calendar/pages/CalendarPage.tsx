@@ -208,31 +208,31 @@ export default function CalendarPage() {
             </svg>
           </button>
           <div>
-            <h1 className="text-lg sm:text-xl font-bold">Calendar</h1>
-            <p className="text-xs sm:text-sm text-muted">{range.title}</p>
+            <h1 className="text-xl sm:text-2xl font-bold leading-tight">Calendar</h1>
+            <p className="text-sm text-muted font-medium leading-tight">{range.title}</p>
           </div>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
-          <button onClick={() => move(-1)} className="p-2 hover:bg-fg/10 rounded-lg">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <button onClick={() => move(-1)} className="p-2 hover:bg-fg/10 rounded-lg" title="Inapoi">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <button onClick={goToday} className="px-3 py-1.5 text-sm font-medium text-blue-400 hover:bg-fg/10 rounded-lg">
+          <button onClick={goToday} className="px-3 py-1.5 text-sm font-semibold text-blue-500 hover:bg-fg/10 rounded-lg">
             Azi
           </button>
-          <button onClick={() => move(1)} className="p-2 hover:bg-fg/10 rounded-lg">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <button onClick={() => move(1)} className="p-2 hover:bg-fg/10 rounded-lg" title="Inainte">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
-          <div data-tour="calendar-views" className="hidden sm:flex items-center bg-input rounded-lg p-0.5 ml-2">
+          <div data-tour="calendar-views" className="hidden sm:flex items-center bg-input border border-border rounded-lg p-0.5 ml-2">
             {(['day', 'week', 'month'] as ViewMode[]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                  view === v ? 'bg-blue-600 text-white' : 'text-muted hover:text-fg'
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  view === v ? 'bg-blue-600 text-white shadow-sm' : 'text-muted hover:text-fg'
                 }`}
               >
                 {v === 'day' && 'Zi'}

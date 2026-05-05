@@ -228,15 +228,17 @@ def _meeting_stats_for_user(db: Session, target_user_id: str, since: datetime, u
         )
         .all()
     )
-    total = past = upcoming = attended = with_note = 0
+    total = past = upcoming = attended = missed = with_note = 0
     for event in masters:
         for occ in calendar_service._occurrences_in_range(event, since.date(), until.date()):
             total += 1
             if occ < today:
                 past += 1
-                if event.description and "ATTENDED" in (event.description or "").upper():
+                if event.attendance_status in ("ATTENDED", "AUTO_ATTENDED"):
                     attended += 1
-                if event.description and len(event.description.strip()) > 0:
+                elif event.attendance_status == "MISSED":
+                    missed += 1
+                if event.attendance_note and event.attendance_note.strip():
                     with_note += 1
             else:
                 upcoming += 1
@@ -245,6 +247,7 @@ def _meeting_stats_for_user(db: Session, target_user_id: str, since: datetime, u
         "past": past,
         "upcoming": upcoming,
         "attended": attended,
+        "missed": missed,
         "withNote": with_note,
         "attendedPercent": round(attended / past * 100) if past else 0,
     }

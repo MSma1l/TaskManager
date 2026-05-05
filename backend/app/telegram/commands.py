@@ -387,14 +387,16 @@ async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
 
-async def cmd_attended(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mark a meeting as attended, optionally with a note appended after the event id."""
+async def _set_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, status: str):
+    """Shared logic for /attended and /missed."""
+    from app.models.calendar import CalendarEvent
+
     args = context.args
     if not args:
-        await update.message.reply_text("Foloseste: /attended <event_id> [nota]")
+        cmd = "/attended" if status == "ATTENDED" else "/missed"
+        await update.message.reply_text(f"Foloseste: {cmd} <event_id> [nota]")
         return
 
-    from app.models.calendar import CalendarEvent
     event_id = args[0].split("::", 1)[0]
     note = " ".join(args[1:]).strip()
     chat_id = str(update.effective_chat.id)
@@ -410,32 +412,35 @@ async def cmd_attended(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Eveniment negasit.")
             return
 
-        # Verify the chat is bound to the event's user
         bound_user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
         if not bound_user or bound_user.id != event.user_id:
-            # Fallback for legacy single-tenant
             if event.user_id != chat_id:
                 await update.message.reply_text("Acest eveniment nu este al tau.")
                 return
 
-        prefix = "ATTENDED"
-        existing = (event.description or "").strip()
-        body = f"[{prefix}] {note}" if note else f"[{prefix}]"
-        if existing:
-            event.description = f"{body}\n---\n{existing}" if prefix not in existing else (
-                f"{existing}\n{body}" if note else existing
-            )
-        else:
-            event.description = body
+        event.attendance_status = status
+        if note:
+            event.attendance_note = note
         event.updated_at = datetime.utcnow()
         db.commit()
 
-        await update.message.reply_text(
-            f"Confirmat: ai fost la \"{event.title}\". Nota salvata." if note
-            else f"Confirmat: ai fost la \"{event.title}\"."
-        )
+        if status == "ATTENDED":
+            msg = f"Confirmat: ai fost la \"{event.title}\""
+        else:
+            msg = f"Marcat: nu ai fost la \"{event.title}\""
+        if note:
+            msg += "\nNota salvata."
+        await update.message.reply_text(msg)
     finally:
         db.close()
+
+
+async def cmd_attended(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _set_attendance(update, context, "ATTENDED")
+
+
+async def cmd_missed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _set_attendance(update, context, "MISSED")
 
 
 async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):

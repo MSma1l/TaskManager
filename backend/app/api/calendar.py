@@ -39,6 +39,8 @@ def _event_to_dict(event: CalendarEvent, occurrence_date: date | None = None) ->
         "meetingUrl": event.meeting_url,
         "isAllDay": bool(event.is_all_day),
         "eventStatus": event.event_status,
+        "attendanceStatus": event.attendance_status or "PENDING",
+        "attendanceNote": event.attendance_note,
         "recurrenceRule": event.recurrence_rule,
         "recurrenceUntil": event.recurrence_until.isoformat() if event.recurrence_until else None,
         "reminderMinutes": event.reminder_minutes or [],
@@ -190,6 +192,37 @@ async def delete_event(
     if not success:
         raise HTTPException(status_code=404, detail="Event not found")
     return {"message": "Event deleted"}
+
+
+from pydantic import BaseModel as _BM
+
+
+class AttendanceUpdate(_BM):
+    status: str  # ATTENDED | MISSED | PENDING
+    note: str | None = None
+
+
+@router.put("/events/{event_id}/attendance")
+async def update_attendance(
+    event_id: str,
+    data: AttendanceUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    master_id = event_id.split("::", 1)[0]
+    if data.status not in {"ATTENDED", "MISSED", "PENDING", "AUTO_ATTENDED"}:
+        raise HTTPException(status_code=400, detail="Status invalid")
+    event = calendar_service.get_event(db, user.id, master_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    event.attendance_status = data.status
+    if data.note is not None:
+        event.attendance_note = (data.note or "").strip()[:2000] or None
+    from datetime import datetime as _dt
+    event.updated_at = _dt.utcnow()
+    db.commit()
+    db.refresh(event)
+    return _event_to_dict(event)
 
 
 # ── Event categories ─────────────────────────────────────────────────────────

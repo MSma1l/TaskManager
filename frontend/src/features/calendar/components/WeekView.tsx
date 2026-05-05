@@ -35,15 +35,23 @@ export default function WeekView({ weekStart, events, onCellClick, onEventClick 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Day headers */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b-2 border-border bg-surface">
         <div className="w-14 flex-shrink-0" />
         {weekDays.map((day, i) => {
           const isToday = formatDate(day) === todayStr;
+          const isWeekend = i >= 5;
           return (
-            <div key={i} className="flex-1 text-center py-2 border-l border-border/50">
-              <div className={`text-xs ${isToday ? 'text-blue-400' : 'text-muted'}`}>{DAYS_RO_SHORT[i]}</div>
-              <div className={`text-lg font-semibold mt-0.5 ${
-                isToday ? 'bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center mx-auto' : 'text-fg'
+            <div
+              key={i}
+              className={`flex-1 text-center py-2 border-l border-border ${isToday ? 'bg-blue-500/10' : ''}`}
+            >
+              <div className={`text-xs font-semibold uppercase tracking-wider ${
+                isToday ? 'text-blue-500' : isWeekend ? 'text-red-400/80' : 'text-muted'
+              }`}>
+                {DAYS_RO_SHORT[i]}
+              </div>
+              <div className={`text-xl font-bold mt-1 ${
+                isToday ? 'bg-blue-500 text-white w-9 h-9 rounded-full flex items-center justify-center mx-auto shadow-md' : 'text-fg'
               }`}>
                 {day.getDate()}
               </div>
@@ -79,9 +87,13 @@ export default function WeekView({ weekStart, events, onCellClick, onEventClick 
       {/* Time grid */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
         <div className="flex" style={{ height: 24 * HOUR_HEIGHT }}>
-          <div className="w-14 flex-shrink-0 relative">
+          <div className="w-14 flex-shrink-0 relative bg-surface border-r border-border">
             {HOURS.map((h) => (
-              <div key={h} className="absolute w-full text-right pr-2 text-xs text-muted" style={{ top: h * HOUR_HEIGHT - 6 }}>
+              <div
+                key={h}
+                className="absolute w-full text-right pr-2 text-xs font-medium text-muted"
+                style={{ top: h * HOUR_HEIGHT - 6 }}
+              >
                 {h > 0 ? `${h.toString().padStart(2, '0')}:00` : ''}
               </div>
             ))}
@@ -91,11 +103,16 @@ export default function WeekView({ weekStart, events, onCellClick, onEventClick 
             const dayStr = formatDate(day);
             const dayEvents = events.filter((e) => e.eventDate === dayStr && !e.isAllDay);
             const isToday = dayStr === todayStr;
+            const isWeekend = dayIdx >= 5;
 
             return (
               <div
                 key={dayIdx}
-                className={`flex-1 relative border-l border-border/50 cursor-pointer ${isToday ? 'bg-blue-500/5' : ''}`}
+                className={`flex-1 relative border-l border-border cursor-pointer transition-colors ${
+                  isToday ? 'bg-blue-500/5'
+                  : isWeekend ? 'bg-fg/[0.015] hover:bg-fg/[0.04]'
+                  : 'hover:bg-fg/[0.025]'
+                }`}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const y = e.clientY - rect.top;
@@ -104,10 +121,10 @@ export default function WeekView({ weekStart, events, onCellClick, onEventClick 
                 }}
               >
                 {HOURS.map((h) => (
-                  <div key={h} className="absolute w-full border-t border-border/40" style={{ top: h * HOUR_HEIGHT }} />
+                  <div key={h} className="absolute w-full border-t border-border/70" style={{ top: h * HOUR_HEIGHT }} />
                 ))}
                 {HOURS.map((h) => (
-                  <div key={`half-${h}`} className="absolute w-full border-t border-border/20" style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }} />
+                  <div key={`half-${h}`} className="absolute w-full border-t border-border/30 border-dashed" style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }} />
                 ))}
                 {isToday && <CurrentTimeLine hourHeight={HOUR_HEIGHT} />}
                 {dayEvents.map((event) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   CalendarEvent, CreateEventData, EventCategory, EventType, RecurrenceRule, Attendee,
+  AttendanceStatus, calendarApi,
 } from '../api/calendar';
 import { useLocalDraft } from '../../../shared/hooks/useLocalDraft';
 
@@ -101,6 +102,11 @@ export default function EventModal({
   const [categoryId, setCategoryId] = useState<string>('');
   const [attendees, setAttendees] = useState<Attendee[]>([]);
 
+  // Attendance — only meaningful when editing a past event
+  const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus>('PENDING');
+  const [attendanceNote, setAttendanceNote] = useState('');
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     setTab('general');
@@ -120,6 +126,8 @@ export default function EventModal({
       setReminders(initialEvent.reminderMinutes && initialEvent.reminderMinutes.length ? initialEvent.reminderMinutes : []);
       setCategoryId(initialEvent.categoryId || '');
       setAttendees(initialEvent.attendees || []);
+      setAttendanceStatus(initialEvent.attendanceStatus || 'PENDING');
+      setAttendanceNote(initialEvent.attendanceNote || '');
     } else {
       // Restore persistent draft if the user was typing one earlier (cloud-like memory).
       const hasDraft = draft.title.trim() !== '' || draft.description.trim() !== '' || draft.attendees.length > 0;
@@ -187,6 +195,31 @@ export default function EventModal({
     setReminders((prev) => prev.includes(mins) ? prev.filter((m) => m !== mins) : [...prev, mins].sort((a, b) => a - b));
   };
 
+  const isPastEvent = (() => {
+    if (!initialEvent) return false;
+    try {
+      // Build the local datetime from the ISO date + HH:MM time
+      const [y, mo, d] = (initialEvent.eventDate || '').split('-').map(Number);
+      const [h, mi] = (initialEvent.endTime || '00:00').split(':').map(Number);
+      if (!y || !mo || !d) return false;
+      const end = new Date(y, mo - 1, d, h || 0, mi || 0, 0, 0);
+      return end.getTime() < Date.now();
+    } catch { return false; }
+  })();
+
+  const saveAttendance = async (next: AttendanceStatus) => {
+    if (!initialEvent) return;
+    setAttendanceSaving(true);
+    try {
+      await calendarApi.setAttendance(initialEvent.masterId || initialEvent.id, next, attendanceNote || null);
+      setAttendanceStatus(next);
+    } catch (err) {
+      console.error('attendance save failed', err);
+    } finally {
+      setAttendanceSaving(false);
+    }
+  };
+
   const duplicate = () => {
     if (!title.trim() || !onDuplicate) return;
     // Default the copy to the next day so the user can quickly paste it forward
@@ -219,7 +252,7 @@ export default function EventModal({
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-surface text-fg rounded-xl w-full max-w-lg border border-border max-h-[92vh] overflow-y-auto"
+        className="bg-surface text-fg rounded-xl w-full max-w-3xl border border-border max-h-[92vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3">
@@ -257,8 +290,20 @@ export default function EventModal({
         <div className="px-5 pb-3 space-y-3">
           {tab === 'general' && (
             <>
-              {/* Type pills */}
-              <div className="grid grid-cols-3 gap-2">
+              {initialEvent && (
+                <AttendancePanel
+                  status={attendanceStatus}
+                  note={attendanceNote}
+                  busy={attendanceSaving}
+                  isPast={isPastEvent}
+                  onChange={saveAttendance}
+                  onNoteChange={setAttendanceNote}
+                  onNoteBlur={() => saveAttendance(attendanceStatus)}
+                />
+              )}
+
+              {/* Type pills — full width */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {EVENT_TYPES.map((t) => (
                   <button
                     key={t.value}
@@ -275,123 +320,137 @@ export default function EventModal({
                 ))}
               </div>
 
-              {/* Conditional location/url */}
-              {eventType === 'meeting_online' && (
-                <Field label="Link sedinta">
-                  <input
-                    type="url"
-                    value={meetingUrl}
-                    onChange={(e) => setMeetingUrl(e.target.value)}
-                    placeholder="https://meet.google.com/..."
-                    className={inputCls}
-                  />
-                </Field>
-              )}
-              {(eventType === 'meeting_in_person' || eventType === 'appointment') && (
-                <Field label="Locatie">
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Adresa, sala..."
-                    className={inputCls}
-                  />
-                </Field>
-              )}
-
-              <Field label="Categorie">
-                <select
-                  value={categoryId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setCategoryId(id);
-                    const cat = categories.find((c) => c.id === id);
-                    if (cat) setColor(cat.color);
-                  }}
-                  className={inputCls}
-                >
-                  <option value="">— fara —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon ? `${c.icon} ` : ''}{c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isAllDay}
-                  onChange={(e) => setIsAllDay(e.target.checked)}
-                />
-                Toata ziua
-              </label>
-
-              <Field label="Data">
-                <input
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className={inputCls}
-                />
-              </Field>
-
-              {!isAllDay && (
-                <div className="flex gap-3">
-                  <Field label="Inceput" className="flex-1">
-                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} />
+              {/* 2-column form on wider screens — keeps everything visible without scroll */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Conditional location/url */}
+                {eventType === 'meeting_online' && (
+                  <Field label="Link sedinta" className="sm:col-span-2">
+                    <input
+                      type="url"
+                      value={meetingUrl}
+                      onChange={(e) => setMeetingUrl(e.target.value)}
+                      placeholder="https://meet.google.com/..."
+                      className={inputCls}
+                    />
                   </Field>
-                  <Field label="Sfarsit" className="flex-1">
-                    <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} />
+                )}
+                {(eventType === 'meeting_in_person' || eventType === 'appointment') && (
+                  <Field label="Locatie" className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Adresa, sala..."
+                      className={inputCls}
+                    />
                   </Field>
-                </div>
-              )}
+                )}
 
-              <Field label="Recurenta">
-                <select value={recurrence} onChange={(e) => setRecurrence(e.target.value as RecurrenceRule)} className={inputCls}>
-                  {RECURRENCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </Field>
+                <Field label="Categorie">
+                  <select
+                    value={categoryId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setCategoryId(id);
+                      const cat = categories.find((c) => c.id === id);
+                      if (cat) setColor(cat.color);
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">— fara —</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon ? `${c.icon} ` : ''}{c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
 
-              {recurrence !== 'NONE' && (
-                <Field label="Pana la (optional)">
+                <Field label="Recurenta">
+                  <select value={recurrence} onChange={(e) => setRecurrence(e.target.value as RecurrenceRule)} className={inputCls}>
+                    {RECURRENCE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Data">
                   <input
                     type="date"
-                    value={recurrenceUntil}
-                    onChange={(e) => setRecurrenceUntil(e.target.value)}
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
                     className={inputCls}
                   />
                 </Field>
-              )}
 
-              <Field label="Descriere / Agenda">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className={`${inputCls} resize-none`}
-                  placeholder="Topic, agenda, note..."
-                />
-              </Field>
-
-              <Field label="Culoare">
-                <div className="flex gap-2 flex-wrap">
-                  {EVENT_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setColor(c)}
-                      type="button"
-                      className={`w-7 h-7 rounded-full transition-all ${
-                        color === c ? 'ring-2 ring-fg ring-offset-2 ring-offset-surface scale-110' : 'hover:scale-110'
-                      }`}
-                      style={{ backgroundColor: c }}
+                {recurrence !== 'NONE' ? (
+                  <Field label="Recurenta pana la (optional)">
+                    <input
+                      type="date"
+                      value={recurrenceUntil}
+                      onChange={(e) => setRecurrenceUntil(e.target.value)}
+                      className={inputCls}
                     />
-                  ))}
-                </div>
-              </Field>
+                  </Field>
+                ) : (
+                  <label className="flex items-center gap-2 text-sm self-end pb-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllDay}
+                      onChange={(e) => setIsAllDay(e.target.checked)}
+                    />
+                    Toata ziua
+                  </label>
+                )}
+
+                {!isAllDay && (
+                  <>
+                    <Field label="Inceput">
+                      <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} />
+                    </Field>
+                    <Field label="Sfarsit">
+                      <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} />
+                    </Field>
+                  </>
+                )}
+
+                {recurrence !== 'NONE' && (
+                  <label className="flex items-center gap-2 text-sm self-end pb-2 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllDay}
+                      onChange={(e) => setIsAllDay(e.target.checked)}
+                    />
+                    Toata ziua
+                  </label>
+                )}
+
+                <Field label="Descriere / Agenda" className="sm:col-span-2">
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                    className={`${inputCls} resize-none`}
+                    placeholder="Topic, agenda, note..."
+                  />
+                </Field>
+
+                <Field label="Culoare" className="sm:col-span-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {EVENT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setColor(c)}
+                        type="button"
+                        className={`w-7 h-7 rounded-full transition-all ${
+                          color === c ? 'ring-2 ring-fg ring-offset-2 ring-offset-surface scale-110' : 'hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </Field>
+              </div>
             </>
           )}
 
@@ -501,5 +560,77 @@ function Field({ label, children, className }: { label: string; children: React.
       <span className="text-xs text-muted mb-1 block">{label}</span>
       {children}
     </label>
+  );
+}
+
+function AttendancePanel({
+  status, note, busy, isPast, onChange, onNoteChange, onNoteBlur,
+}: {
+  status: AttendanceStatus;
+  note: string;
+  busy: boolean;
+  isPast: boolean;
+  onChange: (s: AttendanceStatus) => void;
+  onNoteChange: (s: string) => void;
+  onNoteBlur: () => void;
+}) {
+  const isAttended = status === 'ATTENDED' || status === 'AUTO_ATTENDED';
+  const isMissed = status === 'MISSED';
+  const isAuto = status === 'AUTO_ATTENDED';
+
+  return (
+    <div className={`rounded-lg border p-3 space-y-2 ${
+      isMissed ? 'bg-red-500/10 border-red-500/40'
+      : isAttended ? (isAuto ? 'bg-amber-500/10 border-amber-500/40' : 'bg-emerald-500/10 border-emerald-500/40')
+      : 'bg-elevated border-border'
+    }`}>
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs uppercase tracking-wide text-muted">
+          Prezenta {isPast ? '' : '(va putea fi schimbata dupa ce trece evenimentul)'}
+        </p>
+        {isAuto && (
+          <span className="text-[10px] text-amber-500">auto-bifat</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onChange('ATTENDED')}
+          className={`py-2 rounded-md text-sm border transition-colors disabled:opacity-50 ${
+            isAttended
+              ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500'
+              : 'border-border hover:border-fg/30'
+          }`}
+        >
+          ✓ Am fost
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onChange('MISSED')}
+          className={`py-2 rounded-md text-sm border transition-colors disabled:opacity-50 ${
+            isMissed
+              ? 'bg-red-500/20 border-red-500 text-red-500'
+              : 'border-border hover:border-fg/30'
+          }`}
+        >
+          ✕ Nu am fost
+        </button>
+      </div>
+      {!isPast && status === 'PENDING' && (
+        <p className="text-[11px] text-muted">
+          Daca nu schimbi nimic, dupa ce trece evenimentul se bifeaza automat ca participat.
+        </p>
+      )}
+      <textarea
+        value={note}
+        onChange={(e) => onNoteChange(e.target.value)}
+        onBlur={onNoteBlur}
+        placeholder="Nota (ce s-a discutat / motiv absentei)"
+        rows={2}
+        className={`${inputCls} resize-none text-sm`}
+      />
+    </div>
   );
 }

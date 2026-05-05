@@ -379,6 +379,12 @@ def post_meeting_prompts():
 
                 user_obj = _get_user(db, event.user_id)
                 chat_id = _user_chat(db, event.user_id)
+
+                # Auto-mark attendance: if the user hasn't already said anything,
+                # assume they were there. They can flip it to MISSED later.
+                if event.attendance_status == "PENDING":
+                    event.attendance_status = "AUTO_ATTENDED"
+
                 if not chat_id or not _telegram_allowed(user_obj, now):
                     db.add(CalendarReminderLog(
                         event_id=event.id, occurrence_date=occ,
@@ -393,8 +399,9 @@ def post_meeting_prompts():
                 if event.location:
                     lines.append(f"Unde: {event.location}")
                 lines.append("")
-                lines.append("Ai participat? Daca da, raspunde aici cu o nota scurta — o salvez la eveniment.")
-                lines.append(f"Pentru a confirma rapid trimite: /attended {event.id}")
+                lines.append("Am bifat-o automat ca participat. Daca a fost altfel:")
+                lines.append(f"  • /attended {event.id} <nota>  — confirmi cu nota")
+                lines.append(f"  • /missed {event.id} <motiv>   — nu ai fost")
 
                 role = user_obj.role if user_obj else None
                 asyncio.create_task(_send_telegram("\n".join(lines), chat_id=chat_id, role=role))

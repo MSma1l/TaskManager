@@ -22,6 +22,11 @@ class CalendarEvent(Base):
     event_status = Column(String(20), default="CONFIRMED", nullable=False)
     # CONFIRMED | TENTATIVE | CANCELLED
 
+    # Per-occurrence attendance (only meaningful for past events)
+    # PENDING (default) | ATTENDED (user said yes) | MISSED (user said no) | AUTO_ATTENDED (auto after time passed)
+    attendance_status = Column(String(20), nullable=False, default="PENDING")
+    attendance_note = Column(Text, nullable=True)
+
     # Recurrence (simple): DAILY | WEEKLY | MONTHLY | None
     recurrence_rule = Column(String(20), nullable=True)
     recurrence_until = Column(Date, nullable=True)
