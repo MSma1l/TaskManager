@@ -44,8 +44,23 @@ export const authApi = {
   adminPasswordLogin: (username: string, password: string): Promise<AuthSession> =>
     client.post('/auth/admin/password-login', { username, password }).then((r) => r.data),
 
+  /**
+   * Combined login. Returns either a session (kind=session) OR a Telegram
+   * challenge that still needs verification (kind=challenge).
+   */
+  passwordLogin: (
+    username: string,
+    password: string,
+  ): Promise<
+    | ({ kind: 'session' } & AuthSession)
+    | ({ kind: 'challenge' } & LoginChallenge)
+  > => client.post('/auth/password-login', { username, password }).then((r) => r.data),
+
   setAdminPassword: (password: string) =>
     client.put('/auth/admin/password', { password }).then((r) => r.data),
+
+  setUserPassword: (password: string) =>
+    client.put('/auth/password', { password }).then((r) => r.data),
 
   me: (): Promise<MeResponse> => client.get('/auth/me').then((r) => r.data),
 

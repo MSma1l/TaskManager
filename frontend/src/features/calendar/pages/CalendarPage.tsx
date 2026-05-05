@@ -5,6 +5,7 @@ import { formatDate, getMonday, MONTHS_RO, DAYS_RO_LONG } from '../utils/dates';
 import DayView from '../components/DayView';
 import WeekView from '../components/WeekView';
 import MonthView from '../components/MonthView';
+import MobileCalendar from '../components/MobileCalendar';
 import EventModal from '../components/EventModal';
 
 type ViewMode = 'day' | 'week' | 'month';
@@ -31,20 +32,24 @@ export default function CalendarPage() {
   useEffect(() => { localStorage.setItem('calendarView', view); }, [view]);
 
   // Compute the visible date range based on view
+  // (mobile always needs at least the cursor's week for the agenda sub-view)
   const range = useMemo(() => {
-    if (view === 'day') {
-      return { start: formatDate(cursor), end: formatDate(cursor), title: dayTitle(cursor) };
-    }
-    if (view === 'week') {
-      const monday = getMonday(cursor);
-      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-      return { start: formatDate(monday), end: formatDate(sunday), title: weekTitle(monday, sunday) };
-    }
-    // month — pad to full grid (6 weeks)
+    // Always fetch the full month grid containing the cursor — this covers
+    // every desktop view AND the mobile agenda/day/month sub-views without
+    // needing per-mobile-sub fetches.
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
     const startGrid = getMonday(first);
     const lastGrid = new Date(startGrid); lastGrid.setDate(startGrid.getDate() + 41);
-    return { start: formatDate(startGrid), end: formatDate(lastGrid), title: `${MONTHS_RO[cursor.getMonth()]} ${cursor.getFullYear()}` };
+    let title: string;
+    if (view === 'day') title = dayTitle(cursor);
+    else if (view === 'week') {
+      const monday = getMonday(cursor);
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      title = weekTitle(monday, sunday);
+    } else {
+      title = `${MONTHS_RO[cursor.getMonth()]} ${cursor.getFullYear()}`;
+    }
+    return { start: formatDate(startGrid), end: formatDate(lastGrid), title };
   }, [view, cursor]);
 
   const fetchEvents = async () => {
@@ -340,17 +345,28 @@ export default function CalendarPage() {
         {/* Main content */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
           {loading && (
-            <div className="absolute top-2 right-3 text-xs text-muted">se incarca…</div>
+            <div className="absolute top-2 right-3 text-xs text-muted z-10">se incarca…</div>
           )}
-          {view === 'day' && (
-            <DayView date={cursor} events={visibleEvents} onCellClick={handleCellClick} onEventClick={openEdit} />
-          )}
-          {view === 'week' && (
-            <WeekView weekStart={getMonday(cursor)} events={visibleEvents} onCellClick={handleCellClick} onEventClick={openEdit} />
-          )}
-          {view === 'month' && (
-            <MonthView monthStart={cursor} events={visibleEvents} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} />
-          )}
+          {/* Mobile (Outlook-style) */}
+          <MobileCalendar
+            events={visibleEvents}
+            cursor={cursor}
+            setCursor={setCursor}
+            onEventClick={openEdit}
+            onCellClick={handleCellClick}
+          />
+          {/* Desktop */}
+          <div className="hidden md:flex md:flex-col md:flex-1 md:overflow-hidden">
+            {view === 'day' && (
+              <DayView date={cursor} events={visibleEvents} onCellClick={handleCellClick} onEventClick={openEdit} />
+            )}
+            {view === 'week' && (
+              <WeekView weekStart={getMonday(cursor)} events={visibleEvents} onCellClick={handleCellClick} onEventClick={openEdit} />
+            )}
+            {view === 'month' && (
+              <MonthView monthStart={cursor} events={visibleEvents} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} />
+            )}
+          </div>
         </div>
       </div>
 

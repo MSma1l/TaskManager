@@ -86,6 +86,60 @@ async def admin_password_login(data: AdminPasswordLoginRequest, db: Session = De
     return auth_service.issue_session(user)
 
 
+@router.post("/password-login")
+async def password_login(data: AdminPasswordLoginRequest, db: Session = Depends(get_db)):
+    """Combined credentials flow for any user (USER or ADMIN).
+
+    Returns either a TokenOut (admin shortcut, no 2FA) OR a LoginChallengeOut
+    asking for a Telegram code (regular users that have Telegram linked).
+    The frontend dispatches based on the `kind` field in the response.
+    """
+    user = auth_service.get_user_by_username(db, data.username)
+    if not user or not user.password_hash or not verify_secret(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Username sau parola gresita")
+
+    # Admin: no second factor needed (already had a password)
+    if user.role == "ADMIN":
+        from datetime import datetime
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+        session = auth_service.issue_session(user)
+        return {"kind": "session", **session}
+
+    # Regular user with linked Telegram → require 2FA code as second factor
+    if user.telegram_chat_id:
+        record, _code, delivered_via = auth_service.create_login_challenge(db, user, purpose="login")
+        return {
+            "kind": "challenge",
+            "challengeId": record.id,
+            "expiresAt": record.expires_at.isoformat(),
+            "deliveredVia": delivered_via,
+            "hint": auth_service.telegram_hint(user),
+        }
+
+    # User without Telegram linked: password alone is enough (single factor)
+    from datetime import datetime
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    session = auth_service.issue_session(user)
+    return {"kind": "session", **session}
+
+
+@router.put("/password")
+async def set_user_password(
+    data: SetPasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """User sets / changes their own password (used for combined login flow)."""
+    pwd = (data.password or "").strip()
+    if len(pwd) < 6:
+        raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
+    user.password_hash = hash_secret(pwd)
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/admin/password", response_model=MeOut)
 async def set_admin_password(
     data: SetPasswordRequest,

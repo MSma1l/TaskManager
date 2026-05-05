@@ -83,6 +83,11 @@ export function useAuth() {
     }
   }, []);
 
+  const consumeSession = useCallback((session: AuthSession) => {
+    writeSession(session);
+    setState(readState());
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     localStorage.removeItem('username');
@@ -96,6 +101,7 @@ export function useAuth() {
     verifyCode,
     refreshWithPin,
     adminPasswordLogin,
+    consumeSession,
     logout,
   };
 }

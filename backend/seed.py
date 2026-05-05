@@ -34,13 +34,33 @@ def seed_categories(db):
 
 
 def seed_admin(db):
-    """Create the initial admin from .env values, if no admin exists yet."""
+    """Create the initial admin from .env values, or repair an existing admin
+    that is missing the password_hash / pin_hash (fixes login lockouts after
+    schema upgrades or DB restores)."""
     has_admin = db.query(User).filter(User.role == "ADMIN").first()
+    pin = settings.APP_PIN
+    admin_password = settings.ADMIN_PASSWORD
+
     if has_admin:
+        changed = False
+        # Ensure admin can always log in via password (fixes "can't enter as admin")
+        if admin_password and not has_admin.password_hash:
+            has_admin.password_hash = hash_secret(admin_password)
+            changed = True
+        if pin and not has_admin.pin_hash:
+            has_admin.pin_hash = hash_secret(pin)
+            changed = True
+        if not has_admin.is_active:
+            has_admin.is_active = True
+            changed = True
+        if changed:
+            db.flush()
+            print(
+                f"Admin reparat: username={has_admin.username} (password/pin reset din .env)"
+            )
         return has_admin
 
     username = (settings.ADMIN_USERNAME or "admin").strip().lower()
-    pin = settings.APP_PIN
     chat_id = settings.TELEGRAM_CHAT_ID if settings.TELEGRAM_CHAT_ID and settings.TELEGRAM_CHAT_ID != "your_chat_id_here" else None
 
     # Use the existing chat_id as the admin's user_id so legacy calendar
@@ -52,7 +72,7 @@ def seed_admin(db):
         telegram_chat_id=chat_id,
         role="ADMIN",
         pin_hash=hash_secret(pin) if pin else None,
-        password_hash=hash_secret(settings.ADMIN_PASSWORD) if settings.ADMIN_PASSWORD else None,
+        password_hash=hash_secret(admin_password) if admin_password else None,
         is_active=True,
     )
     if chat_id:
