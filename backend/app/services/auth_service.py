@@ -62,6 +62,16 @@ def create_login_challenge(db: Session, user: User, purpose: str = "login") -> t
     return record, code, delivery
 
 
+_MD2_ESCAPE = "_*[]()~`>#+-=|{}.!"
+
+
+def _md2_escape(text: str) -> str:
+    """Escape every MarkdownV2 special char so plain text doesn't break the parser.
+    Per https://core.telegram.org/bots/api#markdownv2-style.
+    """
+    return "".join("\\" + c if c in _MD2_ESCAPE else c for c in text)
+
+
 def _deliver_code(user: User, code: str, purpose: str) -> str:
     """Send the code to the user via Telegram. Falls back to console log if no chat linked.
 
@@ -73,7 +83,6 @@ def _deliver_code(user: User, code: str, purpose: str) -> str:
     if lang not in ("ro", "ru"):
         lang = "ro"
 
-    # Per-language strings. Keep them tight; the code itself is the hero.
     labels = {
         "ro": {"login": "logare", "refresh": "reinnoire sesiune", "admin": "logare admin"},
         "ru": {"login": "вход", "refresh": "обновление сессии", "admin": "вход админа"},
@@ -98,14 +107,14 @@ def _deliver_code(user: User, code: str, purpose: str) -> str:
         )
         return "console"
 
-    # MarkdownV2 hero block — the code becomes a big monospaced number that
-    # is one-tap copy in Telegram. Escape `_` `*` `[` `]` etc.
-    safe_title = title.replace("-", "\\-")
+    # MarkdownV2 hero block — every plain-text segment must be escaped, but
+    # the code stays inside `inline-code` (where escaping rules are simpler:
+    # only ` and \ need escaping, neither of which appears in a 6-digit number).
     text = (
         f"*TaskManager*\n"
-        f"_{safe_title}_\n\n"
+        f"_{_md2_escape(title)}_\n\n"
         f"`{code}`\n\n"
-        f"{footer}"
+        f"{_md2_escape(footer)}"
     )
     try:
         from app.telegram.bot import _bot_for_role

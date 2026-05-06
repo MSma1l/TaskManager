@@ -236,9 +236,21 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   }, [challenge]);
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-4 py-6 relative">
+    <div
+      className="min-h-screen bg-slate-900 flex flex-col items-center px-4 relative"
+      style={{
+        // Honour iOS notch + home indicator and leave room for the absolute
+        // language switcher above plus breathing space at the bottom.
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)',
+        justifyContent: 'center',
+      }}
+    >
       {/* Language switcher in the top-right corner */}
-      <div className="absolute top-4 right-4">
+      <div
+        className="absolute right-4"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+      >
         <LanguageSwitcher />
       </div>
 
