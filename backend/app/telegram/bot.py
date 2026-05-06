@@ -1,4 +1,4 @@
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, MenuButtonWebApp, MenuButtonDefault, WebAppInfo
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters,
 )
@@ -254,6 +254,43 @@ async def _handle_callback(update: Update, context):
         pass
 
 
+def _mini_app_url() -> str | None:
+    """Build the Mini App URL from FRONTEND_URL. Telegram requires HTTPS,
+    so we silently skip the menu button setup when running on http (dev)."""
+    base = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    if not base.startswith("https://"):
+        return None
+    return f"{base}/tg-app"
+
+
+async def _setup_menu_button(app: Application):
+    """Set the bot's persistent menu button to open the Mini App.
+
+    Equivalent to BotFather → Bot Settings → Menu Button → Configure menu
+    button, but done programmatically via the Bot API. Setting chat_id=None
+    applies it as the default for every user that opens the chat.
+    """
+    url = _mini_app_url()
+    try:
+        if url:
+            await app.bot.set_chat_menu_button(
+                chat_id=None,
+                menu_button=MenuButtonWebApp(
+                    text="Open App",
+                    web_app=WebAppInfo(url=url),
+                ),
+            )
+            print(f"[BOT] Menu button set → Mini App at {url}")
+        else:
+            # Fallback to Telegram's default ("commands menu") on http / dev
+            await app.bot.set_chat_menu_button(
+                chat_id=None,
+                menu_button=MenuButtonDefault(),
+            )
+    except Exception as e:
+        print(f"[BOT] set_chat_menu_button failed (skipping): {e}")
+
+
 async def _setup_commands(app: Application):
     """Set bot commands menu in Telegram."""
     commands = [
@@ -315,11 +352,13 @@ def create_admin_bot() -> Application | None:
 
 
 async def setup_bot_commands():
-    """Register command menu on both bots (whichever exist)."""
+    """Register command menu and Mini App menu button on both bots."""
     if application:
         await _setup_commands(application)
+        await _setup_menu_button(application)
     if admin_application:
         await _setup_commands(admin_application)
+        await _setup_menu_button(admin_application)
 
 
 def _bot_for_role(role: str | None) -> Application | None:
