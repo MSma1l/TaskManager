@@ -63,11 +63,13 @@ class MeOut(BaseModel):
     hasPin: bool
     lastLoginAt: Optional[datetime] = None
     theme: str = "dark"
+    language: str = "ro"
     notificationSettings: Optional[dict] = None
 
 
 class UpdateMeRequest(BaseModel):
     fullName: Optional[str] = None
     email: Optional[str] = None
-    theme: Optional[str] = None  # "dark" | "light"
+    theme: Optional[str] = None       # "dark" | "light"
+    language: Optional[str] = None    # "ro" | "ru"
     notificationSettings: Optional[dict] = None

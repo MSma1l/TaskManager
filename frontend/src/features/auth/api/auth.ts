@@ -74,6 +74,7 @@ export const authApi = {
     fullName?: string;
     email?: string;
     theme?: 'dark' | 'light';
+    language?: 'ro' | 'ru';
     notificationSettings?: Record<string, unknown> | null;
   }): Promise<MeResponse> => client.put('/auth/me', data).then((r) => r.data),
 

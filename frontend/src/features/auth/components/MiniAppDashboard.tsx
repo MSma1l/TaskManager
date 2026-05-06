@@ -3,14 +3,21 @@ import { tasksApi, Task } from '../../tasks/api/tasks';
 import { calendarApi, CalendarEvent } from '../../calendar/api/calendar';
 import { completionsApi } from '../../tasks/api/completions';
 import { formatISO, getWeekStart, getDayOfWeek } from '../../../shared/utils/dates';
+import { useT, useI18n } from '../../../shared/i18n/I18nProvider';
+import LanguageSwitcher from '../../../shared/i18n/LanguageSwitcher';
 
 type Tab = 'tasks' | 'calendar';
 
-const DAYS_RO = ['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'];
-const MONTHS_RO = [
-  'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
-  'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie',
-];
+const DAY_NAMES = {
+  ro: ['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'],
+  ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+};
+const MONTH_NAMES = {
+  ro: ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
+       'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'],
+  ru: ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+       'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'],
+};
 
 interface Props {
   username: string | null;
@@ -27,6 +34,8 @@ interface Props {
  * task lists.
  */
 export default function MiniAppDashboard({ username, fullName, colorScheme, onOpenFullApp }: Props) {
+  const t = useT();
+  const { lang } = useI18n();
   const [tab, setTab] = useState<Tab>('tasks');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -39,7 +48,7 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
   const weekStart = useMemo(() => getWeekStart(today), [today]);
   const weekStartIso = formatISO(weekStart);
 
-  const niceDate = `${DAYS_RO[todayDow - 1]}, ${today.getDate()} ${MONTHS_RO[today.getMonth()]}`;
+  const niceDate = `${DAY_NAMES[lang][todayDow - 1]}, ${today.getDate()} ${MONTH_NAMES[lang][today.getMonth()]}`;
 
   const loadAll = async () => {
     setLoading(true);
@@ -95,25 +104,28 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: bg, color: fg }}>
       {/* Header */}
-      <div className="px-4 pt-4 pb-3" style={{ borderBottom: `1px solid ${border}` }}>
-        <p className="text-xs" style={{ color: muted }}>{niceDate}</p>
-        <h1 className="text-xl font-bold mt-0.5">
-          Buna{fullName ? `, ${fullName.split(' ')[0]}` : username ? `, @${username}` : ''}!
-        </h1>
-        <p className="text-[12px] mt-0.5" style={{ color: muted }}>
-          {tab === 'tasks'
-            ? `${doneTasks}/${tasks.length} taskuri completate azi`
-            : `${pendingEvents} eveniment${pendingEvents !== 1 ? 'e' : ''} programate`}
-        </p>
+      <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: `1px solid ${border}` }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs" style={{ color: muted }}>{niceDate}</p>
+          <h1 className="text-xl font-bold mt-0.5 truncate">
+            {t('miniApp.welcome')}{fullName ? `, ${fullName.split(' ')[0]}` : username ? `, @${username}` : ''}!
+          </h1>
+          <p className="text-[12px] mt-0.5" style={{ color: muted }}>
+            {tab === 'tasks'
+              ? `${doneTasks}/${tasks.length} ${t('miniApp.tasksProgress')}`
+              : `${pendingEvents} ${pendingEvents === 1 ? t('miniApp.eventsCount') : t('miniApp.eventsCountPl')} ${t('miniApp.eventsScheduled')}`}
+          </p>
+        </div>
+        <LanguageSwitcher compact />
       </div>
 
       {/* Tabs */}
       <div className="flex px-2 pt-2" style={{ borderBottom: `1px solid ${border}` }}>
         <TabBtn active={tab === 'tasks'} onClick={() => setTab('tasks')} accent={accent} muted={muted}>
-          Taskuri
+          {t('miniApp.tabTasks')}
         </TabBtn>
         <TabBtn active={tab === 'calendar'} onClick={() => setTab('calendar')} accent={accent} muted={muted}>
-          Calendar
+          {t('miniApp.tabCalendar')}
         </TabBtn>
       </div>
 
@@ -127,13 +139,13 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
         )}
 
         {loading ? (
-          <div className="text-center py-10 text-sm" style={{ color: muted }}>Se incarca...</div>
+          <div className="text-center py-10 text-sm" style={{ color: muted }}>{t('common.loading')}</div>
         ) : tab === 'tasks' ? (
           tasks.length === 0 ? (
             <Empty
               icon="checkmark"
-              title="Nicio sarcina astazi"
-              subtitle="Bucura-te de ziua libera!"
+              title={t('miniApp.noTasks')}
+              subtitle={t('miniApp.noTasksHint')}
               muted={muted}
             />
           ) : (
@@ -197,8 +209,8 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
           events.length === 0 ? (
             <Empty
               icon="calendar"
-              title="Nimic programat astazi"
-              subtitle="Calendar-ul tau e liber"
+              title={t('miniApp.noEvents')}
+              subtitle={t('miniApp.noEventsHint')}
               muted={muted}
             />
           ) : (
@@ -213,7 +225,7 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
                   <div className="flex-1 p-3 min-w-0">
                     <p className="text-sm font-medium truncate">{e.title}</p>
                     <p className="text-[11px]" style={{ color: muted }}>
-                      {e.isAllDay ? 'Toata ziua' : `${e.startTime} - ${e.endTime}`}
+                      {e.isAllDay ? t('miniApp.allDay') : `${e.startTime} - ${e.endTime}`}
                       {e.location && ` · ${e.location}`}
                     </p>
                   </div>
@@ -232,7 +244,7 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
           className="text-xs px-3 py-1.5 rounded-lg"
           style={{ color: muted }}
         >
-          ↻ Reincarca
+          {t('miniApp.reload')}
         </button>
         <button
           type="button"
@@ -240,7 +252,7 @@ export default function MiniAppDashboard({ username, fullName, colorScheme, onOp
           className="text-xs font-medium px-3 py-1.5 rounded-lg"
           style={{ color: accent }}
         >
-          Aplicatia completa →
+          {t('miniApp.fullApp')}
         </button>
       </div>
     </div>

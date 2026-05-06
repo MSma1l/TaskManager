@@ -21,6 +21,7 @@ class User(Base):
 
     # Preferences
     theme = Column(String(20), nullable=False, default="dark")  # dark | light
+    language = Column(String(5), nullable=False, default="ro")   # ro | ru
     notification_settings = Column(JSON, nullable=True)
     # { "telegram": true, "web": true, "doNotDisturbStart": "22:00", "doNotDisturbEnd": "07:00",
     #   "defaultReminderMinutes": [15] }

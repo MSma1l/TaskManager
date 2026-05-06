@@ -34,6 +34,7 @@ def _user_to_me(user: User) -> dict:
         "hasPin": bool(user.pin_hash),
         "lastLoginAt": user.last_login_at,
         "theme": user.theme or "dark",
+        "language": getattr(user, "language", None) or "ro",
         "notificationSettings": user.notification_settings or None,
     }
 
@@ -429,6 +430,10 @@ async def update_me(
         if data.theme not in {"dark", "light"}:
             raise HTTPException(status_code=400, detail="Tema trebuie sa fie 'dark' sau 'light'")
         user.theme = data.theme
+    if data.language is not None:
+        if data.language not in {"ro", "ru"}:
+            raise HTTPException(status_code=400, detail="Limba trebuie sa fie 'ro' sau 'ru'")
+        user.language = data.language
     if data.notificationSettings is not None:
         user.notification_settings = data.notificationSettings
     db.commit()

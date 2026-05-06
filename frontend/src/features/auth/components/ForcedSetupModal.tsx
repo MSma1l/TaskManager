@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { authApi, MeResponse } from '../api/auth';
+import { useT } from '../../../shared/i18n/I18nProvider';
+import LanguageSwitcher from '../../../shared/i18n/LanguageSwitcher';
 
 interface Props {
   me: MeResponse;
@@ -20,6 +22,7 @@ type UsernameState =
  *   2) Security — PIN (4-8) + optional password (admin or user-side login)
  */
 export default function ForcedSetupModal({ me, onDone }: Props) {
+  const t = useT();
   const [username, setUsername] = useState(me.username);
   const [usernameState, setUsernameState] = useState<UsernameState>({ status: 'idle' });
   const [fullName, setFullName] = useState(me.fullName || '');
@@ -157,17 +160,18 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-surface rounded-2xl border border-border shadow-2xl p-6 sm:p-8">
+      <div className="w-full max-w-md bg-surface rounded-2xl border border-border shadow-2xl p-6 sm:p-8 relative">
+        <div className="absolute top-4 right-4">
+          <LanguageSwitcher />
+        </div>
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <p className="text-xs uppercase tracking-wider text-blue-500 font-semibold">Setup obligatoriu</p>
+            <p className="text-xs uppercase tracking-wider text-blue-500 font-semibold">{t('setup.label')}</p>
           </div>
-          <h2 className="text-2xl font-bold">Configureaza-ti contul</h2>
+          <h2 className="text-2xl font-bold">{t('setup.title')}</h2>
           <p className="text-sm text-muted mt-1">
-            {step === 1
-              ? 'Date de baza ale contului — username, nume si modul de re-logare.'
-              : 'Setezi un PIN scurt (4-8 cifre) pentru re-logare rapida.'}
+            {step === 1 ? t('setup.step1Sub') : t('setup.step2Sub')}
           </p>
           <div className="flex gap-1.5 mt-3">
             <span className={`h-1.5 flex-1 rounded-full ${step >= 1 ? 'bg-blue-500' : 'bg-elevated'}`} />
@@ -185,7 +189,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
           <form onSubmit={submitStep1} className="space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-muted">Username *</label>
+                <label className="text-xs text-muted">{t('setup.username')}</label>
                 {usernameBadge}
               </div>
               <input
@@ -198,11 +202,11 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
                 className={`w-full bg-input text-fg rounded-lg px-3 py-2 border-2 outline-none transition-colors ${usernameBorderColor} focus:border-blue-500`}
               />
               <p className="text-[11px] text-muted mt-1">
-                3-30 caractere: litere mici, cifre, "_" sau "."
+                {t('setup.usernameRules')}
               </p>
             </div>
             <div>
-              <label className="text-xs text-muted block mb-1">Nume complet *</label>
+              <label className="text-xs text-muted block mb-1">{t('setup.fullName')}</label>
               <input
                 type="text"
                 value={fullName}
@@ -216,7 +220,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
               disabled={busy || usernameState.status === 'checking'}
               className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-medium rounded-lg py-2.5 mt-2"
             >
-              {busy ? 'Se salveaza...' : (needPin ? 'Continua →' : 'Salveaza si intra')}
+              {busy ? t('common.saving') : (needPin ? `${t('common.next')} →` : t('common.save'))}
             </button>
           </form>
         )}
@@ -224,7 +228,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
         {step === 2 && (
           <form onSubmit={submitStep2} className="space-y-3">
             <div>
-              <label className="text-xs text-muted block mb-1">PIN nou (4-8 cifre) *</label>
+              <label className="text-xs text-muted block mb-1">{t('setup.pin')}</label>
               <input
                 type="password"
                 inputMode="numeric"
@@ -236,7 +240,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
               />
             </div>
             <div>
-              <label className="text-xs text-muted block mb-1">Confirma PIN *</label>
+              <label className="text-xs text-muted block mb-1">{t('setup.pinConfirm')}</label>
               <input
                 type="password"
                 inputMode="numeric"
@@ -249,7 +253,7 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
 
             <div className="pt-2 border-t border-border">
               <label className="text-xs text-muted block mb-1">
-                Parola {isAdmin ? 'admin' : 'cont'} (optional, min 6 caractere)
+                {t('setup.passwordOptional')}
               </label>
               <input
                 type="password"
@@ -271,14 +275,14 @@ export default function ForcedSetupModal({ me, onDone }: Props) {
                 onClick={() => setStep(1)}
                 className="px-4 py-2.5 bg-elevated hover:bg-fg/10 text-fg rounded-lg text-sm"
               >
-                ← Inapoi
+                ← {t('common.back')}
               </button>
               <button
                 type="submit"
                 disabled={busy || pin.length < 4}
                 className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-medium rounded-lg py-2.5"
               >
-                {busy ? 'Se salveaza...' : 'Finalizeaza setup'}
+                {busy ? t('common.saving') : t('common.finish')}
               </button>
             </div>
           </form>

@@ -4,6 +4,8 @@ import { authApi, LoginChallenge, AuthSession } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import PinInput from '../components/PinInput';
 import QRLoginCard from '../components/QRLoginCard';
+import { useT } from '../../../shared/i18n/I18nProvider';
+import LanguageSwitcher from '../../../shared/i18n/LanguageSwitcher';
 
 type Mode = 'admin' | 'user';
 type Step = 'main' | 'credentials' | 'code' | 'pin' | 'username-only';
@@ -25,6 +27,7 @@ interface LoginPageProps {
 export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const t = useT();
   const { isAuthenticated, verifyCode, refreshWithPin, adminPasswordLogin, consumeSession } = useAuth();
 
   const isAdminMode = mode === 'admin';
@@ -233,20 +236,25 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   }, [challenge]);
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-4 py-6">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-4 py-6 relative">
+      {/* Language switcher in the top-right corner */}
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
+
       <div className="mb-7 text-center">
         <div className={`w-20 h-20 rounded-2xl ${titleColor} flex items-center justify-center text-3xl font-bold mx-auto mb-4 text-white shadow-lg`}>
           {isAdmin ? 'A' : 'TM'}
         </div>
         <h1 className="text-2xl font-bold text-white">
-          {isAdmin ? 'Admin Panel' : 'Weekly Task Manager'}
+          {isAdmin ? t('login.adminTitle') : t('login.title')}
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
-          {step === 'main' && 'Conecteaza-te prin Telegram sau scaneaza QR'}
-          {step === 'credentials' && (isAdmin ? 'Logare administrator' : 'Username + parola')}
-          {step === 'username-only' && 'Trimite cod pe Telegram'}
-          {step === 'code' && 'Codul din Telegram'}
-          {step === 'pin' && 'Re-logare rapida cu PIN'}
+          {step === 'main' && t('login.subMain')}
+          {step === 'credentials' && (isAdmin ? t('login.subAdmin') : t('login.subCredentials'))}
+          {step === 'username-only' && t('login.subUsernameOnly')}
+          {step === 'code' && t('login.subCode')}
+          {step === 'pin' && t('login.subPin')}
         </p>
       </div>
 
@@ -268,15 +276,15 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-widest text-blue-100/80 font-semibold">Recomandat</p>
-                  <p className="font-bold text-base">Continua cu Telegram</p>
+                  <p className="text-[10px] uppercase tracking-widest text-blue-100/80 font-semibold">{t('login.recommended')}</p>
+                  <p className="font-bold text-base">{t('login.continueTelegram')}</p>
                 </div>
                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </div>
               <p className="text-xs text-blue-100/90 leading-relaxed">
-                Cont nou sau existent — botul te ghideaza si deschide aplicatia direct in Telegram.
+                {t('login.telegramHint')}
               </p>
             </a>
           ) : (
@@ -300,8 +308,8 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
               </svg>
             </div>
             <div className="flex-1 text-left min-w-0">
-              <p className="font-semibold text-sm">Scaneaza QR cu telefonul</p>
-              <p className="text-[11px] text-slate-400">Aprobi din chatul botului</p>
+              <p className="font-semibold text-sm">{t('login.scanQR')}</p>
+              <p className="text-[11px] text-slate-400">{t('login.scanQRHint')}</p>
             </div>
             <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
@@ -311,19 +319,19 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           {/* Existing users link cluster */}
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-px bg-slate-800" />
-            <span className="text-[10px] uppercase tracking-widest text-slate-500">deja ai cont?</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">{t('login.haveAccount')}</span>
             <div className="flex-1 h-px bg-slate-800" />
           </div>
 
           <div className="flex flex-col gap-1">
             <SmallLink onClick={() => { setStep('pin'); setError(null); }}>
-              Re-logare rapida cu PIN
+              {t('login.pinReLogin')}
             </SmallLink>
             <SmallLink onClick={() => { setStep('credentials'); setError(null); }}>
-              Logare cu username + parola
+              {t('login.classicLogin')}
             </SmallLink>
             <SmallLink onClick={() => { setStep('username-only'); setError(null); }}>
-              Doar username — cod pe Telegram
+              {t('login.telegramCodeOnly')}
             </SmallLink>
           </div>
         </div>
@@ -351,7 +359,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="username"
+            placeholder={t('login.placeholderUsername')}
             className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
           />
           <input
@@ -359,7 +367,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="parola"
+            placeholder={t('login.placeholderPassword')}
             className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
           />
           <button
@@ -367,10 +375,10 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             disabled={busy}
             className={`w-full ${primaryBtn} text-white font-medium rounded-xl py-3 transition-colors disabled:opacity-60`}
           >
-            {busy ? 'Se verifica...' : 'Continua'}
+            {busy ? t('common.loading') : t('login.btnContinue')}
           </button>
           <p className="text-[11px] text-center text-slate-500">
-            Daca ai Telegram legat, vom cere si codul 2FA dupa parola.
+            {t('login.has2FAHint')}
           </p>
 
         </form>
@@ -384,7 +392,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           onClick={() => { setStep('main'); setError(null); setPassword(''); }}
           className="mt-3 text-sm text-slate-400 hover:text-slate-200"
         >
-          ← Alta metoda de logare
+          {t('login.altLoginMethod')}
         </button>
       )}
 
@@ -397,7 +405,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="username"
+            placeholder={t('login.placeholderUsername')}
             className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none mb-3"
           />
           <button
@@ -405,14 +413,14 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             disabled={busy}
             className={`w-full ${primaryBtn} text-white font-medium rounded-xl py-3 transition-colors disabled:opacity-60`}
           >
-            {busy ? 'Se trimite cod...' : 'Trimite cod pe Telegram'}
+            {busy ? t('common.loading') : t('login.btnSendCode')}
           </button>
           <button
             type="button"
             onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setError(null); }}
             className="w-full text-slate-400 hover:text-slate-200 text-sm mt-3"
           >
-            ← Inapoi
+            ← {t('common.back')}
           </button>
         </form>
       )}
@@ -426,7 +434,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="username"
+            placeholder={t('login.placeholderUsername')}
             className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none mb-3"
           />
           <input
@@ -435,7 +443,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             autoComplete="one-time-code"
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
-            placeholder="PIN (4–8 cifre)"
+            placeholder={t('login.placeholderPin')}
             className={`w-full bg-slate-800 border-2 ${error ? 'border-red-500 animate-shake' : 'border-slate-700'} focus:border-blue-500 text-white text-2xl tracking-widest rounded-xl px-4 py-3 outline-none mb-3 text-center font-mono`}
             key={`pin-${errorKey}`}
           />
@@ -444,9 +452,9 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             disabled={busy || pinInput.length < 4}
             className={`w-full ${primaryBtn} disabled:opacity-60 text-white font-medium rounded-xl py-3 transition-colors`}
           >
-            {busy ? 'Se verifica...' : 'Logheaza cu PIN'}
+            {busy ? t('common.loading') : t('login.btnLoginPin')}
           </button>
-          <p className="text-center text-xs text-slate-500 mt-3">PIN-ul setat din profilul tau</p>
+          <p className="text-center text-xs text-slate-500 mt-3">{t('login.pinHint')}</p>
           <button
             type="button"
             onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setPinInput(''); setError(null); }}
@@ -462,21 +470,21 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
         <div className="w-full max-w-md">
           <PinInput key={`code-${errorKey}`} length={6} masked={false} onComplete={handleCode} error={!!error} />
           <p className="text-center text-xs text-slate-500 mt-4">{hint}</p>
-          <p className="text-center text-xs text-slate-500 mt-1">Cod valabil inca {secondsLeft}s</p>
+          <p className="text-center text-xs text-slate-500 mt-1">{t('login.codeValid')} {secondsLeft}s</p>
           <div className="flex gap-2 justify-center mt-4">
             <button
               onClick={requestNewCode}
               disabled={busy || secondsLeft > 240}
               className="text-sm text-slate-400 hover:text-white disabled:opacity-50"
             >
-              Retrimite cod
+              {t('login.resendCode')}
             </button>
             <span className="text-slate-600">·</span>
             <button
               onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setChallenge(null); setError(null); }}
               className="text-sm text-slate-400 hover:text-white"
             >
-              Inapoi
+              {t('common.back')}
             </button>
           </div>
         </div>
@@ -487,7 +495,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
       {!isAdmin && step === 'main' && !showQR && (
         <div className="mt-6 text-center">
           <Link to="/request-access" className="text-sm text-slate-500 hover:text-slate-300">
-            Probleme cu logarea? Cere acces clasic →
+            {t('login.helpLink')}
           </Link>
         </div>
       )}

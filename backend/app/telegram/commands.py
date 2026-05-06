@@ -139,52 +139,49 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from app.core.config import settings
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from app.telegram.i18n import t, get_lang
 
     base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
     if "3000" in base:
         base = "http://localhost"
     web_app_url = f"{base}/tg-app" if base.startswith("https://") else None
 
-    if not bound:
-        chat_id = str(update.effective_chat.id)
-        first_name = update.effective_user.first_name if update.effective_user else "vizitator"
+    lang = get_lang(bound)
 
-        # Build the inline keyboard. The Mini App button only works on HTTPS;
-        # fall back to a plain "register" button on http.
+    if not bound:
+        first_name = update.effective_user.first_name if update.effective_user else "—"
+
         rows = []
         if web_app_url:
             rows.append([InlineKeyboardButton(
-                "Deschide aplicatia",
+                t("btn_open_app", lang),
                 web_app=WebAppInfo(url=web_app_url),
             )])
-        rows.append([InlineKeyboardButton("Cont nou (/register)", callback_data="start_register")])
+        rows.append([InlineKeyboardButton(t("btn_register", lang), callback_data="start_register")])
+        # Always offer language switch up front for new chats
+        rows.append([
+            InlineKeyboardButton("🇷🇴 RO", callback_data="lang_ro"),
+            InlineKeyboardButton("🇷🇺 RU", callback_data="lang_ru"),
+        ])
         markup = InlineKeyboardMarkup(rows)
 
         await update.message.reply_text(
-            f"Bun venit, {first_name}!\n\n"
-            f"Recomandam sa folosesti aplicatia direct in Telegram — apesi butonul "
-            f"\"Deschide aplicatia\" si gata.\n\n"
-            f"Ai cont nou? Apasa /register sau butonul de mai jos si te ghidez prin "
-            f"crearea contului (numele tau + un username).",
+            t("welcome_unbound_greeting", lang, name=first_name) + "\n\n" +
+            t("welcome_unbound_body", lang),
             reply_markup=markup,
         )
         return
 
-    # Bound user — recommend opening the Mini App for tasks of the day +
-    # calendar. The legacy command-based interface still works as backup.
     rows = []
     if web_app_url:
         rows.append([InlineKeyboardButton(
-            "Deschide aplicatia",
+            t("btn_open_app", lang),
             web_app=WebAppInfo(url=web_app_url),
         )])
     markup = InlineKeyboardMarkup(rows) if rows else main_menu_keyboard()
 
     await update.message.reply_text(
-        f"Bun venit inapoi, {bound.full_name or bound.username}!\n\n"
-        f"Apasa \"Deschide aplicatia\" ca sa vezi taskurile de azi si calendarul "
-        f"direct in Telegram.\n\n"
-        f"Comenzi rapide: /today /week /add /done /stats /notes /help",
+        t("welcome_back", lang, name=bound.full_name or bound.username),
         reply_markup=markup,
     )
 
@@ -287,6 +284,51 @@ async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYP
 async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Direct /register entry point (same as /start register)."""
     await _start_register_flow(update, context)
+
+
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show inline keyboard to switch UI language for this bot user."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from app.telegram.i18n import t, get_lang
+    db = SessionLocal()
+    try:
+        user = _resolve_user(db, update)
+    finally:
+        db.close()
+    lang = get_lang(user)
+    rows = [[
+        InlineKeyboardButton("🇷🇴 Romana", callback_data="lang_ro"),
+        InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+    ]]
+    await update.effective_message.reply_text(
+        t("lang_picker_title", lang),
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, lang_code: str):
+    """Set the user's preferred language. Handles `lang_ro` / `lang_ru` callbacks."""
+    from app.telegram.i18n import t, SUPPORTED
+    if lang_code not in SUPPORTED:
+        return
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+            .first()
+        )
+        if user:
+            user.language = lang_code
+            db.commit()
+    finally:
+        db.close()
+    msg = t("lang_set", lang_code)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(msg)
+    else:
+        await update.effective_message.reply_text(msg)
 
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
