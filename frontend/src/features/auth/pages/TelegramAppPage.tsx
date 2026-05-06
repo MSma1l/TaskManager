@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
+import MiniAppDashboard from '../components/MiniAppDashboard';
 
 declare global {
   interface Window {
@@ -19,7 +20,7 @@ declare global {
   }
 }
 
-type Phase = 'detecting' | 'no-tg' | 'authenticating' | 'pin' | 'done' | 'error';
+type Phase = 'detecting' | 'no-tg' | 'authenticating' | 'pin' | 'ready' | 'error';
 
 const PIN_TTL_SECONDS = 60;
 
@@ -109,8 +110,10 @@ export default function TelegramAppPage() {
     }
     const ok = await refreshWithPin(u, pin);
     if (ok) {
-      setPhase('done');
-      setTimeout(() => navigate('/', { replace: true }), 400);
+      // PIN OK → render the dashboard inline (no redirect, this is the
+      // Mini App "home"). User can hit "Aplicatia completa" to leave the
+      // Mini App for the full web app.
+      setPhase('ready');
     } else {
       setError('PIN gresit');
       setPinShake((k) => k + 1);
@@ -124,6 +127,20 @@ export default function TelegramAppPage() {
   const fg = colorScheme === 'light' ? '#0f172a' : '#f8fafc';
   const surface = colorScheme === 'light' ? '#ffffff' : '#1e293b';
   const border = colorScheme === 'light' ? '#cbd5e1' : '#334155';
+
+  // Once the user passed PIN, render the focused dashboard fullscreen.
+  // Everything else (detecting / no-tg / authenticating / pin / error) keeps
+  // the centered card layout for clarity.
+  if (phase === 'ready') {
+    return (
+      <MiniAppDashboard
+        username={resolvedUsername || username || null}
+        fullName={null}
+        colorScheme={colorScheme}
+        onOpenFullApp={() => navigate('/', { replace: true })}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-6" style={{ backgroundColor: bg, color: fg }}>
@@ -208,13 +225,6 @@ export default function TelegramAppPage() {
               Intra
             </button>
           </form>
-        )}
-
-        {phase === 'done' && (
-          <>
-            <h1 className="text-xl font-bold mb-1" style={{ color: '#10b981' }}>Logat ✓</h1>
-            <p className="text-sm opacity-70">Te trimitem in aplicatie...</p>
-          </>
         )}
 
         {phase === 'error' && (

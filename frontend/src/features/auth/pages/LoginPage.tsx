@@ -6,28 +6,29 @@ import PinInput from '../components/PinInput';
 import QRLoginCard from '../components/QRLoginCard';
 
 type Mode = 'admin' | 'user';
-type Step = 'credentials' | 'code' | 'pin' | 'username-only';
+type Step = 'main' | 'credentials' | 'code' | 'pin' | 'username-only';
 
 interface LoginPageProps {
   mode?: Mode;
 }
 
 /**
- * Unified login flow:
- *   1) credentials  — username + password (single field for password+2FA combo)
- *      • admin → straight to session
- *      • user with telegram → step 'code' for the 2FA code
- *      • user without telegram → straight to session
- *   2) code         — Telegram 2FA code (after credentials or "no password" path)
- *   3) pin          — quick re-login with PIN (4–8 digits)
- *   4) username-only — fallback for users without password (telegram code path)
+ * User-facing login is Telegram-first. The default screen ('main') shows
+ * two big primary CTAs — register/open via Telegram bot, or QR-scan login.
+ * Existing users with a password / PIN / Telegram-code path can still get
+ * to those flows via the small "deja ai cont?" links at the bottom.
+ *
+ * The /admin_task_manager door always starts at 'credentials' because
+ * admins always have a password and there is no admin-side QR / Telegram
+ * register flow.
  */
 export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { isAuthenticated, verifyCode, refreshWithPin, adminPasswordLogin, consumeSession } = useAuth();
 
-  const [step, setStep] = useState<Step>('credentials');
+  const isAdminMode = mode === 'admin';
+  const [step, setStep] = useState<Step>(isAdminMode ? 'credentials' : 'main');
   const [username, setUsername] = useState(() => localStorage.getItem('username') || '');
   const [password, setPassword] = useState('');
   const [pinInput, setPinInput] = useState('');
@@ -39,7 +40,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const [tgRegisterLink, setTgRegisterLink] = useState<string | null>(null);
   const [showQR, setShowQR] = useState(false);
 
-  const isAdmin = mode === 'admin';
+  const isAdmin = isAdminMode;
   const returnTo = params.get('returnTo') || '';
   const target = isAdmin
     ? '/admin_task_manager/dashboard'
@@ -241,6 +242,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           {isAdmin ? 'Admin Panel' : 'Weekly Task Manager'}
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
+          {step === 'main' && 'Conecteaza-te prin Telegram sau scaneaza QR'}
           {step === 'credentials' && (isAdmin ? 'Logare administrator' : 'Username + parola')}
           {step === 'username-only' && 'Trimite cod pe Telegram'}
           {step === 'code' && 'Codul din Telegram'}
@@ -248,8 +250,87 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
         </p>
       </div>
 
-      {/* QR scan-to-login (only for non-admin door) */}
-      {!isAdmin && step === 'credentials' && showQR && (
+      {/* ── Main entry: Telegram-first hero ───────────────────────── */}
+      {!isAdmin && step === 'main' && !showQR && (
+        <div className="w-full max-w-xs">
+          {/* Primary: Register/open via Telegram bot */}
+          {tgRegisterLink ? (
+            <a
+              href={tgRegisterLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block bg-gradient-to-br from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white rounded-2xl p-5 mb-3 transition-all shadow-xl shadow-blue-900/30 active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] uppercase tracking-widest text-blue-100/80 font-semibold">Recomandat</p>
+                  <p className="font-bold text-base">Continua cu Telegram</p>
+                </div>
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+              <p className="text-xs text-blue-100/90 leading-relaxed">
+                Cont nou sau existent — botul te ghideaza si deschide aplicatia direct in Telegram.
+              </p>
+            </a>
+          ) : (
+            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl p-3 mb-3 text-xs">
+              Telegram nu este configurat — admin-ul trebuie sa seteze TELEGRAM_BOT_USERNAME.
+            </div>
+          )}
+
+          {/* Secondary: QR scan */}
+          <button
+            type="button"
+            onClick={() => { setShowQR(true); setError(null); }}
+            className="w-full flex items-center gap-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-emerald-600/40 text-white rounded-xl p-4 mb-5 transition-all active:scale-[0.99]"
+          >
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7" strokeWidth="2" rx="1" />
+                <rect x="14" y="3" width="7" height="7" strokeWidth="2" rx="1" />
+                <rect x="3" y="14" width="7" height="7" strokeWidth="2" rx="1" />
+                <path strokeLinecap="round" strokeWidth="2" d="M14 14h3M20 14v7M14 17v4M14 21h3M17 17h4" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="font-semibold text-sm">Scaneaza QR cu telefonul</p>
+              <p className="text-[11px] text-slate-400">Aprobi din chatul botului</p>
+            </div>
+            <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* Existing users link cluster */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-slate-800" />
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">deja ai cont?</span>
+            <div className="flex-1 h-px bg-slate-800" />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <SmallLink onClick={() => { setStep('pin'); setError(null); }}>
+              Re-logare rapida cu PIN
+            </SmallLink>
+            <SmallLink onClick={() => { setStep('credentials'); setError(null); }}>
+              Logare cu username + parola
+            </SmallLink>
+            <SmallLink onClick={() => { setStep('username-only'); setError(null); }}>
+              Doar username — cod pe Telegram
+            </SmallLink>
+          </div>
+        </div>
+      )}
+
+      {/* QR scan-to-login */}
+      {!isAdmin && showQR && (
         <div className="mb-5">
           <QRLoginCard onLogin={handleQRLogin} />
           <button
@@ -257,33 +338,12 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             onClick={() => setShowQR(false)}
             className="block mx-auto mt-3 text-sm text-slate-400 hover:text-slate-200"
           >
-            ← Inapoi la logarea cu parola
+            ← Inapoi
           </button>
         </div>
       )}
 
-      {/* Telegram instant register button */}
-      {!isAdmin && step === 'credentials' && !showQR && tgRegisterLink && (
-        <a
-          href={tgRegisterLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full max-w-xs flex items-center gap-3 bg-gradient-to-br from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white rounded-xl px-4 py-3 mb-3 transition-all shadow-lg shadow-blue-900/20"
-        >
-          <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-          </svg>
-          <div className="flex-1 text-left">
-            <p className="font-semibold text-sm">Cont nou via Telegram</p>
-            <p className="text-[11px] text-blue-100/80">Botul iti da username + PIN instant</p>
-          </div>
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </a>
-      )}
-
-      {/* ── Credentials (default) ─────────────────────────────────── */}
+      {/* ── Credentials (admin always, user on demand) ─────────────── */}
       {step === 'credentials' && !showQR && (
         <form onSubmit={handleCredentials} className="w-full max-w-xs space-y-3">
           <input
@@ -316,62 +376,16 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
         </form>
       )}
 
-      {/* ── Alternative login methods (only on credentials step) ──────── */}
-      {step === 'credentials' && !showQR && (
-        <div className="w-full max-w-xs mt-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex-1 h-px bg-slate-800" />
-            <span className="text-[10px] uppercase tracking-widest text-slate-500">sau</span>
-            <div className="flex-1 h-px bg-slate-800" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            {!isAdmin && (
-              <>
-                <AltMethod
-                  icon={
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <rect x="3" y="3" width="7" height="7" strokeWidth="2" rx="1" />
-                      <rect x="14" y="3" width="7" height="7" strokeWidth="2" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" strokeWidth="2" rx="1" />
-                      <path strokeLinecap="round" strokeWidth="2" d="M14 14h3M20 14v7M14 17v4M14 21h3M17 17h4" />
-                    </svg>
-                  }
-                  iconColor="text-emerald-400"
-                  iconBg="bg-emerald-500/10"
-                  title="Scan QR cu telefonul"
-                  subtitle="Deschide chatul botului si aproba"
-                  onClick={() => { setShowQR(true); setError(null); }}
-                />
-                <AltMethod
-                  icon={
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-                    </svg>
-                  }
-                  iconColor="text-sky-400"
-                  iconBg="bg-sky-500/10"
-                  title="Cod prin Telegram"
-                  subtitle="Doar username — codul vine pe bot"
-                  onClick={() => { setStep('username-only'); setError(null); }}
-                />
-              </>
-            )}
-            <AltMethod
-              icon={
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c1.657 0 3-1.567 3-3.5S13.657 4 12 4 9 5.567 9 7.5 10.343 11 12 11z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11v3m-4 4h8a2 2 0 002-2v-1a3 3 0 00-3-3H9a3 3 0 00-3 3v1a2 2 0 002 2z" />
-                </svg>
-              }
-              iconColor="text-amber-400"
-              iconBg="bg-amber-500/10"
-              title="Re-logare rapida cu PIN"
-              subtitle="Deja ai PIN setat in profil"
-              onClick={() => { setStep('pin'); setError(null); }}
-            />
-          </div>
-        </div>
+      {/* "Inapoi" link below credentials — non-admin only (admin always
+          stays on credentials, no place to go back to) */}
+      {!isAdmin && step === 'credentials' && !showQR && (
+        <button
+          type="button"
+          onClick={() => { setStep('main'); setError(null); setPassword(''); }}
+          className="mt-3 text-sm text-slate-400 hover:text-slate-200"
+        >
+          ← Alta metoda de logare
+        </button>
       )}
 
       {/* ── Username-only (Telegram code only) ───────────────────── */}
@@ -395,10 +409,10 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           </button>
           <button
             type="button"
-            onClick={() => { setStep('credentials'); setError(null); }}
+            onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setError(null); }}
             className="w-full text-slate-400 hover:text-slate-200 text-sm mt-3"
           >
-            ← Logare cu username + parola
+            ← Inapoi
           </button>
         </form>
       )}
@@ -435,7 +449,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
           <p className="text-center text-xs text-slate-500 mt-3">PIN-ul setat din profilul tau</p>
           <button
             type="button"
-            onClick={() => { setStep('credentials'); setPinInput(''); setError(null); }}
+            onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setPinInput(''); setError(null); }}
             className="w-full text-slate-400 hover:text-slate-200 text-sm mt-3"
           >
             ← Inapoi
@@ -459,7 +473,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             </button>
             <span className="text-slate-600">·</span>
             <button
-              onClick={() => { setStep('credentials'); setChallenge(null); setError(null); }}
+              onClick={() => { setStep(isAdmin ? 'credentials' : 'main'); setChallenge(null); setError(null); }}
               className="text-sm text-slate-400 hover:text-white"
             >
               Inapoi
@@ -470,10 +484,10 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
       {error && <p className={`${accentColor} text-sm mt-4 text-center max-w-xs`}>{error}</p>}
 
-      {!isAdmin && step === 'credentials' && !showQR && (
+      {!isAdmin && step === 'main' && !showQR && (
         <div className="mt-6 text-center">
-          <Link to="/request-access" className="text-sm text-slate-400 hover:text-slate-200">
-            Nu ai cont? Cere acces →
+          <Link to="/request-access" className="text-sm text-slate-500 hover:text-slate-300">
+            Probleme cu logarea? Cere acces clasic →
           </Link>
         </div>
       )}
@@ -481,33 +495,16 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   );
 }
 
-/** Compact card for an alternative login method. */
-function AltMethod({
-  icon, iconColor, iconBg, title, subtitle, onClick,
-}: {
-  icon: React.ReactNode;
-  iconColor: string;
-  iconBg: string;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-}) {
+/** Small text link for "deja ai cont?" cluster on the main login screen. */
+function SmallLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-slate-600 transition-all duration-150 text-left active:scale-[0.99]"
+      className="w-full text-center py-2 text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 rounded-lg transition-colors"
     >
-      <span className={`w-9 h-9 rounded-lg ${iconBg} ${iconColor} flex items-center justify-center flex-shrink-0`}>
-        {icon}
-      </span>
-      <span className="flex-1 min-w-0">
-        <span className="block text-sm font-medium text-slate-100">{title}</span>
-        <span className="block text-[11px] text-slate-400 truncate">{subtitle}</span>
-      </span>
-      <svg className="w-4 h-4 text-slate-500 group-hover:text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-      </svg>
+      {children}
     </button>
   );
 }
+

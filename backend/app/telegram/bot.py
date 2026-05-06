@@ -83,6 +83,12 @@ async def _handle_callback(update: Update, context):
 
     await query.answer()
 
+    # /start register-flow inline button
+    if data == "start_register":
+        from app.telegram.commands import _start_register_flow
+        await _start_register_flow(update, context)
+        return
+
     # Resolve owner from chat — every task action below must verify the
     # task belongs to this chat's user before mutating anything.
     chat_id = str(query.message.chat_id)

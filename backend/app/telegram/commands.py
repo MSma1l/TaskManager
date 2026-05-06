@@ -137,41 +137,55 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
+    from app.core.config import settings
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+    base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
+    if "3000" in base:
+        base = "http://localhost"
+    web_app_url = f"{base}/tg-app" if base.startswith("https://") else None
+
     if not bound:
-        from app.core.config import settings
-        base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
-        if "3000" in base:
-            base = "http://localhost"
         chat_id = str(update.effective_chat.id)
         first_name = update.effective_user.first_name if update.effective_user else "vizitator"
+
+        # Build the inline keyboard. The Mini App button only works on HTTPS;
+        # fall back to a plain "register" button on http.
+        rows = []
+        if web_app_url:
+            rows.append([InlineKeyboardButton(
+                "Deschide aplicatia",
+                web_app=WebAppInfo(url=web_app_url),
+            )])
+        rows.append([InlineKeyboardButton("Cont nou (/register)", callback_data="start_register")])
+        markup = InlineKeyboardMarkup(rows)
+
         await update.message.reply_text(
-            f"Buna {first_name}! Acest chat nu este legat la niciun cont Task Manager.\n\n"
-            f"Ca sa primesti acces, completeaza formularul:\n"
-            f"{base}/request-access?tg={chat_id}\n\n"
-            f"Dupa ce admin-ul aproba cererea, vei primi un mesaj aici si vei putea intra direct.\n\n"
-            f"Daca ai deja cont, genereaza un cod /link din profilul tau pe site si trimite aici:\n"
-            f"  /link <cod>"
+            f"Bun venit, {first_name}!\n\n"
+            f"Recomandam sa folosesti aplicatia direct in Telegram — apesi butonul "
+            f"\"Deschide aplicatia\" si gata.\n\n"
+            f"Ai cont nou? Apasa /register sau butonul de mai jos si te ghidez prin "
+            f"crearea contului (numele tau + un username).",
+            reply_markup=markup,
         )
         return
 
+    # Bound user — recommend opening the Mini App for tasks of the day +
+    # calendar. The legacy command-based interface still works as backup.
+    rows = []
+    if web_app_url:
+        rows.append([InlineKeyboardButton(
+            "Deschide aplicatia",
+            web_app=WebAppInfo(url=web_app_url),
+        )])
+    markup = InlineKeyboardMarkup(rows) if rows else main_menu_keyboard()
+
     await update.message.reply_text(
         f"Bun venit inapoi, {bound.full_name or bound.username}!\n\n"
-        "Foloseste butoanele de mai jos sau comenzile:\n\n"
-        "/today - Taskurile de azi\n"
-        "/week - Taskurile saptamanii\n"
-        "/tasks - Alege ziua si vezi taskurile\n"
-        "/add - Adauga task nou\n"
-        "/done - Marcheaza task ca facut\n"
-        "/skip - Muta task pe alta zi\n"
-        "/notdone - Marcheaza ca nefacut\n"
-        "/delete - Sterge un task\n"
-        "/stats - Statistici\n"
-        "/notes - Carnet\n"
-        "/attended - Confirma o sedinta\n"
-        "/link - Leaga chat-ul la un cont\n"
-        "/help - Ajutor\n\n"
-        "Adaugare rapida: scrie \"task <titlu>\" direct in chat.",
-        reply_markup=main_menu_keyboard(),
+        f"Apasa \"Deschide aplicatia\" ca sa vezi taskurile de azi si calendarul "
+        f"direct in Telegram.\n\n"
+        f"Comenzi rapide: /today /week /add /done /stats /notes /help",
+        reply_markup=markup,
     )
 
 
@@ -242,6 +256,12 @@ async def _handle_qr_deep_link(update: Update, qr_id: str):
 async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick off the in-bot registration wizard."""
     chat_id = str(update.effective_chat.id)
+    # `update.message` is None when arriving from a callback query; pick the
+    # appropriate "send" coroutine for either entry point.
+    send = (update.effective_message.reply_text
+            if update.effective_message
+            else (lambda *a, **kw: update.effective_chat.send_message(*a, **kw)))
+
     db = SessionLocal()
     try:
         existing = (
@@ -250,7 +270,7 @@ async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYP
             .first()
         )
         if existing:
-            await update.message.reply_text(
+            await send(
                 f"Acest chat este deja legat la contul @{existing.username}.\n"
                 f"Daca vrei sa schimbi PIN-ul sau parola, mergi pe site la sectiunea Profil."
             )
@@ -258,7 +278,7 @@ async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYP
         start_register_flow(db, chat_id)
     finally:
         db.close()
-    await update.message.reply_text(
+    await send(
         "Hai sa-ti facem cont!\n\n"
         "Pasul 1/2: Cum te numesti? (numele complet, ex: Ion Popescu)"
     )
