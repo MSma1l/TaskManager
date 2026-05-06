@@ -316,23 +316,46 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             </svg>
           </button>
 
-          {/* Existing users link cluster */}
+          {/* Existing users — compact 3-card row, deliberately quieter than
+              the primary Telegram/QR options above */}
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-px bg-slate-800" />
             <span className="text-[10px] uppercase tracking-widest text-slate-500">{t('login.haveAccount')}</span>
             <div className="flex-1 h-px bg-slate-800" />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <SmallLink onClick={() => { setStep('pin'); setError(null); }}>
-              {t('login.pinReLogin')}
-            </SmallLink>
-            <SmallLink onClick={() => { setStep('credentials'); setError(null); }}>
-              {t('login.classicLogin')}
-            </SmallLink>
-            <SmallLink onClick={() => { setStep('username-only'); setError(null); }}>
-              {t('login.telegramCodeOnly')}
-            </SmallLink>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniCard
+              onClick={() => { setStep('pin'); setError(null); }}
+              accent="amber"
+              label={t('login.pinReLogin')}
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="5" y="11" width="14" height="10" rx="2" strokeWidth="2" />
+                  <path strokeLinecap="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0v4" />
+                </svg>
+              }
+            />
+            <MiniCard
+              onClick={() => { setStep('credentials'); setError(null); }}
+              accent="blue"
+              label={t('login.classicLogin')}
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              }
+            />
+            <MiniCard
+              onClick={() => { setStep('username-only'); setError(null); }}
+              accent="sky"
+              label={t('login.telegramCodeOnly')}
+              icon={
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                </svg>
+              }
+            />
           </div>
         </div>
       )}
@@ -503,15 +526,37 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   );
 }
 
-/** Small text link for "deja ai cont?" cluster on the main login screen. */
-function SmallLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+/**
+ * Compact 3-up icon card used for the secondary "deja ai cont?" methods on
+ * the main login screen. Color accent only on the icon — body stays quiet
+ * so it doesn't compete with the primary Telegram CTA above.
+ */
+function MiniCard({
+  onClick, icon, label, accent,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  accent: 'amber' | 'blue' | 'sky';
+}) {
+  const accentMap = {
+    amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'hover:border-amber-500/40' },
+    blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'hover:border-blue-500/40' },
+    sky: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'hover:border-sky-500/40' },
+  }[accent];
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-center py-2 text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 rounded-lg transition-colors"
+      className={`flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-xl bg-slate-800/40 hover:bg-slate-800 border border-slate-700/60 ${accentMap.border} transition-all duration-150 active:scale-[0.97] text-center`}
     >
-      {children}
+      <span className={`w-8 h-8 rounded-lg ${accentMap.bg} ${accentMap.text} flex items-center justify-center flex-shrink-0`}>
+        {icon}
+      </span>
+      <span className="text-[10px] leading-tight text-slate-300 font-medium line-clamp-2">
+        {label}
+      </span>
     </button>
   );
 }

@@ -66,35 +66,62 @@ def _deliver_code(user: User, code: str, purpose: str) -> str:
     """Send the code to the user via Telegram. Falls back to console log if no chat linked.
 
     Admins use the dedicated admin bot when configured; regular users use the main bot.
+    The message is localized to the user's language and uses Markdown so the
+    code is rendered as a big monospaced block — easy to copy with one tap.
     """
-    label = {
-        "login": "logare",
-        "refresh": "reinnoire sesiune",
-        "admin": "logare admin",
-    }.get(purpose, purpose)
+    lang = (getattr(user, "language", None) or "ro").strip().lower()
+    if lang not in ("ro", "ru"):
+        lang = "ro"
+
+    # Per-language strings. Keep them tight; the code itself is the hero.
+    labels = {
+        "ro": {"login": "logare", "refresh": "reinnoire sesiune", "admin": "logare admin"},
+        "ru": {"login": "вход", "refresh": "обновление сессии", "admin": "вход админа"},
+    }
+    titles = {
+        "ro": "Cod {label}",
+        "ru": "Код {label}",
+    }
+    footers = {
+        "ro": "Valabil {ttl} min. Nu il trimite nimanui.",
+        "ru": "Действителен {ttl} мин. Никому не отправляйте.",
+    }
+
+    label = labels[lang].get(purpose, purpose)
+    title = titles[lang].format(label=label)
+    footer = footers[lang].format(ttl=settings.LOGIN_CODE_TTL_MINUTES)
 
     if not user.telegram_chat_id:
         print(
-            f"[AUTH] {user.username} ({label}) cod={code} — Telegram nelegat, "
-            f"deschide pe server consola pentru cod."
+            f"[AUTH] {user.username} ({label}) code={code} — Telegram not linked, "
+            f"check server console."
         )
         return "console"
 
+    # MarkdownV2 hero block — the code becomes a big monospaced number that
+    # is one-tap copy in Telegram. Escape `_` `*` `[` `]` etc.
+    safe_title = title.replace("-", "\\-")
     text = (
-        f"Cod {label} TaskManager: {code}\n"
-        f"Valabil {settings.LOGIN_CODE_TTL_MINUTES} min. Nu il trimite nimanui."
+        f"*TaskManager*\n"
+        f"_{safe_title}_\n\n"
+        f"`{code}`\n\n"
+        f"{footer}"
     )
     try:
         from app.telegram.bot import _bot_for_role
         bot_app = _bot_for_role(user.role)
         if bot_app and bot_app.bot:
             asyncio.create_task(
-                bot_app.bot.send_message(chat_id=user.telegram_chat_id, text=text)
+                bot_app.bot.send_message(
+                    chat_id=user.telegram_chat_id,
+                    text=text,
+                    parse_mode="MarkdownV2",
+                )
             )
             return "telegram"
     except Exception as e:
         print(f"[AUTH] Failed to send code via Telegram: {e}")
-    print(f"[AUTH] {user.username} ({label}) cod={code} — fallback console")
+    print(f"[AUTH] {user.username} ({label}) code={code} — fallback console")
     return "console"
 
 
