@@ -313,34 +313,65 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
             Daca ai Telegram legat, vom cere si codul 2FA dupa parola.
           </p>
 
-          <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+        </form>
+      )}
+
+      {/* ── Alternative login methods (only on credentials step) ──────── */}
+      {step === 'credentials' && !showQR && (
+        <div className="w-full max-w-xs mt-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-slate-800" />
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">sau</span>
+            <div className="flex-1 h-px bg-slate-800" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
             {!isAdmin && (
               <>
-                <button
-                  type="button"
-                  onClick={() => { setStep('username-only'); setError(null); }}
-                  className="w-full text-slate-400 hover:text-slate-200 text-sm"
-                >
-                  Nu ai parola? Loghează-te doar cu cod Telegram
-                </button>
-                <button
-                  type="button"
+                <AltMethod
+                  icon={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" strokeWidth="2" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" strokeWidth="2" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" strokeWidth="2" rx="1" />
+                      <path strokeLinecap="round" strokeWidth="2" d="M14 14h3M20 14v7M14 17v4M14 21h3M17 17h4" />
+                    </svg>
+                  }
+                  iconColor="text-emerald-400"
+                  iconBg="bg-emerald-500/10"
+                  title="Scan QR cu telefonul"
+                  subtitle="Deschide chatul botului si aproba"
                   onClick={() => { setShowQR(true); setError(null); }}
-                  className="w-full text-emerald-400 hover:text-emerald-300 text-sm"
-                >
-                  Scaneaza cu telefonul (QR login)
-                </button>
+                />
+                <AltMethod
+                  icon={
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                    </svg>
+                  }
+                  iconColor="text-sky-400"
+                  iconBg="bg-sky-500/10"
+                  title="Cod prin Telegram"
+                  subtitle="Doar username — codul vine pe bot"
+                  onClick={() => { setStep('username-only'); setError(null); }}
+                />
               </>
             )}
-            <button
-              type="button"
+            <AltMethod
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c1.657 0 3-1.567 3-3.5S13.657 4 12 4 9 5.567 9 7.5 10.343 11 12 11z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11v3m-4 4h8a2 2 0 002-2v-1a3 3 0 00-3-3H9a3 3 0 00-3 3v1a2 2 0 002 2z" />
+                </svg>
+              }
+              iconColor="text-amber-400"
+              iconBg="bg-amber-500/10"
+              title="Re-logare rapida cu PIN"
+              subtitle="Deja ai PIN setat in profil"
               onClick={() => { setStep('pin'); setError(null); }}
-              className="w-full text-slate-400 hover:text-slate-200 text-sm"
-            >
-              Am deja PIN — re-logare rapida
-            </button>
+            />
           </div>
-        </form>
+        </div>
       )}
 
       {/* ── Username-only (Telegram code only) ───────────────────── */}
@@ -439,13 +470,44 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
       {error && <p className={`${accentColor} text-sm mt-4 text-center max-w-xs`}>{error}</p>}
 
-      {!isAdmin && step === 'credentials' && (
-        <div className="mt-8 text-center">
+      {!isAdmin && step === 'credentials' && !showQR && (
+        <div className="mt-6 text-center">
           <Link to="/request-access" className="text-sm text-slate-400 hover:text-slate-200">
             Nu ai cont? Cere acces →
           </Link>
         </div>
       )}
     </div>
+  );
+}
+
+/** Compact card for an alternative login method. */
+function AltMethod({
+  icon, iconColor, iconBg, title, subtitle, onClick,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-slate-600 transition-all duration-150 text-left active:scale-[0.99]"
+    >
+      <span className={`w-9 h-9 rounded-lg ${iconBg} ${iconColor} flex items-center justify-center flex-shrink-0`}>
+        {icon}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-100">{title}</span>
+        <span className="block text-[11px] text-slate-400 truncate">{subtitle}</span>
+      </span>
+      <svg className="w-4 h-4 text-slate-500 group-hover:text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
   );
 }

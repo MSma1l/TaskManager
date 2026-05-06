@@ -83,8 +83,12 @@ export const authApi = {
     client.get('/auth/public-config').then((r) => r.data),
 
   // ── QR scan-to-login ──────────────────────────────────────────────────
-  qrInit: (): Promise<{ qrId: string; expiresAt: string; ttlSeconds: number }> =>
-    client.post('/auth/qr/init').then((r) => r.data),
+  qrInit: (): Promise<{
+    qrId: string;
+    expiresAt: string;
+    ttlSeconds: number;
+    telegramDeepLink: string | null;
+  }> => client.post('/auth/qr/init').then((r) => r.data),
 
   qrStatus: (qrId: string): Promise<
     | { status: 'PENDING' }

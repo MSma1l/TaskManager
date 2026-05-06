@@ -145,10 +145,18 @@ async def qr_init(db: Session = Depends(get_db)):
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    # Build a Telegram deep-link the desktop's QR will encode. Scanning the
+    # QR opens the bot directly with /start qr_<id> — handler approves the
+    # session in the bot, so the user never has to navigate the web app.
+    bot = (settings.TELEGRAM_BOT_USERNAME or "").strip().lstrip("@")
+    telegram_deep_link = f"https://t.me/{bot}?start=qr_{record.id}" if bot else None
+
     return {
         "qrId": record.id,
         "expiresAt": record.expires_at.isoformat(),
         "ttlSeconds": 300,
+        "telegramDeepLink": telegram_deep_link,
     }
 
 

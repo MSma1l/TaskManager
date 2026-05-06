@@ -125,6 +125,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _start_register_flow(update, context)
         return
 
+    # Deep-link handler: /start qr_<sessionId>
+    if args and args[0].lower().startswith("qr_"):
+        qr_id = args[0][3:]  # strip "qr_" prefix
+        await _handle_qr_deep_link(update, qr_id)
+        return
+
     db = SessionLocal()
     try:
         bound = _resolve_user(db, update)
@@ -171,6 +177,66 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
+
+
+async def _handle_qr_deep_link(update: Update, qr_id: str):
+    """Mobile arrived from a desktop QR scan via t.me/<bot>?start=qr_<id>.
+
+    If the chat is bound to a user, we approve the QR session immediately —
+    same effect as opening /qr-confirm/<id> on the website. Otherwise we
+    explain how to register first.
+    """
+    from datetime import datetime
+    from app.models.qr_session import QRSession
+    from app.core.security import issue_token
+
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        bound = (
+            db.query(User)
+            .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+            .first()
+        )
+        if not bound:
+            await update.message.reply_text(
+                "QR-ul tau e ok, dar acest chat nu e legat la niciun cont.\n\n"
+                "Foloseste /register sa creezi un cont, apoi scaneaza QR-ul din nou."
+            )
+            return
+
+        record = db.query(QRSession).filter(QRSession.id == qr_id).first()
+        if not record:
+            await update.message.reply_text("QR sessions inexistenta sau invalida.")
+            return
+        if record.expires_at < datetime.utcnow():
+            await update.message.reply_text(
+                "QR-ul a expirat. Genereaza altul pe desktop si scaneaza din nou."
+            )
+            return
+        if record.status != "PENDING":
+            await update.message.reply_text(
+                f"QR-ul a fost deja folosit (status: {record.status.lower()}).\n"
+                f"Genereaza altul pe desktop daca vrei sa intri."
+            )
+            return
+
+        token, exp = issue_token(bound)
+        record.status = "APPROVED"
+        record.user_id = bound.id
+        record.issued_token = token
+        record.token_expires_at = exp
+        record.approved_at = datetime.utcnow()
+        bound.last_login_at = datetime.utcnow()
+        db.commit()
+
+        await update.message.reply_text(
+            f"Logare desktop aprobata!\n\n"
+            f"Te-ai conectat ca @{bound.username} ({bound.full_name or 'cont nou'}).\n"
+            f"Browser-ul tau de pe desktop va intra in cateva secunde."
+        )
+    finally:
+        db.close()
 
 
 async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
