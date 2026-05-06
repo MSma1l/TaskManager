@@ -15,6 +15,7 @@ from app.telegram.keyboards import (
 )
 from app.telegram.conversations import (
     start_add_flow, start_skip_flow, start_notdone_flow, clear_session,
+    start_register_flow,
 )
 
 DAYS_RO = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
@@ -113,7 +114,17 @@ def _format_tasks_for_day(tasks: list, day_name: str, date_str: str) -> str:
 # ── Public commands ────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """If the chat isn't linked to any user, send the registration form URL."""
+    """If the chat isn't linked to any user, send the registration form URL.
+
+    Supports deep-link /start register — kicks off the in-bot signup wizard
+    (no admin approval needed, generates random PIN + suggests username).
+    """
+    # Deep-link handler: /start register
+    args = context.args or []
+    if args and args[0].lower() in {"register", "signup", "inregistrare"}:
+        await _start_register_flow(update, context)
+        return
+
     db = SessionLocal()
     try:
         bound = _resolve_user(db, update)
@@ -160,6 +171,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
+
+
+async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kick off the in-bot registration wizard."""
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(User)
+            .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+            .first()
+        )
+        if existing:
+            await update.message.reply_text(
+                f"Acest chat este deja legat la contul @{existing.username}.\n"
+                f"Daca vrei sa schimbi PIN-ul sau parola, mergi pe site la sectiunea Profil."
+            )
+            return
+        start_register_flow(db, chat_id)
+    finally:
+        db.close()
+    await update.message.reply_text(
+        "Hai sa-ti facem cont!\n\n"
+        "Pasul 1/2: Cum te numesti? (numele complet, ex: Ion Popescu)"
+    )
+
+
+async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Direct /register entry point (same as /start register)."""
+    await _start_register_flow(update, context)
 
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):

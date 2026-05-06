@@ -3,6 +3,8 @@ import { useAuth } from '../features/auth/hooks/useAuth';
 import LoginPage from '../features/auth/pages/LoginPage';
 import AdminLoginPage from '../features/auth/pages/AdminLoginPage';
 import RequestAccessPage from '../features/auth/pages/RequestAccessPage';
+import QRConfirmPage from '../features/auth/pages/QRConfirmPage';
+import TelegramAppPage from '../features/auth/pages/TelegramAppPage';
 import WeekPage from '../features/tasks/pages/WeekPage';
 import StatsPage from '../features/stats/pages/StatsPage';
 import ProjectsPage from '../features/projects/pages/ProjectsPage';
@@ -35,6 +37,8 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/request-access" element={<RequestAccessPage />} />
+      <Route path="/qr-confirm/:id" element={<QRConfirmPage />} />
+      <Route path="/tg-app" element={<TelegramAppPage />} />
 
       {/* Admin entry point */}
       <Route path="/admin_task_manager" element={<AdminLoginPage />} />

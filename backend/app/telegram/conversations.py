@@ -77,6 +77,8 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
             return await _handle_skip_task(update, context, db, chat_id, step, data, state)
         elif flow == "notdone_task":
             return await _handle_notdone_task(update, context, db, chat_id, step, data, state)
+        elif flow == "register":
+            return await handle_register_text(update, db, chat_id, step, data, state)
 
         return False
     finally:
@@ -367,3 +369,99 @@ def start_skip_flow(db: Session, chat_id: str, task_id: str):
 def start_notdone_flow(db: Session, chat_id: str, task_id: str):
     state = {"flow": "notdone_task", "step": 1, "data": {"taskId": task_id}}
     set_session(db, chat_id, state)
+
+
+def start_register_flow(db: Session, chat_id: str):
+    """Start the in-bot registration wizard.
+
+    Steps:
+      1. Wait for full name
+      2. Wait for desired username (validates uniqueness)
+      3. Confirm + create user with random PIN, return credentials
+    """
+    state = {"flow": "register", "step": 1, "data": {}}
+    set_session(db, chat_id, state)
+
+
+async def handle_register_text(update, db, chat_id: str, step: int, data: dict, state: dict) -> bool:
+    """Handle text input for the /register wizard."""
+    import re
+    import secrets
+    from app.core.security import hash_secret
+    from app.models.user import User
+
+    text = (update.message.text or "").strip()
+
+    if step == 1:
+        # Waiting for full name
+        if len(text) < 2 or len(text) > 100:
+            await update.message.reply_text(
+                "Numele trebuie sa aiba 2-100 caractere. Incearca din nou:"
+            )
+            return True
+        data["fullName"] = text
+        state["step"] = 2
+        state["data"] = data
+        set_session(db, chat_id, state)
+        suggested = re.sub(r"[^a-z0-9]", "", text.lower().split()[0])[:20] or "user"
+        await update.message.reply_text(
+            f"Salut {text}! Acum alege un username pentru cont.\n\n"
+            f"Reguli: 3-30 caractere, doar a-z, 0-9, _ sau .\n"
+            f"Sugerat: {suggested}\n\n"
+            f"Trimite username-ul dorit:"
+        )
+        return True
+
+    if step == 2:
+        # Waiting for desired username
+        candidate = text.lower().strip()
+        if not re.match(r"^[a-z0-9_.]{3,30}$", candidate):
+            await update.message.reply_text(
+                "Username invalid. 3-30 caractere, doar a-z, 0-9, _, . Trimite altul:"
+            )
+            return True
+        existing = db.query(User).filter(User.username == candidate).first()
+        if existing:
+            await update.message.reply_text(
+                f"Username-ul \"{candidate}\" e deja folosit. Trimite altul:"
+            )
+            return True
+
+        # Create the user with a random 6-digit PIN
+        pin = f"{secrets.randbelow(1_000_000):06d}"
+        from app.models.user import User as UserModel
+        new_user = UserModel(
+            username=candidate,
+            full_name=data.get("fullName"),
+            telegram_chat_id=chat_id,
+            role="USER",
+            pin_hash=hash_secret(pin),
+            is_active=True,
+        )
+        # If another user is already bound to this chat, unbind first
+        db.query(UserModel).filter(
+            UserModel.telegram_chat_id == chat_id,
+            UserModel.id != new_user.id,
+        ).update({"telegram_chat_id": None})
+        db.add(new_user)
+        db.commit()
+        clear_session(db, chat_id)
+
+        from app.core.config import settings
+        base = (settings.FRONTEND_URL or "http://localhost").rstrip("/")
+        if "3000" in base:
+            base = "http://localhost"
+
+        await update.message.reply_text(
+            f"Cont creat cu succes!\n\n"
+            f"  Username: {candidate}\n"
+            f"  PIN: {pin}\n\n"
+            f"Cu aceste date intri pe site:\n"
+            f"  {base}/login\n\n"
+            f"Foloseste \"Am deja PIN — re-logare rapida\".\n\n"
+            f"PASTREAZA PIN-UL — il poti schimba mai tarziu din Profil.\n\n"
+            f"Acum esti logat aici si poti folosi botul: /help",
+        )
+        return True
+
+    return False

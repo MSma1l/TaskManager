@@ -15,6 +15,12 @@ export interface AuthSession {
   userId?: string;
 }
 
+export interface PublicConfig {
+  telegramBotUsername: string | null;
+  telegramRegisterDeepLink: string | null;
+  telegramBotDeepLink: string | null;
+}
+
 export interface MeResponse {
   id: string;
   username: string;
@@ -72,6 +78,26 @@ export const authApi = {
   }): Promise<MeResponse> => client.put('/auth/me', data).then((r) => r.data),
 
   setPin: (pin: string) => client.put('/auth/pin', { pin }).then((r) => r.data),
+
+  publicConfig: (): Promise<PublicConfig> =>
+    client.get('/auth/public-config').then((r) => r.data),
+
+  // ── QR scan-to-login ──────────────────────────────────────────────────
+  qrInit: (): Promise<{ qrId: string; expiresAt: string; ttlSeconds: number }> =>
+    client.post('/auth/qr/init').then((r) => r.data),
+
+  qrStatus: (qrId: string): Promise<
+    | { status: 'PENDING' }
+    | { status: 'EXPIRED' | 'CONSUMED' }
+    | ({ status: 'APPROVED' } & AuthSession)
+  > => client.get('/auth/qr/status', { params: { qrId } }).then((r) => r.data),
+
+  qrConfirm: (qrId: string): Promise<{ ok: boolean; username: string; fullName: string | null }> =>
+    client.post('/auth/qr/confirm', { qrId }).then((r) => r.data),
+
+  // ── Telegram Mini App ─────────────────────────────────────────────────
+  telegramWebappAuth: (initData: string): Promise<AuthSession> =>
+    client.post('/auth/telegram-webapp', { initData }).then((r) => r.data),
 
   checkUsername: (username: string): Promise<{ available: boolean; reason?: string }> =>
     client.get('/auth/username-available', { params: { username } }).then((r) => r.data),

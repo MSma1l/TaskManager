@@ -40,6 +40,214 @@ def _user_to_me(user: User) -> dict:
 
 # ── 2FA flow ─────────────────────────────────────────────────────────────────
 
+# ── Telegram Mini App (WebApp) ───────────────────────────────────────────────
+
+def _verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Validate Telegram WebApp initData per the official spec
+    (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app).
+
+    Returns the parsed dict on success, or None if HMAC mismatches / data is
+    older than 24h. NEVER trust client-provided initData without this check.
+    """
+    import hmac
+    import hashlib
+    import time
+    from urllib.parse import parse_qsl
+
+    if not init_data or not bot_token:
+        return None
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=False))
+    received_hash = pairs.pop("hash", "")
+    if not received_hash:
+        return None
+
+    data_check_string = "\n".join(
+        f"{k}={pairs[k]}" for k in sorted(pairs.keys())
+    )
+    secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    computed = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed, received_hash):
+        return None
+
+    auth_date = int(pairs.get("auth_date", "0") or "0")
+    if auth_date and time.time() - auth_date > 24 * 3600:
+        return None
+    return pairs
+
+
+@router.post("/telegram-webapp")
+async def telegram_webapp_auth(payload: dict, db: Session = Depends(get_db)):
+    """Authenticate a Telegram Mini App user via signed initData.
+
+    Accepts {"initData": "<raw query string from Telegram.WebApp.initData>"}
+    and returns a session token if the chat_id matches an existing linked
+    user. If no user exists, returns 404 with a hint to /register in the bot.
+    """
+    import json
+    init_data = (payload or {}).get("initData") or ""
+    bot_token = (settings.TELEGRAM_BOT_TOKEN or "").strip()
+    parsed = _verify_telegram_init_data(init_data, bot_token)
+    if parsed is None:
+        # Try the admin bot token as a fallback (for the admin Mini App door)
+        admin_token = (settings.ADMIN_TELEGRAM_BOT_TOKEN or "").strip()
+        if admin_token:
+            parsed = _verify_telegram_init_data(init_data, admin_token)
+    if parsed is None:
+        raise HTTPException(status_code=401, detail="initData invalid sau expirat")
+
+    user_field = parsed.get("user")
+    if not user_field:
+        raise HTTPException(status_code=400, detail="initData fara campul user")
+    try:
+        tg_user = json.loads(user_field)
+    except Exception:
+        raise HTTPException(status_code=400, detail="initData.user nu se poate parsa")
+
+    chat_id = str(tg_user.get("id") or "")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram user.id lipseste")
+
+    user = (
+        db.query(User)
+        .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="Niciun cont legat la acest Telegram. Foloseste /register in bot.",
+        )
+
+    from datetime import datetime
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    return auth_service.issue_session(user)
+
+
+# ── QR scan-to-login ─────────────────────────────────────────────────────────
+
+@router.post("/qr/init")
+async def qr_init(db: Session = Depends(get_db)):
+    """Desktop creates a fresh QR session. Returns the id (encoded in the QR)
+    and how long it is valid. No authentication needed — the session is
+    useless until a logged-in mobile approves it."""
+    from datetime import datetime, timedelta
+    from app.models.qr_session import QRSession
+
+    # Cleanup: expire stale rows (>15 min) so the table doesn't grow forever
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    db.query(QRSession).filter(QRSession.created_at < cutoff).delete()
+
+    record = QRSession(
+        status="PENDING",
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return {
+        "qrId": record.id,
+        "expiresAt": record.expires_at.isoformat(),
+        "ttlSeconds": 300,
+    }
+
+
+@router.get("/qr/status")
+async def qr_status(qrId: str, db: Session = Depends(get_db)):
+    """Desktop polls this every ~2s. When approved, returns the freshly-issued
+    session token and marks the QR session CONSUMED so it can't be re-used."""
+    from datetime import datetime
+    from app.models.qr_session import QRSession
+
+    record = db.query(QRSession).filter(QRSession.id == qrId).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="QR session inexistenta")
+
+    if record.expires_at < datetime.utcnow() and record.status not in {"APPROVED", "CONSUMED"}:
+        record.status = "EXPIRED"
+        db.commit()
+
+    if record.status == "EXPIRED":
+        return {"status": "EXPIRED"}
+    if record.status == "PENDING":
+        return {"status": "PENDING"}
+    if record.status == "APPROVED" and record.issued_token:
+        # Hand the token over once, then mark consumed
+        token = record.issued_token
+        expires = record.token_expires_at
+        record.status = "CONSUMED"
+        record.consumed_at = datetime.utcnow()
+        record.issued_token = None
+        db.commit()
+        # Look up user info for the response
+        user = db.query(User).filter(User.id == record.user_id).first()
+        return {
+            "status": "APPROVED",
+            "token": token,
+            "expiresAt": expires.isoformat() if expires else None,
+            "role": user.role if user else None,
+            "username": user.username if user else None,
+            "userId": user.id if user else None,
+        }
+    if record.status == "CONSUMED":
+        # Already used — desktop should restart
+        return {"status": "CONSUMED"}
+
+    return {"status": record.status}
+
+
+@router.post("/qr/confirm")
+async def qr_confirm(
+    payload: dict,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mobile (already logged in) confirms a desktop QR session. Server
+    issues a fresh token bound to the calling user and stores it on the row;
+    desktop's poll picks it up next."""
+    from datetime import datetime
+    from app.models.qr_session import QRSession
+
+    qr_id = (payload or {}).get("qrId") or ""
+    record = db.query(QRSession).filter(QRSession.id == qr_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="QR session inexistenta")
+    if record.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="QR-ul a expirat — genereaza altul pe desktop")
+    if record.status not in {"PENDING"}:
+        raise HTTPException(status_code=409, detail=f"QR deja {record.status.lower()}")
+
+    # Issue a fresh session token tied to the confirming user
+    from app.core.security import issue_token
+    token, exp = issue_token(user)
+    record.status = "APPROVED"
+    record.user_id = user.id
+    record.issued_token = token
+    record.token_expires_at = exp
+    record.approved_at = datetime.utcnow()
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    return {
+        "ok": True,
+        "username": user.username,
+        "fullName": user.full_name,
+    }
+
+
+# ── Public, unauthenticated config the frontend reads on login pages ─────────
+
+@router.get("/public-config")
+async def public_config():
+    """Public, unauthenticated config the frontend reads on login pages.
+    Only exposes safe / public values (no secrets)."""
+    bot = (settings.TELEGRAM_BOT_USERNAME or "").strip().lstrip("@")
+    return {
+        "telegramBotUsername": bot or None,
+        "telegramRegisterDeepLink": f"https://t.me/{bot}?start=register" if bot else None,
+        "telegramBotDeepLink": f"https://t.me/{bot}" if bot else None,
+    }
+
+
 @router.post("/login", response_model=LoginChallengeOut)
 async def login_request_code(data: LoginRequest, db: Session = Depends(get_db)):
     """Step 1: user provides username, server sends 6-digit code via Telegram."""

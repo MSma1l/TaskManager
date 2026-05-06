@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     # Main user-facing bot — used for regular USER notifications and 2FA
     TELEGRAM_BOT_TOKEN: str = "your_bot_token_here"
     TELEGRAM_CHAT_ID: str = "your_chat_id_here"
+    # Public bot username (without @) — used to build t.me/<username>?start=...
+    # deep links from the frontend. Optional; if blank, the deep-link button is hidden.
+    TELEGRAM_BOT_USERNAME: str = ""
     # Optional separate ADMIN bot — when set, admins receive 2FA codes and reminders via this bot
     ADMIN_TELEGRAM_BOT_TOKEN: str = ""
     ADMIN_TELEGRAM_CHAT_ID: str = ""

@@ -7,6 +7,7 @@ from app.core.database import SessionLocal
 from app.telegram.commands import (
     cmd_start, cmd_help, cmd_today, cmd_week, cmd_tasks,
     cmd_add, cmd_done, cmd_skip, cmd_notdone, cmd_stats, cmd_delete, cmd_link, cmd_attended, cmd_missed,
+    cmd_register,
 )
 from app.telegram.conversations import (
     handle_conversation, handle_callback_conversation,
@@ -267,6 +268,7 @@ async def _setup_commands(app: Application):
         BotCommand("stats", "Statistici"),
         BotCommand("notes", "Carnetul meu"),
         BotCommand("link", "Leaga acest chat de un cont"),
+        BotCommand("register", "Creeaza un cont nou (username + PIN)"),
         BotCommand("help", "Ajutor"),
     ]
     await app.bot.set_my_commands(commands)
@@ -286,6 +288,7 @@ def _wire_handlers(app: Application):
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("notes", cmd_notes))
     app.add_handler(CommandHandler("link", cmd_link))
+    app.add_handler(CommandHandler("register", cmd_register))
     app.add_handler(CommandHandler("attended", cmd_attended))
     app.add_handler(CommandHandler("missed", cmd_missed))
     app.add_handler(CallbackQueryHandler(_handle_callback))

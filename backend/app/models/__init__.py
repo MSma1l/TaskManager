@@ -9,6 +9,7 @@ from app.models.notebook import NotebookTopic, NotebookNote, NotebookNoteHistory
 from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLog
 from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
+from app.models.qr_session import QRSession
 
 __all__ = [
     "TaskStatus",
@@ -29,4 +30,5 @@ __all__ = [
     "User",
     "LoginCode",
     "AccessRequest",
+    "QRSession",
 ]
