@@ -13,4 +13,21 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    target: 'es2020',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Pull large, rarely-changing deps into their own chunks so they cache
+        // independently of app code.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+          pdf: ['jspdf'],
+          qr: ['qrcode'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 800,
+  },
 });
