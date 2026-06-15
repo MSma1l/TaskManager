@@ -5,7 +5,13 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.board_column import BoardColumn
 from app.models.user import User
-from app.schemas.ai import TaskQuestionsRequest, EstimateRequest, CreateTaskRequest
+from app.schemas.ai import (
+    TaskQuestionsRequest,
+    EstimateRequest,
+    CreateTaskRequest,
+    SprintPlanInput,
+    SprintPlanApplyInput,
+)
 from app.services import ai_service, board_service, membership_service
 
 router = APIRouter(prefix="/api", tags=["ai"])
@@ -94,3 +100,61 @@ async def create_task(
         "task": board_service.board_task_to_dict(db, task),
         "estimate": estimate,
     }
+
+
+# ── planificare sprint AI (MEMBER in proiect) ───────────────────────
+
+@router.post("/projects/{project_id}/ai/plan")
+async def plan_sprint(
+    project_id: str,
+    data: SprintPlanInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Preview: transforma un brief liber in taskuri propuse. Nu creeaza nimic."""
+    membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
+
+    brief = (data.brief or "").strip()
+    if not brief:
+        raise HTTPException(status_code=400, detail="Descrierea sprintului nu poate fi goala")
+
+    return ai_service.plan_sprint(brief)
+
+
+@router.post("/projects/{project_id}/ai/plan/apply")
+async def apply_sprint_plan(
+    project_id: str,
+    data: SprintPlanApplyInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Creeaza in masa taskurile alese in coloana BACKLOG (sprint null)."""
+    membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
+
+    tasks = data.tasks or []
+    if not tasks:
+        raise HTTPException(status_code=400, detail="Lista de taskuri este goala")
+    tasks = tasks[:50]
+
+    # Aceeasi rezolvare a coloanei BACKLOG ca la create-task.
+    default_column_id = _backlog_column(db, project_id).id
+
+    created = []
+    for item in tasks:
+        column_id = item.columnId or default_column_id
+        story_points = (
+            ai_service._clamp_points(item.storyPoints)
+            if item.storyPoints is not None
+            else None
+        )
+        task = board_service.create_task(db, user.id, project_id, {
+            "title": item.title,
+            "description": item.description,
+            "columnId": column_id,
+            "assigneeId": None,
+            "storyPoints": story_points,
+            "labelIds": [],
+        })
+        created.append(board_service.board_task_to_dict(db, task))
+
+    return {"created": created, "count": len(created)}

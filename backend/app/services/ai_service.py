@@ -136,6 +136,104 @@ def _ai_estimate(title: str, description: str, answers: dict) -> dict:
     }
 
 
+# ── planificare sprint (brief liber -> lista de taskuri) ────────────
+
+def plan_sprint(brief: str) -> dict:
+    """Imparte un brief liber de sprint (o saptamana) in taskuri IT bine formate.
+
+    Intoarce {"tasks": [{"title", "description", "storyPoints"}], "source"}.
+    Calea AI nu arunca niciodata catre client — orice exceptie => reguli.
+    """
+    brief = brief or ""
+    if _ai_available():
+        try:
+            return _ai_plan(brief)
+        except Exception:
+            pass
+    return _rule_plan(brief)
+
+
+def _ai_plan(brief: str) -> dict:
+    prompt = (
+        "You are an IT project planner. Given a free-text brief describing "
+        "everything to do in a ONE-WEEK sprint, break it into a list of "
+        "standard, well-scoped IT tasks.\n"
+        "Each task MUST have:\n"
+        "- an imperative title in Romanian (<= 80 chars),\n"
+        "- a description in Romanian containing a short summary AND acceptance "
+        "criteria (criterii de acceptanta),\n"
+        "- integer story_points from 1 to 10 (prefer small/medium tasks; if "
+        "something is huge, SPLIT it into multiple tasks instead of one 10).\n"
+        "Return STRICT JSON ONLY, no prose, no code fences, in this exact shape:\n"
+        '{"tasks": [{"title": "...", "description": "...", "story_points": <int>}]}\n\n'
+        f"Brief:\n{brief}\n"
+    )
+    content = _openrouter_chat(prompt)
+    data = _parse_json(content)
+
+    raw = data.get("tasks") or []
+    if not isinstance(raw, list):
+        raw = []
+
+    tasks = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        tasks.append({
+            "title": title[:80],
+            "description": str(item.get("description") or ""),
+            "storyPoints": _clamp_points(item.get("story_points")),
+        })
+        if len(tasks) >= 40:
+            break
+
+    if not tasks:
+        raise ValueError("Raspuns AI fara taskuri valide")
+
+    return {"tasks": tasks, "source": "ai"}
+
+
+def _rule_plan(brief: str) -> dict:
+    """Fallback determinist: imparte brief-ul in fragmente si face cate un task."""
+    brief = brief or ""
+
+    items: list[str] = []
+    for line in brief.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Liniile lungi le mai impartim pe markere bullet / separatori de fraze.
+        if len(line) > 80:
+            parts = re.split(r"(?:^|\s)[-*•]\s+|;|\.\s+", line)
+        else:
+            parts = [line]
+        for part in parts:
+            part = part.strip(" -*•\t")
+            if len(part) >= 3:
+                items.append(part)
+
+    items = items[:40]
+
+    if not items:
+        whole = brief.strip()
+        if not whole:
+            return {"tasks": [], "source": "rules"}
+        items = [whole]
+
+    tasks = []
+    for item in items:
+        tasks.append({
+            "title": item[:80],
+            "description": item,
+            "storyPoints": _rule_estimate(item, "", {})["storyPoints"],
+        })
+
+    return {"tasks": tasks, "source": "rules"}
+
+
 # ── euristici locale ────────────────────────────────────────────────
 
 _COMPLEXITY_KEYWORDS = [

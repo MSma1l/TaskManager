@@ -130,6 +130,15 @@ docker compose up --build
 
 ---
 
+## Modul Jira (proiecte colaborative + board + sprinturi)
+
+Pe langa taskurile saptamanale personale (neschimbate), aplicatia are un modul de colaborare tip Jira:
+echipa per-proiect cu roluri (OWNER/ADMIN/MEMBER/VIEWER), board Kanban cu workflow pe butoane, backlog +
+sprinturi cu capacitate pe persoana, story points cu estimare AI (OpenRouter + fallback pe reguli),
+dashboard de performanta si colaborare (comentarii, @mention pe Telegram, watchers, activity log).
+
+Documentatie completa: [`docs/JIRA_MODULE.md`](docs/JIRA_MODULE.md).
+
 ## Proiecte (pastrat din versiunea initiala)
 
 - Pagina **Proiecte** in app — creezi proiect cu nume, descriere, culoare, deadline

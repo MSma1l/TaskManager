@@ -42,6 +42,9 @@ export function avatarTint(seed: string): string {
   return AVATAR_TINTS[h % AVATAR_TINTS.length];
 }
 
+/** Number of distinct avatar tint buckets (exposed for tests). */
+export const AVATAR_TINTS_COUNT = AVATAR_TINTS.length;
+
 /** Selectable column types (order = the canonical workflow). */
 export const COLUMN_TYPES: ColumnType[] = [
   'BACKLOG',

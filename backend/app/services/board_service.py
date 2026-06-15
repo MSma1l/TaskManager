@@ -22,6 +22,30 @@ DEFAULT_COLUMNS = [
 ]
 
 
+# column_type-urile care inseamna "munca terminata".
+DONE_COLUMN_TYPES = ("DONE", "APPROVED")
+
+
+# ── done detection (robust la customizarea coloanelor) ──────────────
+
+def is_done_column_obj(col: BoardColumn | None) -> bool:
+    """O coloana inseamna "terminat" daca are flag-ul is_done_column SAU
+    column_type in (DONE, APPROVED). Robust cand adminul pune CUSTOM/rename."""
+    if col is None:
+        return False
+    return bool(col.is_done_column) or (col.column_type in DONE_COLUMN_TYPES)
+
+
+def done_column_ids(db: Session, project_id: str) -> set[str]:
+    """Id-urile coloanelor "terminat" pentru proiect (is_done_column sau type)."""
+    rows = (
+        db.query(BoardColumn)
+        .filter(BoardColumn.project_id == project_id)
+        .all()
+    )
+    return {c.id for c in rows if is_done_column_obj(c)}
+
+
 # ── helpers interne ─────────────────────────────────────────────────
 
 def _parse_dt(value):
@@ -518,8 +542,12 @@ def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assign
 
 
 def _validate_assignee(db: Session, project_id: str, assignee_id: str) -> None:
-    if membership_service.get_member(db, project_id, assignee_id) is None:
+    member = membership_service.get_member(db, project_id, assignee_id)
+    if member is None:
         raise HTTPException(status_code=400, detail="Responsabilul trebuie sa fie membru al proiectului")
+    # Un VIEWER e read-only: nu i se pot atribui sarcini.
+    if membership_service.ROLE_RANK.get(member.role, -1) < membership_service.ROLE_RANK["MEMBER"]:
+        raise HTTPException(status_code=400, detail="Nu poti atribui sarcini unui vizualizator (VIEWER)")
 
 
 # ── workflow (tranzitii intre stadii) ───────────────────────────────
@@ -535,7 +563,10 @@ ACTION_TARGET = {
 
 def _find_target_column(db: Session, project_id: str, target_type: str, current_column_id: str) -> BoardColumn:
     """Coloana cu column_type tinta (prima dupa pozitie); fallback: urmatoarea
-    coloana dupa pozitie fata de coloana curenta (workflow custom)."""
+    coloana dupa pozitie fata de coloana curenta (workflow custom).
+
+    Pentru "done" (target_type=DONE), daca nu exista coloana cu column_type=DONE,
+    prefera o coloana cu is_done_column=True inainte de fallback-ul pozitional."""
     target = (
         db.query(BoardColumn)
         .filter(
@@ -547,6 +578,20 @@ def _find_target_column(db: Session, project_id: str, target_type: str, current_
     )
     if target is not None:
         return target
+
+    # Pentru tranzitia "done", onoreaza si flag-ul is_done_column.
+    if target_type == "DONE":
+        done_flagged = (
+            db.query(BoardColumn)
+            .filter(
+                BoardColumn.project_id == project_id,
+                BoardColumn.is_done_column == True,
+            )
+            .order_by(BoardColumn.position.asc())
+            .first()
+        )
+        if done_flagged is not None:
+            return done_flagged
 
     current = (
         db.query(BoardColumn)
@@ -587,13 +632,18 @@ def transition_task(
     if action not in ACTION_TARGET:
         raise HTTPException(status_code=400, detail="Actiune necunoscuta")
 
-    is_lead = membership_service.ROLE_RANK.get(member.role, -1) >= membership_service.ROLE_RANK["ADMIN"]
+    rank = membership_service.ROLE_RANK.get(member.role, -1)
+    is_lead = rank >= membership_service.ROLE_RANK["ADMIN"]
+    is_member = rank >= membership_service.ROLE_RANK["MEMBER"]
     is_assignee = task.assignee_id == user_id
 
     if action == "approve":
         if not is_lead:
             raise HTTPException(status_code=403, detail="Doar team lead-ul poate aproba")
     else:  # plan / start / done
+        # Un VIEWER nu poate face tranzitii, chiar daca e cumva responsabil.
+        if not is_member:
+            raise HTTPException(status_code=403, detail="Un vizualizator (VIEWER) nu poate modifica sarcini")
         if not (is_assignee or is_lead):
             raise HTTPException(status_code=403, detail="Doar responsabilul sau team lead-ul poate face aceasta tranzitie")
 

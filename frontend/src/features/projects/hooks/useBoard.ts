@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Board,
-  BoardColumn,
-  BoardTask,
   CreateColumnData,
   UpdateColumnData,
   CreateBoardTaskData,
@@ -11,6 +9,7 @@ import {
   TransitionData,
   boardApi,
 } from '../api/board';
+import { applyOptimisticMove } from './applyOptimisticMove';
 
 const POLL_INTERVAL = 5000;
 
@@ -106,28 +105,7 @@ export function useBoard(projectId: string, sprintFilter?: string) {
    * settles by refetching. `isDraggingRef` guards against poll races.
    */
   const moveTask = async (taskId: string, toColumnId: string, toIndex: number) => {
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const columns: BoardColumn[] = prev.columns.map((c) => ({ ...c, tasks: [...c.tasks] }));
-
-      let moved: BoardTask | undefined;
-      for (const col of columns) {
-        const idx = col.tasks.findIndex((t) => t.id === taskId);
-        if (idx !== -1) {
-          moved = col.tasks.splice(idx, 1)[0];
-          break;
-        }
-      }
-      if (!moved) return prev;
-
-      const target = columns.find((c) => c.id === toColumnId);
-      if (!target) return prev;
-
-      const safeIndex = Math.max(0, Math.min(toIndex, target.tasks.length));
-      target.tasks.splice(safeIndex, 0, { ...moved, boardColumnId: toColumnId });
-
-      return { ...prev, columns };
-    });
+    setBoard((prev) => applyOptimisticMove(prev, taskId, toColumnId, toIndex));
 
     try {
       await boardApi.moveTask(projectId, taskId, toColumnId, toIndex);

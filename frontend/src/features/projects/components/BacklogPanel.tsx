@@ -6,6 +6,7 @@ import { boardApi, BoardTask, BoardColumn, CreateBoardTaskData } from '../api/bo
 import { ProjectRole } from '../api/members';
 import { avatarTint } from './boardConstants';
 import AiTaskWizard from './AiTaskWizard';
+import SprintPlannerModal from './SprintPlannerModal';
 import ManualBacklogTaskModal from './ManualBacklogTaskModal';
 
 interface BacklogPanelProps {
@@ -40,6 +41,7 @@ export default function BacklogPanel({ projectId, myRole }: BacklogPanelProps) {
   const canManage = myRole === 'OWNER' || myRole === 'ADMIN' || myRole === 'MEMBER' || myRole === undefined;
 
   const [showAi, setShowAi] = useState(false);
+  const [showPlanner, setShowPlanner] = useState(false);
   const [showManual, setShowManual] = useState(false);
 
   const handleManualCreate = async (data: CreateBoardTaskData) => {
@@ -73,6 +75,13 @@ export default function BacklogPanel({ projectId, myRole }: BacklogPanelProps) {
               </svg>
               {t('pm.aiTask')}
             </button>
+            <button
+              onClick={() => setShowPlanner(true)}
+              className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-600/20 flex items-center gap-1.5"
+            >
+              <span aria-hidden>✨</span>
+              {t('pm.planSprint')}
+            </button>
           </>
         )}
       </div>
@@ -98,6 +107,13 @@ export default function BacklogPanel({ projectId, myRole }: BacklogPanelProps) {
           projectId={projectId}
           members={members}
           onClose={() => setShowAi(false)}
+          onCreated={refetch}
+        />
+      )}
+      {showPlanner && (
+        <SprintPlannerModal
+          projectId={projectId}
+          onClose={() => setShowPlanner(false)}
           onCreated={refetch}
         />
       )}

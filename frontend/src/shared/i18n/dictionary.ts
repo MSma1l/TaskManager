@@ -282,6 +282,20 @@ const ro = {
     source: 'Sursa',
     sourceAi: 'AI',
     sourceRules: 'reguli',
+    // ── AI Sprint Planner ──
+    planSprint: 'Planifica sprint (AI)',
+    sprintBrief: 'Brief sprint',
+    briefPlaceholder: 'Descrie tot ce trebuie facut in sprintul acestei saptamani...',
+    generateTasks: 'Genereaza taskuri',
+    proposedTasks: 'Taskuri propuse',
+    createAllInBacklog: 'Creeaza toate in backlog',
+    addRow: 'Adauga rand',
+    regenerate: 'Regenereaza',
+    removeTask: 'Elimina',
+    emptyBriefError: 'Scrie cateva detalii despre sprint.',
+    noPlannedTasks: 'Niciun task — adauga unul sau regenereaza.',
+    titleRequired: 'Fiecare task are nevoie de un titlu.',
+    tasksCreated: 'taskuri create in backlog.',
   },
   collab: {
     // ── Tabs / sections ──
@@ -302,6 +316,7 @@ const ro = {
     watching: 'Urmaresti',
     watchers: 'Urmaritori',
     // ── Activity ──
+    activityFeed: 'Activitate',
     noActivity: 'Inca nu sunt activitati',
     someone: 'Cineva',
     actCreated: 'a creat taskul',
@@ -597,6 +612,20 @@ const ru = {
     source: 'Источник',
     sourceAi: 'AI',
     sourceRules: 'правила',
+    // ── AI Sprint Planner ──
+    planSprint: 'Спланировать спринт (AI)',
+    sprintBrief: 'Бриф спринта',
+    briefPlaceholder: 'Опишите всё, что нужно сделать в спринте этой недели...',
+    generateTasks: 'Сгенерировать задачи',
+    proposedTasks: 'Предложенные задачи',
+    createAllInBacklog: 'Создать все в бэклоге',
+    addRow: 'Добавить строку',
+    regenerate: 'Сгенерировать заново',
+    removeTask: 'Удалить',
+    emptyBriefError: 'Добавьте несколько деталей о спринте.',
+    noPlannedTasks: 'Нет задач — добавьте или сгенерируйте заново.',
+    titleRequired: 'У каждой задачи должен быть заголовок.',
+    tasksCreated: 'задач создано в бэклоге.',
   },
   collab: {
     // ── Tabs / sections ──
@@ -617,6 +646,7 @@ const ru = {
     watching: 'Вы следите',
     watchers: 'Наблюдатели',
     // ── Activity ──
+    activityFeed: 'Активность',
     noActivity: 'Пока нет активности',
     someone: 'Кто-то',
     actCreated: 'создал(а) задачу',

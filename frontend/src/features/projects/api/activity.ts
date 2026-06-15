@@ -19,7 +19,16 @@ export interface TaskActivity {
   createdAt: string;
 }
 
+/** Project-level activity: same shape as TaskActivity plus the originating task. */
+export interface ProjectActivity extends TaskActivity {
+  taskId: string | null;
+}
+
 export const activityApi = {
   list: (taskId: string) =>
     client.get<TaskActivity[]>(`/tasks/${taskId}/activity`).then((r) => r.data),
+  projectActivity: (projectId: string, limit = 50) =>
+    client
+      .get<ProjectActivity[]>(`/projects/${projectId}/activity`, { params: { limit } })
+      .then((r) => r.data),
 };

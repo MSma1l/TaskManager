@@ -6,6 +6,8 @@ import { ProjectMember } from '../api/members';
 import { TaskActivity } from '../api/activity';
 import { TaskComment } from '../api/comments';
 import { avatarTint, nextAction, actionKey, priorityKey } from './boardConstants';
+import { activityLine } from './activityText';
+import { detectMention, insertMention as insertMentionToken } from './mention';
 import { useComments } from '../hooks/useComments';
 import { useTaskActivity } from '../hooks/useTaskActivity';
 import { useWatchers } from '../hooks/useWatchers';
@@ -293,31 +295,23 @@ function CommentsTab({
       .slice(0, 6);
   }, [mentionQuery, members]);
 
-  /** Detect a `@word` token directly before the caret. */
-  const detectMention = (value: string, caret: number) => {
-    const upto = value.slice(0, caret);
-    const match = /(?:^|\s)@(\w*)$/.exec(upto);
-    setMentionQuery(match ? match[1] : null);
-  };
-
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setBody(e.target.value);
-    detectMention(e.target.value, e.target.selectionStart);
+    const token = detectMention(e.target.value, e.target.selectionStart);
+    setMentionQuery(token ? token.query : null);
   };
 
   const insertMention = (username: string) => {
     const el = textareaRef.current;
     const caret = el ? el.selectionStart : body.length;
-    const before = body.slice(0, caret).replace(/@(\w*)$/, `@${username} `);
-    const after = body.slice(caret);
-    const next = before + after;
-    setBody(next);
+    const { text, caret: nextCaret } = insertMentionToken(body, caret, username);
+    setBody(text);
     setMentionQuery(null);
     // Restore focus + caret after the inserted mention.
     requestAnimationFrame(() => {
       if (el) {
         el.focus();
-        el.selectionStart = el.selectionEnd = before.length;
+        el.selectionStart = el.selectionEnd = nextCaret;
       }
     });
   };
@@ -463,20 +457,6 @@ function CommentsTab({
 
 // ── Activity tab ─────────────────────────────────────────────────────────────
 
-function activityKey(action: string): string {
-  switch (action) {
-    case 'CREATED': return 'collab.actCreated';
-    case 'MOVED': return 'collab.actMoved';
-    case 'ASSIGNED': return 'collab.actAssigned';
-    case 'PLANNED': return 'collab.actPlanned';
-    case 'STARTED': return 'collab.actStarted';
-    case 'DONE': return 'collab.actDone';
-    case 'APPROVED': return 'collab.actApproved';
-    case 'COMMENTED': return 'collab.actCommented';
-    default: return '';
-  }
-}
-
 function ActivityTab({ activity, lang }: { activity: TaskActivity[]; lang: 'ro' | 'ru' }) {
   const { t } = useI18n();
 
@@ -493,8 +473,7 @@ function ActivityTab({ activity, lang }: { activity: TaskActivity[]; lang: 'ro' 
     <div className="flex flex-col gap-3">
       {ordered.map((a) => {
         const actor = a.username || t('collab.someone');
-        const phraseKey = activityKey(a.action);
-        const phrase = phraseKey ? t(phraseKey) : a.action;
+        const phrase = activityLine(t, a.action);
         return (
           <div key={a.id} className="flex gap-2.5 items-start">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60 mt-2 flex-shrink-0" />

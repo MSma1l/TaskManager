@@ -114,22 +114,47 @@ def test_approve_by_viewer_forbidden(db, make_user, make_project, add_member):
     assert exc.value.status_code == 403
 
 
-def test_assignee_viewer_can_plan_own_task(db, make_user, make_project, add_member):
+def test_viewer_cannot_transition_even_if_assignee(db, make_user, make_project, add_member):
     owner = make_user()
     viewer = make_user()
+    member = make_user()
     project = make_project(owner, key="WF")
     add_member(project, viewer, role="VIEWER")
+    add_member(project, member, role="MEMBER")
     board_service.ensure_columns(db, project.id)
     backlog = _col_by_type(db, project.id, "BACKLOG")
-    # Assign the task to the viewer.
+    # Create the task assigned to a MEMBER (cannot assign to a VIEWER), then
+    # force the assignee to the viewer to simulate "somehow assigned".
     task = board_service.create_task(
         db, owner.id, project.id,
-        {"title": "mine", "columnId": backlog.id, "assigneeId": viewer.id},
+        {"title": "mine", "columnId": backlog.id, "assigneeId": member.id},
+    )
+    task.assignee_id = viewer.id
+    db.commit()
+
+    # A VIEWER must stay read-only: no transition even on their "own" task.
+    with pytest.raises(HTTPException) as exc:
+        board_service.transition_task(db, viewer.id, project.id, task.id, "start")
+    assert exc.value.status_code == 403
+
+
+def test_member_assignee_can_plan_start_done_own_task(db, make_user, make_project, add_member):
+    owner = make_user()
+    member = make_user()
+    project = make_project(owner, key="WF")
+    add_member(project, member, role="MEMBER")
+    board_service.ensure_columns(db, project.id)
+    backlog = _col_by_type(db, project.id, "BACKLOG")
+    task = board_service.create_task(
+        db, owner.id, project.id,
+        {"title": "mine", "columnId": backlog.id, "assigneeId": member.id},
     )
 
-    # Even as VIEWER, the assignee may plan/start/done their own task.
-    result = board_service.transition_task(db, viewer.id, project.id, task.id, "start")
-    assert result.board_column_id == _col_by_type(db, project.id, "IN_PROGRESS").id
+    # MEMBER assignee may plan -> start -> done their own task.
+    board_service.transition_task(db, member.id, project.id, task.id, "plan")
+    board_service.transition_task(db, member.id, project.id, task.id, "start")
+    result = board_service.transition_task(db, member.id, project.id, task.id, "done")
+    assert result.board_column_id == _col_by_type(db, project.id, "DONE").id
 
 
 def test_non_assignee_member_cannot_transition_others_task(db, make_user, make_project, add_member):
@@ -188,3 +213,66 @@ def test_no_target_and_no_next_column_400(db, make_user, make_project):
     with pytest.raises(HTTPException) as exc:
         board_service.transition_task(db, owner.id, project.id, task.id, "start")
     assert exc.value.status_code == 400
+
+
+def test_done_routes_to_is_done_column_when_no_done_type(db, make_user, make_project):
+    owner = make_user()
+    project = make_project(owner, key="WF")
+    # Custom board: no DONE column_type, but a CUSTOM column flagged is_done_column.
+    c0 = board_service.create_column(db, owner.id, project.id, "Todo", None)
+    board_service.create_column(db, owner.id, project.id, "Doing", None)
+    done = board_service.create_column(db, owner.id, project.id, "Gata", None)
+    done.is_done_column = True
+    done.column_type = "CUSTOM"
+    db.commit()
+
+    task = board_service.create_task(db, owner.id, project.id, {"title": "t", "columnId": c0.id})
+
+    # "done" prefers the is_done_column over the positional next column.
+    result = board_service.transition_task(db, owner.id, project.id, task.id, "done")
+    assert result.board_column_id == done.id
+
+
+# ── assignment: VIEWER cannot be assigned ───────────────────────────
+
+def test_assign_to_viewer_400(db, make_user, make_project, add_member):
+    owner = make_user()
+    viewer = make_user()
+    project, task = _setup(db, owner, make_project)
+    add_member(project, viewer, role="VIEWER")
+
+    with pytest.raises(HTTPException) as exc:
+        board_service.assign_task(db, owner.id, project.id, task.id, viewer.id)
+    assert exc.value.status_code == 400
+    assert "VIEWER" in exc.value.detail
+
+
+def test_assign_to_member_ok_and_unassign_ok(db, make_user, make_project, add_member):
+    owner = make_user()
+    member = make_user()
+    project, task = _setup(db, owner, make_project)
+    add_member(project, member, role="MEMBER")
+
+    res = board_service.assign_task(db, owner.id, project.id, task.id, member.id)
+    assert res.assignee_id == member.id
+
+    # Unassign (null) stays allowed.
+    res2 = board_service.assign_task(db, owner.id, project.id, task.id, None)
+    assert res2.assignee_id is None
+
+
+def test_create_task_assignee_viewer_400(db, make_user, make_project, add_member):
+    owner = make_user()
+    viewer = make_user()
+    project = make_project(owner, key="WF")
+    add_member(project, viewer, role="VIEWER")
+    board_service.ensure_columns(db, project.id)
+    backlog = _col_by_type(db, project.id, "BACKLOG")
+
+    with pytest.raises(HTTPException) as exc:
+        board_service.create_task(
+            db, owner.id, project.id,
+            {"title": "t", "columnId": backlog.id, "assigneeId": viewer.id},
+        )
+    assert exc.value.status_code == 400
+    assert "VIEWER" in exc.value.detail

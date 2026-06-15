@@ -1,25 +1,9 @@
 from sqlalchemy.orm import Session
 
-from app.models.board_column import BoardColumn
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.user import User
-from app.services import membership_service
-
-# Coloanele care inseamna "munca terminata".
-DONE_COLUMN_TYPES = {"DONE", "APPROVED"}
-
-
-def _done_column_ids(db: Session, project_id: str) -> set[str]:
-    rows = (
-        db.query(BoardColumn.id)
-        .filter(
-            BoardColumn.project_id == project_id,
-            BoardColumn.column_type.in_(DONE_COLUMN_TYPES),
-        )
-        .all()
-    )
-    return {r[0] for r in rows}
+from app.services import board_service, membership_service
 
 
 def project_performance(db: Session, user_id: str, project_id: str) -> dict:
@@ -30,7 +14,7 @@ def project_performance(db: Session, user_id: str, project_id: str) -> dict:
     rows = db.query(User).filter(User.id.in_(ids)).all() if ids else []
     users = {u.id: u for u in rows}
 
-    done_ids = _done_column_ids(db, project_id)
+    done_ids = board_service.done_column_ids(db, project_id)
 
     # Toate taskurile active de pe board (board_column_id != null).
     tasks = (

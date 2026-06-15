@@ -3,16 +3,11 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.board_column import BoardColumn
 from app.models.project_member import ProjectMember
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.user import User
 from app.services import board_service, membership_service
-
-
-# Coloanele care inseamna "munca terminata" pentru calculul de performanta.
-DONE_COLUMN_TYPES = {"DONE", "APPROVED"}
 
 
 # ── helpers interne ─────────────────────────────────────────────────
@@ -35,19 +30,6 @@ def _get_sprint(db: Session, project_id: str, sprint_id: str) -> Sprint:
     if sprint is None:
         raise HTTPException(status_code=404, detail="Sprint inexistent")
     return sprint
-
-
-def _done_column_ids(db: Session, project_id: str) -> set[str]:
-    """Id-urile coloanelor cu column_type in (DONE, APPROVED) pentru proiect."""
-    rows = (
-        db.query(BoardColumn.id)
-        .filter(
-            BoardColumn.project_id == project_id,
-            BoardColumn.column_type.in_(DONE_COLUMN_TYPES),
-        )
-        .all()
-    )
-    return {r[0] for r in rows}
 
 
 def _sprint_tasks(db: Session, sprint_id: str) -> list[Task]:
@@ -217,8 +199,8 @@ def complete_sprint(db: Session, user_id: str, project_id: str, sprint_id: str) 
     sprint = _get_sprint(db, project_id, sprint_id)
     sprint.status = "COMPLETED"
 
-    # Taskurile neterminate (coloana NU e DONE/APPROVED) revin in backlog.
-    done_ids = _done_column_ids(db, project_id)
+    # Taskurile neterminate (coloana NU e "terminat") revin in backlog.
+    done_ids = board_service.done_column_ids(db, project_id)
     for t in _sprint_tasks(db, sprint_id):
         if t.board_column_id not in done_ids:
             t.sprint_id = None

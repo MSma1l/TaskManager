@@ -13,8 +13,9 @@ import BoardPage from './BoardPage';
 import BacklogPanel from '../components/BacklogPanel';
 import SprintsPanel from '../components/SprintsPanel';
 import PerformancePanel from '../components/PerformancePanel';
+import ActivityPanel from '../components/ActivityPanel';
 
-type ProjectTab = 'list' | 'board' | 'backlog' | 'sprints' | 'performance';
+type ProjectTab = 'list' | 'board' | 'backlog' | 'sprints' | 'performance' | 'activity';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -23,7 +24,7 @@ export default function ProjectDetailPage() {
   const t = useT();
   const isBoardRoute = location.pathname.endsWith('/board');
   // Tabs: List/Board are route-backed (deep-linkable); the rest are local.
-  const [extraTab, setExtraTab] = useState<'backlog' | 'sprints' | 'performance' | null>(null);
+  const [extraTab, setExtraTab] = useState<'backlog' | 'sprints' | 'performance' | 'activity' | null>(null);
   const tab: ProjectTab = extraTab ?? (isBoardRoute ? 'board' : 'list');
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -229,6 +230,14 @@ export default function ProjectDetailPage() {
         >
           {t('pm.performance')}
         </button>
+        <button
+          onClick={() => { setExtraTab('activity'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'activity' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('collab.activityFeed')}
+        </button>
       </div>
 
       {tab === 'board' ? (
@@ -239,6 +248,8 @@ export default function ProjectDetailPage() {
         projectId && <SprintsPanel projectId={projectId} myRole={project.role} />
       ) : tab === 'performance' ? (
         projectId && <PerformancePanel projectId={projectId} />
+      ) : tab === 'activity' ? (
+        projectId && <ActivityPanel projectId={projectId} />
       ) : (
       <>
       {/* Stats bar */}
