@@ -7,6 +7,7 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     githubUrl: Optional[str] = None
     color: Optional[str] = "#3b82f6"
+    key: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -15,3 +16,4 @@ class ProjectUpdate(BaseModel):
     githubUrl: Optional[str] = None
     color: Optional[str] = None
     isActive: Optional[bool] = None
+    key: Optional[str] = None

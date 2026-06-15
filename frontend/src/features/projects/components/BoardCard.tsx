@@ -1,20 +1,55 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { BoardTask } from '../api/board';
-import { PRIORITY_DOT, avatarTint } from './boardConstants';
+import { useT } from '../../../shared/i18n/I18nProvider';
+import { BoardTask, ColumnType, TransitionAction } from '../api/board';
+import { PRIORITY_DOT, avatarTint, nextAction, actionKey } from './boardConstants';
+
+interface WorkflowCtx {
+  columnType: ColumnType | null;
+  /** True when the current user is the assignee (or may act on the card). */
+  isAssignee: boolean;
+  /** True for OWNER/ADMIN — required to approve. */
+  canApprove: boolean;
+  /** Fires the contextual workflow action. `plan` opens the modal upstream. */
+  onAction: (task: BoardTask, action: TransitionAction) => void;
+}
 
 interface BoardCardProps {
   task: BoardTask;
   onClick?: (task: BoardTask) => void;
-  /** When true, renders the static card body (used inside DragOverlay). */
-  overlay?: boolean;
+  workflow?: WorkflowCtx;
 }
 
 /** Inner presentational card — shared by the sortable card and the drag overlay. */
-export function BoardCardBody({ task, dragging }: { task: BoardTask; dragging?: boolean }) {
+export function BoardCardBody({
+  task,
+  dragging,
+  workflow,
+}: {
+  task: BoardTask;
+  dragging?: boolean;
+  workflow?: WorkflowCtx;
+}) {
+  const t = useT();
   const initials = task.assignee
     ? (task.assignee.fullName || task.assignee.username).charAt(0).toUpperCase()
     : null;
+
+  // Decide whether to render a workflow button on this card.
+  let action: TransitionAction | null = null;
+  if (workflow) {
+    const candidate = nextAction(workflow.columnType);
+    if (candidate === 'approve') {
+      if (workflow.canApprove) action = 'approve';
+    } else if (candidate) {
+      if (workflow.isAssignee || workflow.canApprove) action = candidate;
+    }
+  }
+
+  const handleActionClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (workflow && action) workflow.onAction(task, action);
+  };
 
   return (
     <div
@@ -22,9 +57,14 @@ export function BoardCardBody({ task, dragging }: { task: BoardTask; dragging?: 
         dragging ? 'shadow-xl ring-1 ring-blue-500/40 rotate-1' : ''
       }`}
     >
-      {/* Labels */}
-      {task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
+      {/* Key + Labels */}
+      {(task.taskKey || task.labels.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1 mb-2">
+          {task.taskKey && (
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-400">
+              {task.taskKey}
+            </span>
+          )}
           {task.labels.map((l) => (
             <span
               key={l.id}
@@ -39,6 +79,28 @@ export function BoardCardBody({ task, dragging }: { task: BoardTask; dragging?: 
 
       {/* Title */}
       <p className="text-sm font-medium text-fg leading-snug break-words">{task.title}</p>
+
+      {/* Schedule meta */}
+      {(task.estimateMinutes != null || task.dayOfWeek != null) && (
+        <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted">
+          {task.estimateMinutes != null && (
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {formatEstimate(task.estimateMinutes)}
+            </span>
+          )}
+          {task.dayOfWeek != null && (
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {t(DOW_KEYS[task.dayOfWeek] || '')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-3">
@@ -70,11 +132,45 @@ export function BoardCardBody({ task, dragging }: { task: BoardTask; dragging?: 
           </div>
         )}
       </div>
+
+      {/* Workflow action */}
+      {action && (
+        <button
+          data-tour={`workflow-${action}`}
+          onClick={handleActionClick}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`mt-2.5 w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            action === 'approve'
+              ? 'bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30'
+              : 'bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30'
+          }`}
+        >
+          {t(actionKey(action))}
+        </button>
+      )}
     </div>
   );
 }
 
-export default function BoardCard({ task, onClick }: BoardCardProps) {
+const DOW_KEYS = [
+  'board.dowMon',
+  'board.dowTue',
+  'board.dowWed',
+  'board.dowThu',
+  'board.dowFri',
+  'board.dowSat',
+  'board.dowSun',
+];
+
+function formatEstimate(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+export default function BoardCard({ task, onClick, workflow }: BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', task },
@@ -95,7 +191,7 @@ export default function BoardCard({ task, onClick }: BoardCardProps) {
       onClick={() => onClick?.(task)}
       className="cursor-grab active:cursor-grabbing touch-none"
     >
-      <BoardCardBody task={task} />
+      <BoardCardBody task={task} workflow={workflow} />
     </div>
   );
 }

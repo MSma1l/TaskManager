@@ -8,6 +8,7 @@ export interface Project {
   description: string | null;
   githubUrl: string | null;
   color: string;
+  key: string | null;
   isActive: boolean;
   taskCount: number;
   /** Caller's role on this project (Phase 1 membership). */
@@ -27,6 +28,7 @@ export interface CreateProjectData {
   description?: string;
   githubUrl?: string;
   color?: string;
+  key?: string;
 }
 
 export interface UpdateProjectData {
@@ -34,6 +36,7 @@ export interface UpdateProjectData {
   description?: string;
   githubUrl?: string;
   color?: string;
+  key?: string;
   isActive?: boolean;
 }
 

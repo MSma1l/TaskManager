@@ -96,8 +96,11 @@ def make_category(db):
 
 @pytest.fixture()
 def make_project(db):
-    def _make(owner, name="Proj", with_owner_membership=True):
-        p = Project(id=generate_cuid(), user_id=owner.id, name=name, is_active=True)
+    def _make(owner, name="Proj", with_owner_membership=True, key="PRJ"):
+        p = Project(
+            id=generate_cuid(), user_id=owner.id, name=name,
+            key=key, task_counter=0, is_active=True,
+        )
         db.add(p)
         db.commit()
         db.refresh(p)
@@ -108,6 +111,17 @@ def make_project(db):
         return p
 
     return _make
+
+
+@pytest.fixture()
+def add_member(db):
+    """Adauga un user ca membru intr-un proiect cu un rol dat."""
+    def _add(project, user, role="MEMBER"):
+        return membership_service.add_member(
+            db, project.id, user.id, role=role, invited_by=user.id
+        )
+
+    return _add
 
 
 @pytest.fixture()
@@ -162,6 +176,50 @@ def app_client(TestingSessionLocal):
     def _override_current_user():
         if state["user"] is None:
             from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="no test user")
+        return state["user"]
+
+    application.dependency_overrides[get_db] = _override_get_db
+    application.dependency_overrides[get_current_user] = _override_current_user
+
+    client = TestClient(application)
+
+    def set_user(user):
+        state["user"] = user
+
+    yield client, set_user
+    application.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def board_client(TestingSessionLocal):
+    """Like `app_client` but mounts the board + tasks + projects routers.
+
+    Returns (client, set_user) where set_user(user) picks the authenticated
+    user for the `get_current_user` dependency.
+    """
+    from fastapi import FastAPI, HTTPException
+    from fastapi.testclient import TestClient
+    from app.api.board import router as board_router
+    from app.api.projects import router as projects_router
+    from app.api.tasks import router as tasks_router
+
+    application = FastAPI()
+    application.include_router(board_router)
+    application.include_router(projects_router)
+    application.include_router(tasks_router)
+
+    state = {"user": None}
+
+    def _override_get_db():
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    def _override_current_user():
+        if state["user"] is None:
             raise HTTPException(status_code=401, detail="no test user")
         return state["user"]
 

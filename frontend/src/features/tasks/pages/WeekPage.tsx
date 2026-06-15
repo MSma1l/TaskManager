@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../../../shared/i18n/I18nProvider';
 import { useWeek } from '../hooks/useWeek';
 import { useTasks } from '../hooks/useTasks';
 import { Task, CreateTaskData } from '../api/tasks';
@@ -7,9 +8,13 @@ import MobileDayView from '../components/MobileDayView';
 import AddTaskModal from '../components/AddTaskModal';
 import MarkTaskModal from '../components/MarkTaskModal';
 import EditTaskModal from '../components/EditTaskModal';
+import AssignedTasksList from '../components/AssignedTasksList';
 import { formatWeekRange } from '../../../shared/utils/dates';
 
+type HomeTab = 'personal' | 'assigned';
+
 export default function WeekPage() {
+  const t = useT();
   const { weekDays, weekStartISO, goNext, goPrev, goToday, offset } = useWeek();
   const { tasks, loading, refetch, createTask, updateTask, deleteTask } = useTasks(weekStartISO);
   const [showAdd, setShowAdd] = useState(false);
@@ -17,6 +22,7 @@ export default function WeekPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [slideDir, setSlideDir] = useState<'left' | 'right' | 'none'>('none');
+  const [tab, setTab] = useState<HomeTab>('personal');
 
   const weekLabel = formatWeekRange(weekDays[0], weekDays[6]);
 
@@ -67,26 +73,52 @@ export default function WeekPage() {
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Saptamana</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{weekLabel}</p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <button
-            onClick={handleToday}
-            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
-              offset === 0
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 cursor-default'
-                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30'
-            }`}
-          >
-            Azi
-          </button>
-          <button
-            onClick={() => handleAddClick()}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-green-600 hover:bg-green-500 text-xs sm:text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
-          >
-            + Task
-          </button>
-        </div>
+        {tab === 'personal' && (
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={handleToday}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                offset === 0
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 cursor-default'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30'
+              }`}
+            >
+              Azi
+            </button>
+            <button
+              onClick={() => handleAddClick()}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-green-600 hover:bg-green-500 text-xs sm:text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
+            >
+              + Task
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Personal | Assigned toggle */}
+      <div className="flex items-center gap-1 mb-4 border-b border-border">
+        <button
+          onClick={() => setTab('personal')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            tab === 'personal' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('board.personal')}
+        </button>
+        <button
+          onClick={() => setTab('assigned')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            tab === 'assigned' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('board.assignedToMe')}
+        </button>
+      </div>
+
+      {tab === 'assigned' ? (
+        <AssignedTasksList />
+      ) : (
+      <>
       {/* Week navigation */}
       <div className="flex items-center justify-between mb-4 sm:mb-5">
         <button
@@ -146,6 +178,8 @@ export default function WeekPage() {
             />
           </div>
         </>
+      )}
+      </>
       )}
 
       {/* Modals */}

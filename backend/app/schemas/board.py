@@ -5,6 +5,7 @@ from typing import Optional
 class ColumnCreate(BaseModel):
     name: str
     color: Optional[str] = None
+    columnType: Optional[str] = None
 
 
 class ColumnUpdate(BaseModel):
@@ -12,6 +13,7 @@ class ColumnUpdate(BaseModel):
     color: Optional[str] = None
     position: Optional[int] = None
     isDoneColumn: Optional[bool] = None
+    columnType: Optional[str] = None
 
 
 class BoardTaskCreate(BaseModel):
@@ -21,6 +23,8 @@ class BoardTaskCreate(BaseModel):
     assigneeId: Optional[str] = None
     priority: Optional[str] = "MEDIUM"
     labelIds: list[str] = []
+    dueDate: Optional[str] = None
+    estimateMinutes: Optional[int] = None
 
 
 class BoardTaskUpdate(BaseModel):
@@ -28,6 +32,16 @@ class BoardTaskUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = None
     labelIds: Optional[list[str]] = None
+    dueDate: Optional[str] = None
+    estimateMinutes: Optional[int] = None
+
+
+class TaskTransition(BaseModel):
+    action: str
+    estimateMinutes: Optional[int] = None
+    dayOfWeek: Optional[int] = None
+    scheduledDate: Optional[str] = None
+    reminderTime: Optional[str] = None
 
 
 class MoveTask(BaseModel):

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Text, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.base import generate_cuid
@@ -14,6 +14,9 @@ class Project(Base):
     description = Column(Text, nullable=True)
     github_url = Column(String, nullable=True)
     color = Column(String, default="#3b82f6")
+    # Cheia proiectului (ex: "IA") folosita pentru numerotarea task-urilor: IA-1, IA-2...
+    key = Column(String(10), nullable=True)
+    task_counter = Column(Integer, nullable=False, default=0, server_default="0")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

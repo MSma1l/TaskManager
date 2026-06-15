@@ -16,6 +16,7 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
         "description": project.description,
         "githubUrl": project.github_url,
         "color": project.color,
+        "key": project.key,
         "isActive": project.is_active,
         "taskCount": task_count,
         "role": role,

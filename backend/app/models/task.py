@@ -20,6 +20,7 @@ class Task(Base):
     is_active = Column(Boolean, default=True)
     priority = Column(String, default="MEDIUM", nullable=False)
     estimated_minutes = Column(Integer, nullable=True)
+    due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -29,6 +30,7 @@ class Task(Base):
     board_column_id = Column(String, ForeignKey("board_columns.id"), nullable=True, index=True)
     board_order = Column(Integer, nullable=True)
     assignee_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    task_number = Column(Integer, nullable=True)  # numar secvential per proiect (cheie: KEY-<task_number>)
 
     category = relationship("Category", back_populates="tasks")
     completions = relationship("TaskCompletion", back_populates="task")

@@ -33,10 +33,13 @@ def _has_column(bind, table: str, column: str) -> bool:
     return column in {c["name"] for c in insp.get_columns(table)}
 
 
+# Fluxul implicit pe 5 stadii (name, position, is_done_column, column_type).
 DEFAULT_COLUMNS = [
-    ("De facut", 0, False),
-    ("In lucru", 1, False),
-    ("Finalizat", 2, True),
+    ("Backlog", 0, False, "BACKLOG"),
+    ("Planificate", 1, False, "PLANNED"),
+    ("In lucru", 2, False, "IN_PROGRESS"),
+    ("Finalizate", 3, True, "DONE"),
+    ("Aprobate", 4, False, "APPROVED"),
 ]
 
 
@@ -57,9 +60,13 @@ def upgrade() -> None:
             sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
             sa.Column("color", sa.String(), nullable=True),
             sa.Column("is_done_column", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("column_type", sa.String(20), nullable=True),
             sa.Column("created_at", sa.DateTime(), nullable=True),
         )
         op.create_index("ix_board_columns_project_id", "board_columns", ["project_id"])
+    elif not _has_column(bind, "board_columns", "column_type"):
+        # Tabelul exista deja dintr-o rulare partiala anterioara: adauga coloana lipsa.
+        op.add_column("board_columns", sa.Column("column_type", sa.String(20), nullable=True))
 
     # ── labels ──────────────────────────────────────────────────────
     if not _has_table(bind, "labels"):
@@ -121,17 +128,18 @@ def upgrade() -> None:
         ), {"pid": project_id}).fetchone()
         if has_cols is not None:
             continue
-        for name, position, is_done in DEFAULT_COLUMNS:
+        for name, position, is_done, column_type in DEFAULT_COLUMNS:
             bind.execute(sa.text(
                 "INSERT INTO board_columns "
-                "(id, project_id, name, position, color, is_done_column, created_at) "
-                "VALUES (:id, :pid, :name, :pos, NULL, :done, NOW())"
+                "(id, project_id, name, position, color, is_done_column, column_type, created_at) "
+                "VALUES (:id, :pid, :name, :pos, NULL, :done, :ctype, NOW())"
             ), {
                 "id": generate_cuid(),
                 "pid": project_id,
                 "name": name,
                 "pos": position,
                 "done": is_done,
+                "ctype": column_type,
             })
 
 

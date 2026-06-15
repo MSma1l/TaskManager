@@ -8,6 +8,7 @@ import {
   CreateBoardTaskData,
   UpdateBoardTaskData,
   CreateLabelData,
+  TransitionData,
   boardApi,
 } from '../api/board';
 
@@ -87,6 +88,12 @@ export function useBoard(projectId: string) {
     return task;
   };
 
+  const transitionTask = async (taskId: string, data: TransitionData) => {
+    const task = await boardApi.transition(projectId, taskId, data);
+    await fetchBoard(false);
+    return task;
+  };
+
   /**
    * Optimistic cross-column / reorder move.
    * Applies the new layout to local state immediately, calls the API, then
@@ -156,6 +163,7 @@ export function useBoard(projectId: string) {
     deleteTask,
     moveTask,
     assignTask,
+    transitionTask,
     createLabel,
     deleteLabel,
   };

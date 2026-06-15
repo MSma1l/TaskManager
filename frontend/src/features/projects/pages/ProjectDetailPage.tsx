@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useT } from '../../../shared/i18n/I18nProvider';
 import { ProjectWithTasks, projectsApi, UpdateProjectData } from '../api/projects';
 import { Task, CreateTaskData } from '../../tasks/api/tasks';
 import { tasksApi } from '../../tasks/api/tasks';
@@ -8,10 +9,14 @@ import MarkTaskModal from '../../tasks/components/MarkTaskModal';
 import AddTaskModal from '../../tasks/components/AddTaskModal';
 import EditTaskModal from '../../tasks/components/EditTaskModal';
 import MembersBar from '../components/MembersBar';
+import BoardPage from './BoardPage';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const t = useT();
+  const isBoard = location.pathname.endsWith('/board');
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -22,6 +27,7 @@ export default function ProjectDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   const [editGithub, setEditGithub] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editKey, setEditKey] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchProject = useCallback(async () => {
@@ -71,6 +77,7 @@ export default function ProjectDetailPage() {
       description: editDesc.trim() || undefined,
       githubUrl: editGithub.trim() || undefined,
       color: editColor,
+      key: editKey.trim() || undefined,
     };
     await projectsApi.update(projectId, data);
     setShowEdit(false);
@@ -89,6 +96,7 @@ export default function ProjectDetailPage() {
     setEditDesc(project.description || '');
     setEditGithub(project.githubUrl || '');
     setEditColor(project.color);
+    setEditKey(project.key || '');
     setShowEdit(true);
   };
 
@@ -125,14 +133,21 @@ export default function ProjectDetailPage() {
               style={{ backgroundColor: project.color }}
             />
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+                {project.key && (
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-400">
+                    {project.key}
+                  </span>
+                )}
+              </div>
               {project.description && (
                 <p className="text-sm text-slate-400 mt-1">{project.description}</p>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {projectId && <MembersBar projectId={projectId} myRole={project.role} />}
+            {projectId && !isBoard && <MembersBar projectId={projectId} myRole={project.role} />}
             {project.githubUrl && (
               <a
                 href={project.githubUrl}
@@ -152,16 +167,42 @@ export default function ProjectDetailPage() {
             >
               Editeaza
             </button>
-            <button
-              onClick={() => setShowAddTask(true)}
-              className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
-            >
-              + Task
-            </button>
+            {!isBoard && (
+              <button
+                onClick={() => setShowAddTask(true)}
+                className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
+              >
+                + Task
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Tabs: List | Board */}
+      <div className="flex items-center gap-1 mb-6 border-b border-border">
+        <button
+          onClick={() => navigate(`/projects/${projectId}`)}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            !isBoard ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('board.list')}
+        </button>
+        <button
+          onClick={() => navigate(`/projects/${projectId}/board`)}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            isBoard ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('board.board')}
+        </button>
+      </div>
+
+      {isBoard ? (
+        projectId && <BoardPage projectId={projectId} myRole={project.role} />
+      ) : (
+      <>
       {/* Stats bar */}
       <div className="flex gap-4 mb-6">
         <div className="px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/40">
@@ -190,6 +231,8 @@ export default function ProjectDetailPage() {
             <TaskCard key={task.id} task={task} onClick={setSelectedTask} />
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* Modals */}
@@ -232,6 +275,17 @@ export default function ProjectDetailPage() {
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-lg bg-slate-700 border border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300 mb-1 block">{t('board.projectKey')}</label>
+                <input
+                  type="text"
+                  value={editKey}
+                  onChange={(e) => setEditKey(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6))}
+                  placeholder={t('board.projectKeyHint')}
+                  maxLength={6}
+                  className="w-full px-3 py-2.5 rounded-lg bg-slate-700 border border-slate-600 outline-none focus:border-blue-500 transition-colors font-mono uppercase tracking-wide"
                 />
               </div>
               <div>

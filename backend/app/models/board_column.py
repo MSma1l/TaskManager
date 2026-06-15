@@ -13,4 +13,6 @@ class BoardColumn(Base):
     position = Column(Integer, nullable=False, default=0)
     color = Column(String, nullable=True)
     is_done_column = Column(Boolean, nullable=False, default=False)
+    # BACKLOG | PLANNED | IN_PROGRESS | DONE | APPROVED | CUSTOM (vezi ColumnType in models/base.py)
+    column_type = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

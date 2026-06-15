@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.board_column import BoardColumn
+from app.models.project import Project
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services import task_service
@@ -77,6 +80,79 @@ async def get_week_tasks(
 ):
     tasks = task_service.get_tasks_for_week(db, user.id, date)
     return [task_to_dict(t) for t in tasks]
+
+
+@router.get("/assigned")
+async def get_assigned_tasks(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Task-urile de board repartizate userului curent, din toate proiectele.
+
+    Nu cere parametri de membership — sunt task-urile proprii ale userului.
+    """
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.assignee_id == user.id,
+            Task.is_active == True,
+            Task.board_column_id.isnot(None),
+        )
+        .order_by(Task.project_id.asc(), Task.board_order.asc())
+        .all()
+    )
+    if not tasks:
+        return []
+
+    column_ids = {t.board_column_id for t in tasks if t.board_column_id}
+    project_ids = {t.project_id for t in tasks if t.project_id}
+
+    columns = {}
+    if column_ids:
+        rows = db.query(BoardColumn).filter(BoardColumn.id.in_(column_ids)).all()
+        columns = {c.id: c for c in rows}
+
+    projects = {}
+    if project_ids:
+        rows = db.query(Project).filter(Project.id.in_(project_ids)).all()
+        projects = {p.id: p for p in rows}
+
+    result = []
+    for t in tasks:
+        column = columns.get(t.board_column_id)
+        project = projects.get(t.project_id)
+        task_key = (
+            f"{project.key}-{t.task_number}"
+            if project and project.key and t.task_number is not None
+            else None
+        )
+        result.append({
+            "id": t.id,
+            "title": t.title,
+            "description": t.description,
+            "priority": t.priority,
+            "taskNumber": t.task_number,
+            "taskKey": task_key,
+            "dueDate": t.due_date.isoformat() if t.due_date else None,
+            "estimateMinutes": t.estimated_minutes,
+            "dayOfWeek": t.day_of_week,
+            "scheduledDate": t.scheduled_date.isoformat() if t.scheduled_date else None,
+            "reminderTime": t.reminder_time,
+            "columnId": t.board_column_id,
+            "columnName": column.name if column else None,
+            "columnType": column.column_type if column else None,
+            "project": (
+                {
+                    "id": project.id,
+                    "name": project.name,
+                    "color": project.color,
+                    "key": project.key,
+                }
+                if project
+                else None
+            ),
+        })
+    return result
 
 
 @router.post("")

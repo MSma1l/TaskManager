@@ -54,6 +54,11 @@ export default function ProjectsPage() {
                     style={{ backgroundColor: project.color }}
                   />
                   <h3 className="font-bold text-lg group-hover:text-blue-300 transition-colors">{project.name}</h3>
+                  {project.key && (
+                    <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400">
+                      {project.key}
+                    </span>
+                  )}
                 </div>
                 {project.githubUrl && (
                   <a

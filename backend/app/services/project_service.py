@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from app.models.project import Project
@@ -49,13 +50,27 @@ def get_project_with_tasks(db: Session, user_id: str, project_id: str):
     return project, tasks
 
 
+def _derive_key(name: str) -> str:
+    """Cheie din nume: caractere alfanumerice, uppercase, max 4, fallback PRJ."""
+    if not name:
+        return "PRJ"
+    alnum = re.sub(r"[^A-Za-z0-9]", "", name)
+    if not alnum:
+        return "PRJ"
+    return alnum[:4].upper()
+
+
 def create_project(db: Session, user_id: str, data: dict) -> Project:
+    raw_key = (data.get("key") or "").strip()
+    key = raw_key.upper()[:10] if raw_key else _derive_key(data["name"])
     project = Project(
         user_id=user_id,
         name=data["name"],
         description=data.get("description"),
         github_url=data.get("githubUrl"),
         color=data.get("color", "#3b82f6"),
+        key=key,
+        task_counter=0,
     )
     db.add(project)
     db.flush()  # ensure project.id is populated before linking the owner membership
@@ -94,6 +109,8 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
         project.color = data["color"]
     if "isActive" in data and data["isActive"] is not None:
         project.is_active = data["isActive"]
+    if "key" in data and data["key"]:
+        project.key = data["key"].strip().upper()[:10]
 
     project.updated_at = datetime.utcnow()
     db.commit()

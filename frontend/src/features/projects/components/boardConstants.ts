@@ -1,4 +1,4 @@
-import { BoardPriority } from '../api/board';
+import { BoardPriority, ColumnType, TransitionAction } from '../api/board';
 
 /** Column accent / label color palette (shared by ColumnModal + LabelPicker). */
 export const BOARD_COLORS = [
@@ -40,4 +40,50 @@ export function avatarTint(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return AVATAR_TINTS[h % AVATAR_TINTS.length];
+}
+
+/** Selectable column types (order = the canonical workflow). */
+export const COLUMN_TYPES: ColumnType[] = [
+  'BACKLOG',
+  'PLANNED',
+  'IN_PROGRESS',
+  'DONE',
+  'APPROVED',
+  'CUSTOM',
+];
+
+/** i18n key for a column type label. */
+export function columnTypeKey(ct: ColumnType): string {
+  switch (ct) {
+    case 'BACKLOG': return 'board.ctBacklog';
+    case 'PLANNED': return 'board.ctPlanned';
+    case 'IN_PROGRESS': return 'board.ctInProgress';
+    case 'DONE': return 'board.ctDone';
+    case 'APPROVED': return 'board.ctApproved';
+    case 'CUSTOM': return 'board.ctCustom';
+  }
+}
+
+/** i18n key for a workflow action button label. */
+export function actionKey(a: TransitionAction): string {
+  switch (a) {
+    case 'plan': return 'board.plan';
+    case 'start': return 'board.takeInWork';
+    case 'done': return 'board.markDone';
+    case 'approve': return 'board.approve';
+  }
+}
+
+/**
+ * The workflow action contextually available from a given column type.
+ * Returns null when no transition button should be shown.
+ */
+export function nextAction(ct: ColumnType | null): TransitionAction | null {
+  switch (ct) {
+    case 'BACKLOG': return 'plan';
+    case 'PLANNED': return 'start';
+    case 'IN_PROGRESS': return 'done';
+    case 'DONE': return 'approve';
+    default: return null;
+  }
 }

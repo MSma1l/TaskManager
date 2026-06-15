@@ -86,6 +86,7 @@ export default function AppRoutes() {
           <Route path="stats" element={<StatsPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+          <Route path="projects/:projectId/board" element={<ProjectDetailPage />} />
           <Route path="notebook" element={<NotebookPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="profile" element={<ProfilePage />} />

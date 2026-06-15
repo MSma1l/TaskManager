@@ -1,5 +1,18 @@
 import { useState } from 'react';
+import { useT } from '../../../shared/i18n/I18nProvider';
 import { CreateProjectData } from '../api/projects';
+
+/** Build an uppercase A-Z key suggestion from a free-text project name. */
+function suggestKey(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  let raw: string;
+  if (words.length >= 2) {
+    raw = words.map((w) => w[0]).join('');
+  } else {
+    raw = name;
+  }
+  return raw.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6);
+}
 
 const COLORS = [
   '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444',
@@ -12,12 +25,27 @@ interface AddProjectModalProps {
 }
 
 export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalProps) {
+  const t = useT();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [color, setColor] = useState(COLORS[0]);
+  const [key, setKey] = useState('');
+  /** Once the user edits the key manually, stop auto-suggesting from the name. */
+  const [keyTouched, setKeyTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleNameChange = (value: string) => {
+    setName(value);
+    setError('');
+    if (!keyTouched) setKey(suggestKey(value));
+  };
+
+  const handleKeyChange = (value: string) => {
+    setKeyTouched(true);
+    setKey(value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6));
+  };
 
   const handleSubmit = async () => {
     if (!name.trim() || name.trim().length < 2) {
@@ -32,6 +60,7 @@ export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalPr
         description: description.trim() || undefined,
         githubUrl: githubUrl.trim() || undefined,
         color,
+        key: key.trim() || undefined,
       });
       onClose();
     } catch {
@@ -61,10 +90,22 @@ export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalPr
             <input
               type="text"
               value={name}
-              onChange={(e) => { setName(e.target.value); setError(''); }}
+              onChange={(e) => handleNameChange(e.target.value)}
               placeholder="Numele proiectului..."
               maxLength={100}
               className="w-full px-3 py-2.5 rounded-lg bg-slate-700 border border-slate-600 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm text-slate-300 mb-1 block">{t('board.projectKey')}</label>
+            <input
+              type="text"
+              value={key}
+              onChange={(e) => handleKeyChange(e.target.value)}
+              placeholder={t('board.projectKeyHint')}
+              maxLength={6}
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-700 border border-slate-600 outline-none focus:border-blue-500 transition-colors font-mono uppercase tracking-wide"
             />
           </div>
 

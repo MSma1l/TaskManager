@@ -16,5 +16,14 @@ class ProjectRole(str, enum.Enum):
     VIEWER = "VIEWER"
 
 
+class ColumnType(str, enum.Enum):
+    BACKLOG = "BACKLOG"
+    PLANNED = "PLANNED"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    APPROVED = "APPROVED"
+    CUSTOM = "CUSTOM"
+
+
 def generate_cuid():
     return str(uuid.uuid4()).replace("-", "")[:25]

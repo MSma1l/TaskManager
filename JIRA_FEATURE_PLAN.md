@@ -115,3 +115,28 @@ view săptămânal neschimbat → assign la B (Telegram) → comentariu `@B` (Te
 - Poll de 5s peste un drag în curs → jank (nu aplica poll-ul în timpul drag-ului; diff înainte de setState).
 - Notificările Telegram trebuie `asyncio.create_task` + respectă DND, doar membri cu `telegram_chat_id`.
 - Protecție „ultimul OWNER" la schimbare rol / remove.
+
+---
+
+# Faza 2.5 — Workflow cu butoane + Key proiect + integrare pagina principală + ghid
+
+Decizii utilizator: workflow **standard cu coloane editabile** (tipul coloanei dă tranzițiile); planificare **legată în pagina principală**; câmpuri **built-in + labels** acum; ghid = **tur interactiv** la prima vizită.
+
+## Scenariu workflow (obligatoriu)
+Backlog → (team lead repartizează unui membru) → membrul apasă **„Planifică"** (pune estimare + zi/oră) → **Planned** → **„Ia în lucru"** → **In Progress** → **„Done"** → **Done** → **„Approve"** (DOAR team lead) → **Approved**.
+Team lead = creatorul proiectului = OWNER/ADMIN. El repartizează taskurile membrilor.
+
+## Backend
+- **Project**: `key` (ex. „IA", editabil de admin, default derivat din nume), `task_counter` (int). `Task`: `task_number` (int, la creare board task = ++counter; afișat `KEY-N`), `due_date` (deadline). (estimated_minutes/day_of_week/scheduled_date/reminder_time există deja → folosite de „Planifică".)
+- **BoardColumn.column_type**: `BACKLOG|PLANNED|IN_PROGRESS|DONE|APPROVED|CUSTOM`. Seed default RO (în migrarea 016, neaplicată încă): Backlog, Planificate, În lucru, Finalizate(done), Aprobate.
+- **Tranziții**: `POST /board/tasks/{id}/transition {action: plan|start|done|approve, estimateMinutes?, dayOfWeek?, scheduledDate?, reminderTime?}` — găsește coloana țintă după `column_type`. plan/start/done = assignee SAU admin; **approve = doar ADMIN/OWNER (team lead)**.
+- **Repartizate**: `GET /api/tasks/assigned` → board tasks cu `assignee_id == me` (cu project{key,name,color}, taskNumber, columnType, schedule). Folosit de secțiunea „Repartizate" din pagina principală. View-ul săptămânal rămâne pe completions; taskurile repartizate apar ca grup separat legat de board (nu spargem grila de completions).
+- Migrare 017: `projects.key/task_counter`, `tasks.task_number/due_date`, backfill key pentru proiecte existente.
+
+## Frontend
+- Carduri board: badge `KEY-N`, butoane de workflow contextuale (Planifică/Ia în lucru/Done/Approve), Approve vizibil doar team lead.
+- **„Planifică" modal**: estimare + zi/dată + oră reminder → transition `plan`.
+- **Pagina principală**: secțiune/toggle „Personale | Repartizate"; cele repartizate vin din `/api/tasks/assigned`, userul își pune singur timpul/ziua (Planifică), link spre card.
+- **ColumnModal**: alegi `column_type` (sau Custom) când creezi/editezi coloana → flux perischimbabil.
+- **Key proiect**: câmp la creare proiect + editabil de admin.
+- **Tur interactiv**: coachmarks custom (localStorage flag `board_tour_seen`), repornibil din buton „?" pe board. Evidențiază: repartizare, Planifică, Ia în lucru, Done, Approve, adaugă coloană.

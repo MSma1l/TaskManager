@@ -2,6 +2,16 @@ import client from '../../../shared/api/client';
 
 export type BoardPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
+export type ColumnType =
+  | 'BACKLOG'
+  | 'PLANNED'
+  | 'IN_PROGRESS'
+  | 'DONE'
+  | 'APPROVED'
+  | 'CUSTOM';
+
+export type TransitionAction = 'plan' | 'start' | 'done' | 'approve';
+
 export interface Label {
   id: string;
   name: string;
@@ -24,6 +34,12 @@ export interface BoardTask {
   boardColumnId: string;
   boardOrder: number;
   commentCount: number;
+  taskNumber: number | null;
+  taskKey: string | null;
+  dueDate: string | null;
+  estimateMinutes: number | null;
+  dayOfWeek: number | null;
+  scheduledDate: string | null;
 }
 
 export interface BoardColumn {
@@ -32,6 +48,7 @@ export interface BoardColumn {
   position: number;
   color: string | null;
   isDoneColumn: boolean;
+  columnType: ColumnType | null;
   tasks: BoardTask[];
 }
 
@@ -43,6 +60,7 @@ export interface Board {
 export interface CreateColumnData {
   name: string;
   color?: string;
+  columnType?: ColumnType;
 }
 
 export interface UpdateColumnData {
@@ -50,6 +68,7 @@ export interface UpdateColumnData {
   color?: string;
   position?: number;
   isDoneColumn?: boolean;
+  columnType?: ColumnType;
 }
 
 export interface CreateBoardTaskData {
@@ -59,6 +78,8 @@ export interface CreateBoardTaskData {
   assigneeId?: string;
   priority?: BoardPriority;
   labelIds?: string[];
+  dueDate?: string;
+  estimateMinutes?: number;
 }
 
 export interface UpdateBoardTaskData {
@@ -66,6 +87,16 @@ export interface UpdateBoardTaskData {
   description?: string;
   priority?: BoardPriority;
   labelIds?: string[];
+  dueDate?: string;
+  estimateMinutes?: number;
+}
+
+export interface TransitionData {
+  action: TransitionAction;
+  estimateMinutes?: number;
+  dayOfWeek?: number;
+  scheduledDate?: string;
+  reminderTime?: string;
 }
 
 export interface CreateLabelData {
@@ -101,6 +132,10 @@ export const boardApi = {
   assignTask: (projectId: string, taskId: string, assigneeId: string | null) =>
     client
       .put<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/assign`, { assigneeId })
+      .then((r) => r.data),
+  transition: (projectId: string, taskId: string, data: TransitionData) =>
+    client
+      .post<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/transition`, data)
       .then((r) => r.data),
 
   listLabels: (projectId: string) =>
