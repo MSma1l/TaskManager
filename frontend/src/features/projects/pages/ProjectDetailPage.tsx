@@ -7,6 +7,7 @@ import TaskCard from '../../tasks/components/TaskCard';
 import MarkTaskModal from '../../tasks/components/MarkTaskModal';
 import AddTaskModal from '../../tasks/components/AddTaskModal';
 import EditTaskModal from '../../tasks/components/EditTaskModal';
+import MembersBar from '../components/MembersBar';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -130,7 +131,8 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {projectId && <MembersBar projectId={projectId} myRole={project.role} />}
             {project.githubUrl && (
               <a
                 href={project.githubUrl}

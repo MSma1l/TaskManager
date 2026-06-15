@@ -22,13 +22,20 @@ def task_to_dict(task):
         "title": task.title,
         "description": task.description,
         "categoryId": task.category_id,
-        "category": {
-            "id": task.category.id,
-            "name": task.category.name,
-            "icon": task.category.icon,
-            "color": task.category.color,
-        },
+        "category": (
+            {
+                "id": task.category.id,
+                "name": task.category.name,
+                "icon": task.category.icon,
+                "color": task.category.color,
+            }
+            if task.category
+            else None
+        ),
         "dayOfWeek": task.day_of_week,
+        "assigneeId": task.assignee_id,
+        "boardColumnId": task.board_column_id,
+        "boardOrder": task.board_order,
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
         "reminderTime": task.reminder_time,
         "isRecurring": task.is_recurring,

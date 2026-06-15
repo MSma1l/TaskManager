@@ -1,24 +1,34 @@
 from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.task import Task
+from app.services import membership_service
 
 
 def get_all_projects(db: Session, user_id: str):
+    ids = membership_service.get_accessible_project_ids(db, user_id)
+    if not ids:
+        return []
     return (
         db.query(Project)
-        .filter(Project.is_active == True, Project.user_id == user_id)
+        .filter(Project.is_active == True, Project.id.in_(ids))
         .order_by(Project.created_at.desc())
         .all()
     )
 
 
 def get_project(db: Session, user_id: str, project_id: str):
-    return (
+    project = (
         db.query(Project)
-        .filter(Project.id == project_id, Project.is_active == True, Project.user_id == user_id)
+        .filter(Project.id == project_id, Project.is_active == True)
         .first()
     )
+    if not project:
+        return None
+    if membership_service.get_member(db, project_id, user_id) is None:
+        return None
+    return project
 
 
 def get_project_with_tasks(db: Session, user_id: str, project_id: str):
@@ -30,7 +40,7 @@ def get_project_with_tasks(db: Session, user_id: str, project_id: str):
         .filter(
             Task.project_id == project_id,
             Task.is_active == True,
-            Task.user_id == user_id,
+            Task.board_column_id.is_(None),
         )
         .options(joinedload(Task.category))
         .order_by(Task.day_of_week, Task.title)
@@ -48,15 +58,27 @@ def create_project(db: Session, user_id: str, data: dict) -> Project:
         color=data.get("color", "#3b82f6"),
     )
     db.add(project)
+    db.flush()  # ensure project.id is populated before linking the owner membership
+
+    owner = ProjectMember(
+        project_id=project.id,
+        user_id=user_id,
+        role="OWNER",
+        invited_by=user_id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(owner)
+
     db.commit()
     db.refresh(project)
     return project
 
 
 def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Project | None:
+    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
     project = (
         db.query(Project)
-        .filter(Project.id == project_id, Project.is_active == True, Project.user_id == user_id)
+        .filter(Project.id == project_id, Project.is_active == True)
         .first()
     )
     if not project:
@@ -80,9 +102,10 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
 
 
 def delete_project(db: Session, user_id: str, project_id: str) -> bool:
+    membership_service.require_membership(db, project_id, user_id, min_role="OWNER")
     project = (
         db.query(Project)
-        .filter(Project.id == project_id, Project.user_id == user_id)
+        .filter(Project.id == project_id)
         .first()
     )
     if not project:
@@ -99,7 +122,6 @@ def get_project_task_count(db: Session, user_id: str, project_id: str) -> int:
         .filter(
             Task.project_id == project_id,
             Task.is_active == True,
-            Task.user_id == user_id,
         )
         .count()
     )

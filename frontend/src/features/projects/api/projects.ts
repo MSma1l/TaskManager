@@ -1,5 +1,6 @@
 import client from '../../../shared/api/client';
 import { Task } from '../../tasks/api/tasks';
+import { ProjectRole } from './members';
 
 export interface Project {
   id: string;
@@ -9,6 +10,10 @@ export interface Project {
   color: string;
   isActive: boolean;
   taskCount: number;
+  /** Caller's role on this project (Phase 1 membership). */
+  role?: ProjectRole;
+  /** Number of members on this project. */
+  memberCount?: number;
   createdAt: string | null;
   updatedAt: string | null;
 }

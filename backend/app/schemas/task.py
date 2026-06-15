@@ -9,8 +9,8 @@ from app.schemas.completion import CompletionOut
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    categoryId: str
-    dayOfWeek: int
+    categoryId: Optional[str] = None
+    dayOfWeek: Optional[int] = None
     scheduledDate: Optional[str] = None
     reminderTime: Optional[str] = None
     isRecurring: Optional[bool] = False
@@ -36,9 +36,9 @@ class TaskOut(BaseModel):
     id: str
     title: str
     description: Optional[str] = None
-    categoryId: str
-    category: CategoryOut
-    dayOfWeek: int
+    categoryId: Optional[str] = None
+    category: Optional[CategoryOut] = None
+    dayOfWeek: Optional[int] = None
     scheduledDate: Optional[datetime] = None
     reminderTime: Optional[str] = None
     isRecurring: bool

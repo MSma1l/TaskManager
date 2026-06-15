@@ -29,7 +29,7 @@ def _scope_to_user(query, user_id: str | None):
 def get_all_tasks(db: Session, user_id: str | None = None):
     q = (
         db.query(Task)
-        .filter(Task.is_active == True)
+        .filter(Task.is_active == True, Task.board_column_id.is_(None))
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
     )
@@ -46,7 +46,7 @@ def get_tasks_for_week(db: Session, user_id: str | None = None, date_str: str | 
 
     q = (
         db.query(Task)
-        .filter(Task.is_active == True)
+        .filter(Task.is_active == True, Task.board_column_id.is_(None))
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.day_of_week, Task.title)
     )
@@ -183,7 +183,11 @@ def get_tasks_for_day(db: Session, user_id: str | None, day_of_week: int, date: 
 
     q = (
         db.query(Task)
-        .filter(Task.is_active == True, Task.day_of_week == day_of_week)
+        .filter(
+            Task.is_active == True,
+            Task.day_of_week == day_of_week,
+            Task.board_column_id.is_(None),
+        )
         .options(joinedload(Task.category), joinedload(Task.project))
         .order_by(Task.title)
     )

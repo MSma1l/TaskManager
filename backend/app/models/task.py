@@ -12,8 +12,8 @@ class Task(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    category_id = Column(String, ForeignKey("categories.id"), nullable=False)
-    day_of_week = Column(Integer, nullable=False)  # 1=Mon, 7=Sun
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    day_of_week = Column(Integer, nullable=True)  # 1=Mon, 7=Sun
     scheduled_date = Column(DateTime, nullable=True)
     reminder_time = Column(String, nullable=True)  # "HH:MM"
     is_recurring = Column(Boolean, default=False)
@@ -25,6 +25,12 @@ class Task(Base):
 
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
 
+    # ── Board (Kanban) ──────────────────────────────────────────────
+    board_column_id = Column(String, ForeignKey("board_columns.id"), nullable=True, index=True)
+    board_order = Column(Integer, nullable=True)
+    assignee_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+
     category = relationship("Category", back_populates="tasks")
     completions = relationship("TaskCompletion", back_populates="task")
     project = relationship("Project", back_populates="tasks")
+    labels = relationship("Label", secondary="task_labels")

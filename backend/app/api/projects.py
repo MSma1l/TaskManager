@@ -4,12 +4,12 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
-from app.services import project_service
+from app.services import project_service, membership_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def project_to_dict(project, task_count: int = 0):
+def project_to_dict(project, task_count: int = 0, role: str = None, member_count: int = 0):
     return {
         "id": project.id,
         "name": project.name,
@@ -18,6 +18,8 @@ def project_to_dict(project, task_count: int = 0):
         "color": project.color,
         "isActive": project.is_active,
         "taskCount": task_count,
+        "role": role,
+        "memberCount": member_count,
         "createdAt": project.created_at.isoformat() if project.created_at else None,
         "updatedAt": project.updated_at.isoformat() if project.updated_at else None,
     }
@@ -32,7 +34,13 @@ async def get_projects(
     result = []
     for p in projects:
         count = project_service.get_project_task_count(db, user.id, p.id)
-        result.append(project_to_dict(p, count))
+        member = membership_service.get_member(db, p.id, user.id)
+        member_count = len(membership_service.list_members(db, p.id))
+        result.append(project_to_dict(
+            p, count,
+            role=member.role if member else None,
+            member_count=member_count,
+        ))
     return result
 
 
@@ -46,9 +54,16 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    member = membership_service.get_member(db, project.id, user.id)
+    member_count = len(membership_service.list_members(db, project.id))
+
     from app.api.tasks import task_to_dict
     return {
-        **project_to_dict(project, len(tasks)),
+        **project_to_dict(
+            project, len(tasks),
+            role=member.role if member else None,
+            member_count=member_count,
+        ),
         "tasks": [task_to_dict(t) for t in tasks],
     }
 

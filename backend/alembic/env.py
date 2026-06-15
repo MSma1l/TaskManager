@@ -8,7 +8,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.core.database import Base
 from app.models.category import Category  # noqa
+from app.models.project import Project  # noqa
+from app.models.project_member import ProjectMember  # noqa
 from app.models.task import Task  # noqa
+from app.models.board_column import BoardColumn  # noqa
+from app.models.label import Label, TaskLabel  # noqa
 from app.models.completion import TaskCompletion  # noqa
 from app.models.reminder import ReminderLog  # noqa
 from app.models.session import TelegramSession  # noqa

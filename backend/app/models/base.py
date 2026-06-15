@@ -9,5 +9,12 @@ class TaskStatus(str, enum.Enum):
     NOT_DONE = "NOT_DONE"
 
 
+class ProjectRole(str, enum.Enum):
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
+    VIEWER = "VIEWER"
+
+
 def generate_cuid():
     return str(uuid.uuid4()).replace("-", "")[:25]

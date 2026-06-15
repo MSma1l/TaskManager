@@ -19,3 +19,4 @@ class Project(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     tasks = relationship("Task", back_populates="project")
+    members = relationship("ProjectMember", cascade="all, delete-orphan")

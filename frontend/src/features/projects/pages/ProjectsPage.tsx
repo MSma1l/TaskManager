@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjects } from '../hooks/useProjects';
 import AddProjectModal from '../components/AddProjectModal';
+import { useT } from '../../../shared/i18n/I18nProvider';
 
 export default function ProjectsPage() {
+  const t = useT();
   const { projects, loading, createProject } = useProjects();
   const [showAdd, setShowAdd] = useState(false);
   const navigate = useNavigate();
@@ -71,10 +73,20 @@ export default function ProjectsPage() {
               {project.description && (
                 <p className="text-sm text-slate-400 mb-3 line-clamp-2">{project.description}</p>
               )}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">
                   {project.taskCount} taskuri
                 </span>
+                {typeof project.memberCount === 'number' && (
+                  <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">
+                    {project.memberCount} {t('members.memberCount')}
+                  </span>
+                )}
+                {project.role && (
+                  <span className="text-xs text-blue-400 bg-blue-600/15 px-2.5 py-1 rounded-full">
+                    {t(`members.role${project.role.charAt(0) + project.role.slice(1).toLowerCase()}`)}
+                  </span>
+                )}
               </div>
             </div>
           ))}
