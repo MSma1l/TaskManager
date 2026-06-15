@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:15-alpine
+    container_name: taskmanager-postgres-1
     environment:
       POSTGRES_USER: taskuser
       POSTGRES_PASSWORD: taskpass
@@ -15,50 +16,36 @@ services:
 
   backend:
     build: ./backend
+    container_name: taskmanager-backend-1
     env_file: .env
-    ports:
-      - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./backend:/app
     command: sh /app/start.sh
+    networks:
+      - default
+      - proxy
 
   frontend:
     build: ./frontend
-    ports:
-      - "3000:3000"
+    container_name: taskmanager-frontend-1
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - backend
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    depends_on:
-      - backend
-      - frontend
-    # reîncarcă nginx la fiecare 6h ca să preia certificatele reînnoite
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    # auto-reînnoire: încearcă renew la fiecare 12h
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
+    networks:
+      - default
+      - proxy
 
 volumes:
   postgres_data:
-  certbot_certs:
-  certbot_www:
+
+# Rețea comună cu nginx-proxy-ul extern, ca proxy-ul să poată rezolva
+# `taskmanager-backend-1` / `taskmanager-frontend-1` după nume.
+# Pe server: `docker network create proxy` (o dată) + conectezi containerul proxy la ea.
+networks:
+  proxy:
+    external: true
