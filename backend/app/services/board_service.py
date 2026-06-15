@@ -135,9 +135,80 @@ def _reindex_column(db: Session, column_id: str) -> None:
         task.board_order = index
 
 
+# ── serializer board task (camelCase) ───────────────────────────────
+
+def _label_to_dict(label):
+    return {"id": label.id, "name": label.name, "color": label.color}
+
+
+def _log(db: Session, task: Task, actor_user_id: str, action: str, meta: dict | None = None) -> None:
+    """Logare de activitate non-fatala (import lazy pt. a evita import circular)."""
+    try:
+        from app.services import collaboration_service
+        collaboration_service.log_activity(db, task, actor_user_id, action, meta)
+    except Exception as e:
+        print(f"activity log failed ({action}): {e}")
+
+
+def _comment_count(db: Session, task_id: str) -> int:
+    from app.models.task_comment import TaskComment
+    return (
+        db.query(func.count(TaskComment.id))
+        .filter(TaskComment.task_id == task_id)
+        .scalar()
+    ) or 0
+
+
+def board_task_to_dict(db: Session, task: Task, comment_count: int | None = None) -> dict:
+    """Serializeaza un task de board in dict camelCase (cu assignee + cheie).
+
+    Folosit de sprint_service / ai_service ca sa intoarca acelasi contract ca
+    api/board.py, fara a importa stratul api (evita import circular).
+    """
+    assignee = None
+    if task.assignee_id:
+        u = db.query(User).filter(User.id == task.assignee_id).first()
+        assignee = {
+            "userId": task.assignee_id,
+            "username": u.username if u else None,
+            "fullName": u.full_name if u else None,
+        }
+
+    project_key = None
+    if task.project_id:
+        row = db.query(Project.key).filter(Project.id == task.project_id).first()
+        project_key = row[0] if row else None
+    task_key = (
+        f"{project_key}-{task.task_number}"
+        if project_key and task.task_number is not None
+        else None
+    )
+
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "priority": task.priority,
+        "assignee": assignee,
+        "labels": [_label_to_dict(l) for l in (task.labels or [])],
+        "boardColumnId": task.board_column_id,
+        "boardOrder": task.board_order,
+        "taskNumber": task.task_number,
+        "taskKey": task_key,
+        "dueDate": task.due_date.isoformat() if task.due_date else None,
+        "estimateMinutes": task.estimated_minutes,
+        "storyPoints": task.story_points,
+        "sprintId": task.sprint_id,
+        "dayOfWeek": task.day_of_week,
+        "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
+        "reminderTime": task.reminder_time,
+        "commentCount": comment_count if comment_count is not None else _comment_count(db, task.id),
+    }
+
+
 # ── board read ──────────────────────────────────────────────────────
 
-def get_board(db: Session, user_id: str, project_id: str):
+def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None = None):
     membership_service.require_membership(db, project_id, user_id, min_role="VIEWER")
     ensure_columns(db, project_id)
 
@@ -150,13 +221,25 @@ def get_board(db: Session, user_id: str, project_id: str):
         .all()
     )
 
-    tasks = (
+    query = (
         db.query(Task)
         .filter(
             Task.project_id == project_id,
             Task.is_active == True,
             Task.board_column_id.isnot(None),
         )
+    )
+
+    # Scoping optional dupa sprint:
+    #   "backlog" -> taskuri fara sprint; <id> -> taskuri din sprintul respectiv;
+    #   None/omis -> toate taskurile de pe board (comportamentul implicit).
+    if sprint_id == "backlog":
+        query = query.filter(Task.sprint_id.is_(None))
+    elif sprint_id:
+        query = query.filter(Task.sprint_id == sprint_id)
+
+    tasks = (
+        query
         .options(joinedload(Task.labels))
         .order_by(Task.board_order.asc())
         .all()
@@ -173,6 +256,19 @@ def get_board(db: Session, user_id: str, project_id: str):
     for task in tasks:
         tasks_by_column.setdefault(task.board_column_id, []).append(task)
 
+    # Numara comentariile per task intr-un singur query (evita N+1).
+    comment_counts: dict[str, int] = {}
+    task_ids = [t.id for t in tasks]
+    if task_ids:
+        from app.models.task_comment import TaskComment
+        rows = (
+            db.query(TaskComment.task_id, func.count(TaskComment.id))
+            .filter(TaskComment.task_id.in_(task_ids))
+            .group_by(TaskComment.task_id)
+            .all()
+        )
+        comment_counts = {tid: cnt for tid, cnt in rows}
+
     labels = (
         db.query(Label)
         .filter(Label.project_id == project_id)
@@ -186,6 +282,7 @@ def get_board(db: Session, user_id: str, project_id: str):
         "users": users,
         "labels": labels,
         "project_key": project.key,
+        "comment_counts": comment_counts,
     }
 
 
@@ -312,12 +409,15 @@ def create_task(db: Session, user_id: str, project_id: str, data: dict) -> Task:
         task_number=project.task_counter,
         due_date=_parse_dt(data.get("dueDate")),
         estimated_minutes=data.get("estimateMinutes"),
+        story_points=data.get("storyPoints"),
         is_active=True,
     )
     db.add(task)
     db.flush()
 
     _set_labels(db, task, project_id, data.get("labelIds") or [])
+
+    _log(db, task, user_id, "CREATED")
 
     db.commit()
     db.refresh(task)
@@ -340,6 +440,8 @@ def update_task(db: Session, user_id: str, project_id: str, task_id: str, data: 
         task.due_date = _parse_dt(data["dueDate"])
     if "estimateMinutes" in data:
         task.estimated_minutes = data["estimateMinutes"]
+    if "storyPoints" in data:
+        task.story_points = data["storyPoints"]
 
     task.updated_at = datetime.utcnow()
     db.commit()
@@ -393,6 +495,8 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
     if source_column_id != target_column.id:
         _reindex_column(db, source_column_id)
 
+    _log(db, task, user_id, "MOVED", {"fromColumnId": source_column_id, "toColumnId": target_column.id})
+
     db.commit()
 
 
@@ -405,6 +509,9 @@ def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assign
 
     task.assignee_id = assignee_id
     task.updated_at = datetime.utcnow()
+
+    _log(db, task, user_id, "ASSIGNED", {"assigneeId": assignee_id})
+
     db.commit()
     db.refresh(task)
     return _get_board_task(db, project_id, task.id)
@@ -512,6 +619,8 @@ def transition_task(
 
     if target_column.id != source_column_id:
         _reindex_column(db, source_column_id)
+
+    _log(db, task, user_id, action.upper())
 
     db.commit()
     db.refresh(task)

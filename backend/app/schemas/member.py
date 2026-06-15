@@ -8,4 +8,5 @@ class MemberInvite(BaseModel):
 
 
 class MemberRoleUpdate(BaseModel):
-    role: str
+    role: Optional[str] = None
+    capacityPoints: Optional[int] = None

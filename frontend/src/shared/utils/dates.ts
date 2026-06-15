@@ -61,3 +61,29 @@ export function getDayOfWeek(date: Date): number {
   const day = date.getDay();
   return day === 0 ? 7 : day; // 1=Mon, 7=Sun
 }
+
+/**
+ * Compact relative-time label without any date library.
+ * `lang` selects the unit suffixes (RO default, RU). Anything ~> 7 days
+ * falls back to a short absolute date so the label stays readable.
+ */
+export function relativeTime(iso: string, lang: 'ro' | 'ru' = 'ro'): string {
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) return '';
+  const diffMs = Date.now() - then.getTime();
+  const sec = Math.round(diffMs / 1000);
+
+  const U = {
+    ro: { now: 'acum', m: 'min', h: 'h', d: 'z' },
+    ru: { now: 'только что', m: 'мин', h: 'ч', d: 'дн' },
+  }[lang];
+
+  if (sec < 45) return U.now;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} ${U.m}`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} ${U.h}`;
+  const day = Math.round(hr / 24);
+  if (day <= 7) return `${day} ${U.d}`;
+  return formatDateNice(then);
+}

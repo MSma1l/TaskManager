@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     LOGIN_CODE_TTL_MINUTES: int = 5
     LOGIN_CODE_MAX_ATTEMPTS: int = 5
 
+    # AI (Claude legacy) — optional; pastrat pentru compatibilitate
+    ANTHROPIC_API_KEY: str = ""
+
+    # AI (OpenRouter, OpenAI-compatible gateway) — optional; daca lipseste,
+    # AI-ul cade pe euristici locale deterministe
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openai/gpt-oss-20b:free"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
     # Initial admin (seeded on first run)
     ADMIN_USERNAME: str = "admin"
     ADMIN_EMAIL: str = "maxim.chistol@iis.utm.md"

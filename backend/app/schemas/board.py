@@ -25,6 +25,7 @@ class BoardTaskCreate(BaseModel):
     labelIds: list[str] = []
     dueDate: Optional[str] = None
     estimateMinutes: Optional[int] = None
+    storyPoints: Optional[int] = None
 
 
 class BoardTaskUpdate(BaseModel):
@@ -34,6 +35,7 @@ class BoardTaskUpdate(BaseModel):
     labelIds: Optional[list[str]] = None
     dueDate: Optional[str] = None
     estimateMinutes: Optional[int] = None
+    storyPoints: Optional[int] = None
 
 
 class TaskTransition(BaseModel):

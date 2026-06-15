@@ -14,7 +14,13 @@ import {
 
 const POLL_INTERVAL = 5000;
 
-export function useBoard(projectId: string) {
+/**
+ * `sprintFilter` scopes the board:
+ *  - a sprint id → only that sprint,
+ *  - `'backlog'` → only backlog tasks,
+ *  - `undefined` → all tasks.
+ */
+export function useBoard(projectId: string, sprintFilter?: string) {
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   /** True while a card is mid-drag — used to skip clobbering local state with poll results. */
@@ -26,7 +32,7 @@ export function useBoard(projectId: string) {
       if (!projectId) return;
       if (showLoading) setLoading(true);
       try {
-        const data = await boardApi.getBoard(projectId);
+        const data = await boardApi.getBoard(projectId, sprintFilter);
         // Never overwrite local optimistic state while the user is dragging.
         if (!isDraggingRef.current) setBoard(data);
       } catch {
@@ -35,7 +41,7 @@ export function useBoard(projectId: string) {
         if (showLoading) setLoading(false);
       }
     },
-    [projectId],
+    [projectId, sprintFilter],
   );
 
   useEffect(() => {

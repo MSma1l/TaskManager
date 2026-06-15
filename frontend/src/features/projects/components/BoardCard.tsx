@@ -57,12 +57,20 @@ export function BoardCardBody({
         dragging ? 'shadow-xl ring-1 ring-blue-500/40 rotate-1' : ''
       }`}
     >
-      {/* Key + Labels */}
-      {(task.taskKey || task.labels.length > 0) && (
+      {/* Key + Labels + Story points */}
+      {(task.taskKey || task.labels.length > 0 || task.storyPoints != null) && (
         <div className="flex flex-wrap items-center gap-1 mb-2">
           {task.taskKey && (
             <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-400">
               {task.taskKey}
+            </span>
+          )}
+          {task.storyPoints != null && (
+            <span
+              title={t('pm.storyPoints')}
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-tight bg-violet-500/15 text-violet-400"
+            >
+              {task.storyPoints}
             </span>
           )}
           {task.labels.map((l) => (

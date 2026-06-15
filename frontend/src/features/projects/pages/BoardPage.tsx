@@ -13,6 +13,7 @@ import {
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { useBoard } from '../hooks/useBoard';
 import { useMembers } from '../hooks/useMembers';
+import { useSprints } from '../hooks/useSprints';
 import { BoardColumn as Column, BoardTask, TransitionAction, TransitionData } from '../api/board';
 import { ProjectRole } from '../api/members';
 import MembersBar from '../components/MembersBar';
@@ -22,6 +23,7 @@ import ColumnModal from '../components/ColumnModal';
 import BoardTaskModal from '../components/BoardTaskModal';
 import PlanTaskModal from '../components/PlanTaskModal';
 import BoardTour from '../components/BoardTour';
+import TaskDetailDrawer from '../components/TaskDetailDrawer';
 
 interface BoardPageProps {
   /** Optional — when omitted, read from route. Lets the page be embedded as a tab. */
@@ -33,6 +35,10 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
   const t = useT();
   const params = useParams<{ projectId: string }>();
   const projectId = propProjectId || params.projectId || '';
+
+  // Sprint scope: '' = all, 'backlog' = backlog only, else a sprint id.
+  const [sprintFilter, setSprintFilter] = useState('');
+  const { sprints } = useSprints(projectId);
 
   const {
     board,
@@ -48,7 +54,7 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
     assignTask,
     transitionTask,
     createLabel,
-  } = useBoard(projectId);
+  } = useBoard(projectId, sprintFilter || undefined);
   const { members } = useMembers(projectId);
 
   const canManage = myRole === 'OWNER' || myRole === 'ADMIN' || myRole === 'MEMBER' || myRole === undefined;
@@ -69,8 +75,26 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
 
   const [addCardColumn, setAddCardColumn] = useState<string | null>(null);
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [planTask, setPlanTask] = useState<BoardTask | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
+
+  // The card currently shown in the detail drawer, resolved live from the board
+  // so it reflects polled updates (comment count, assignee, column moves…).
+  const detailTask = useMemo(
+    () =>
+      detailTaskId
+        ? board?.columns.flatMap((c) => c.tasks).find((tk) => tk.id === detailTaskId) ?? null
+        : null,
+    [detailTaskId, board],
+  );
+  const detailColumn = useMemo(
+    () =>
+      detailTask
+        ? board?.columns.find((c) => c.id === detailTask.boardColumnId) ?? null
+        : null,
+    [detailTask, board],
+  );
 
   // ── Workflow transitions ────────────────────────────────────────────────────
   const handleWorkflowAction = (task: BoardTask, action: TransitionAction) => {
@@ -185,6 +209,22 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
       <div className="flex items-center gap-3 flex-wrap px-1 pb-4">
         {projectId && <MembersBar projectId={projectId} myRole={myRole} />}
 
+        {/* Sprint scope selector */}
+        <select
+          value={sprintFilter}
+          onChange={(e) => setSprintFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 transition-colors"
+        >
+          <option value="">{t('pm.allTasks')}</option>
+          <option value="backlog">{t('pm.backlog')}</option>
+          {sprints.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+              {s.status === 'ACTIVE' ? ` · ${t('pm.statusActive')}` : ''}
+            </option>
+          ))}
+        </select>
+
         <div className="flex-1" />
 
         {/* Search */}
@@ -293,7 +333,7 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
               onAddCard={(cid) => setAddCardColumn(cid)}
               onEditColumn={(c) => setEditColumn(c)}
               onDeleteColumn={(c) => { setConfirmDeleteCol(c); setDeleteColError(''); }}
-              onCardClick={(tk) => setEditTask(tk)}
+              onCardClick={(tk) => setDetailTaskId(tk.id)}
               onWorkflowAction={handleWorkflowAction}
             />
           ))}
@@ -364,6 +404,20 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
           initialDayOfWeek={planTask.dayOfWeek}
           onClose={() => setPlanTask(null)}
           onSubmit={handlePlanSubmit}
+        />
+      )}
+
+      {detailTask && (
+        <TaskDetailDrawer
+          task={detailTask}
+          columnType={detailColumn?.columnType ?? null}
+          columnName={detailColumn?.name ?? ''}
+          members={members}
+          myUserId={myUserId}
+          canApprove={canApprove}
+          onClose={() => setDetailTaskId(null)}
+          onEdit={(tk) => { setDetailTaskId(null); setEditTask(tk); }}
+          onWorkflowAction={handleWorkflowAction}
         />
       )}
 

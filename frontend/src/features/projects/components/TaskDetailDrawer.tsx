@@ -1,0 +1,512 @@
+import { useState, useRef, useMemo } from 'react';
+import { useI18n } from '../../../shared/i18n/I18nProvider';
+import { relativeTime } from '../../../shared/utils/dates';
+import { BoardTask, TransitionAction, ColumnType } from '../api/board';
+import { ProjectMember } from '../api/members';
+import { TaskActivity } from '../api/activity';
+import { TaskComment } from '../api/comments';
+import { avatarTint, nextAction, actionKey, priorityKey } from './boardConstants';
+import { useComments } from '../hooks/useComments';
+import { useTaskActivity } from '../hooks/useTaskActivity';
+import { useWatchers } from '../hooks/useWatchers';
+
+interface TaskDetailDrawerProps {
+  task: BoardTask;
+  /** Column type of the card's column — drives the workflow action button. */
+  columnType: ColumnType | null;
+  columnName: string;
+  members: ProjectMember[];
+  myUserId: string | null;
+  canApprove: boolean;
+  onClose: () => void;
+  onEdit: (task: BoardTask) => void;
+  onWorkflowAction: (task: BoardTask, action: TransitionAction) => void;
+}
+
+type Tab = 'comments' | 'activity';
+
+export default function TaskDetailDrawer({
+  task,
+  columnType,
+  columnName,
+  members,
+  myUserId,
+  canApprove,
+  onClose,
+  onEdit,
+  onWorkflowAction,
+}: TaskDetailDrawerProps) {
+  const { t, lang } = useI18n();
+  const [tab, setTab] = useState<Tab>('comments');
+
+  const { comments, add, edit, remove } = useComments(task.id);
+  const { activity } = useTaskActivity(task.id);
+  const { watchers, isWatching, toggle } = useWatchers(task.id, myUserId);
+
+  // ── Workflow action for the drawer footer (mirror BoardCard logic). ──────────
+  const candidate = nextAction(columnType);
+  const isAssignee = !!myUserId && task.assignee?.userId === myUserId;
+  let action: TransitionAction | null = null;
+  if (candidate === 'approve') {
+    if (canApprove) action = 'approve';
+  } else if (candidate) {
+    if (isAssignee || canApprove) action = candidate;
+  }
+
+  const assigneeInitials = task.assignee
+    ? (task.assignee.fullName || task.assignee.username).charAt(0).toUpperCase()
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="relative w-full max-w-md h-full bg-bg border-l border-border shadow-2xl flex flex-col animate-[slidein_0.18s_ease-out]">
+        {/* Header */}
+        <div className="flex items-start gap-2 p-4 border-b border-border">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+              {task.taskKey && (
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-400">
+                  {task.taskKey}
+                </span>
+              )}
+              {task.storyPoints != null && (
+                <span
+                  title={t('pm.storyPoints')}
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-tight bg-violet-500/15 text-violet-400"
+                >
+                  {task.storyPoints} {t('pm.points')}
+                </span>
+              )}
+            </div>
+            <h2 className="text-base font-bold text-fg leading-snug break-words">{task.title}</h2>
+          </div>
+
+          {/* Watch toggle */}
+          <button
+            onClick={toggle}
+            title={isWatching ? t('collab.unwatch') : t('collab.watch')}
+            aria-label={isWatching ? t('collab.unwatch') : t('collab.watch')}
+            className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl border transition-colors ${
+              isWatching
+                ? 'bg-blue-600/20 border-blue-500 text-blue-300'
+                : 'bg-surface border-border text-muted hover:text-fg hover:bg-elevated'
+            }`}
+          >
+            {isWatching ? (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5 0-9.27-3.11-11-7.5a11.05 11.05 0 012.06-3.4M9.9 4.24A9.12 9.12 0 0112 4c5 0 9.27 3.11 11 7.5a11.05 11.05 0 01-4.09 5.06M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+              </svg>
+            )}
+          </button>
+
+          {/* Close */}
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-surface border border-border text-muted hover:text-fg hover:bg-elevated transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body (scrollable) */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Meta section */}
+          <div className="p-4 flex flex-col gap-4 border-b border-border">
+            {task.description && (
+              <p className="text-sm text-fg/90 leading-relaxed whitespace-pre-wrap break-words">
+                {task.description}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-2.5 text-sm">
+              {/* Assignee */}
+              <div className="flex items-center gap-2">
+                <span className="text-muted w-24 flex-shrink-0">{t('board.assignee')}</span>
+                {task.assignee ? (
+                  <span className="flex items-center gap-2 text-fg">
+                    <span
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                        task.assignee.userId,
+                      )}`}
+                    >
+                      {assigneeInitials}
+                    </span>
+                    {task.assignee.fullName || task.assignee.username}
+                  </span>
+                ) : (
+                  <span className="text-muted">{t('board.unassigned')}</span>
+                )}
+              </div>
+
+              {/* Column / status */}
+              <div className="flex items-center gap-2">
+                <span className="text-muted w-24 flex-shrink-0">{t('collab.status')}</span>
+                <span className="text-fg">{columnName}</span>
+              </div>
+
+              {/* Priority */}
+              <div className="flex items-center gap-2">
+                <span className="text-muted w-24 flex-shrink-0">{t('board.priority')}</span>
+                <span className="text-fg">{t(priorityKey(task.priority))}</span>
+              </div>
+
+              {/* Due date */}
+              {task.dueDate && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted w-24 flex-shrink-0">{t('collab.dueDate')}</span>
+                  <span className="text-fg">{task.dueDate}</span>
+                </div>
+              )}
+
+              {/* Watchers count */}
+              <div className="flex items-center gap-2">
+                <span className="text-muted w-24 flex-shrink-0">{t('collab.watchers')}</span>
+                <span className="text-fg">{watchers.length}</span>
+              </div>
+            </div>
+
+            {/* Labels */}
+            {task.labels.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {task.labels.map((l) => (
+                  <span
+                    key={l.id}
+                    className="text-[11px] font-semibold px-2 py-0.5 rounded-md leading-tight"
+                    style={{ backgroundColor: `${l.color}22`, color: l.color }}
+                  >
+                    {l.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Actions: workflow + edit */}
+            <div className="flex gap-2">
+              {action && (
+                <button
+                  onClick={() => onWorkflowAction(task, action!)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors border ${
+                    action === 'approve'
+                      ? 'bg-green-600/20 text-green-300 hover:bg-green-600/30 border-green-500/30'
+                      : 'bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border-blue-500/30'
+                  }`}
+                >
+                  {t(actionKey(action))}
+                </button>
+              )}
+              <button
+                onClick={() => onEdit(task)}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold bg-surface border border-border text-fg hover:bg-elevated transition-colors"
+              >
+                {t('common.edit')}
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-border px-4 sticky top-0 bg-bg z-10">
+            {(['comments', 'activity'] as Tab[]).map((tk) => (
+              <button
+                key={tk}
+                onClick={() => setTab(tk)}
+                className={`py-2.5 px-3 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                  tab === tk
+                    ? 'border-blue-500 text-fg'
+                    : 'border-transparent text-muted hover:text-fg'
+                }`}
+              >
+                {tk === 'comments' ? t('collab.comments') : t('collab.activity')}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="p-4">
+            {tab === 'comments' ? (
+              <CommentsTab
+                comments={comments}
+                members={members}
+                myUserId={myUserId}
+                lang={lang}
+                onAdd={add}
+                onEdit={edit}
+                onRemove={remove}
+              />
+            ) : (
+              <ActivityTab activity={activity} lang={lang} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <style>{`@keyframes slidein { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+    </div>
+  );
+}
+
+// ── Comments tab ─────────────────────────────────────────────────────────────
+
+function CommentsTab({
+  comments,
+  members,
+  myUserId,
+  lang,
+  onAdd,
+  onEdit,
+  onRemove,
+}: {
+  comments: TaskComment[];
+  members: ProjectMember[];
+  myUserId: string | null;
+  lang: 'ro' | 'ru';
+  onAdd: (body: string) => Promise<void>;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  onRemove: (commentId: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── @mention autocomplete ──────────────────────────────────────────────────
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return members
+      .filter((m) => m.username.toLowerCase().includes(q) || (m.fullName || '').toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [mentionQuery, members]);
+
+  /** Detect a `@word` token directly before the caret. */
+  const detectMention = (value: string, caret: number) => {
+    const upto = value.slice(0, caret);
+    const match = /(?:^|\s)@(\w*)$/.exec(upto);
+    setMentionQuery(match ? match[1] : null);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setBody(e.target.value);
+    detectMention(e.target.value, e.target.selectionStart);
+  };
+
+  const insertMention = (username: string) => {
+    const el = textareaRef.current;
+    const caret = el ? el.selectionStart : body.length;
+    const before = body.slice(0, caret).replace(/@(\w*)$/, `@${username} `);
+    const after = body.slice(caret);
+    const next = before + after;
+    setBody(next);
+    setMentionQuery(null);
+    // Restore focus + caret after the inserted mention.
+    requestAnimationFrame(() => {
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = before.length;
+      }
+    });
+  };
+
+  const handleSend = async () => {
+    if (!body.trim() || sending) return;
+    setSending(true);
+    try {
+      await onAdd(body.trim());
+      setBody('');
+      setMentionQuery(null);
+    } catch {
+      // ignore
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const startEdit = (c: TaskComment) => {
+    setEditingId(c.id);
+    setEditBody(c.body);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editBody.trim()) return;
+    await onEdit(editingId, editBody.trim());
+    setEditingId(null);
+    setEditBody('');
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* List */}
+      {comments.length === 0 ? (
+        <p className="text-sm text-muted text-center py-6">{t('collab.noComments')}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {comments.map((c) => {
+            const isMine = !!myUserId && c.userId === myUserId;
+            const initials = (c.fullName || c.username).charAt(0).toUpperCase();
+            return (
+              <div key={c.id} className="flex gap-2.5">
+                <span
+                  className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                    c.userId,
+                  )}`}
+                >
+                  {initials}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-fg">{c.fullName || c.username}</span>
+                    <span className="text-xs text-muted">{relativeTime(c.createdAt, lang)}</span>
+                  </div>
+                  {editingId === c.id ? (
+                    <div className="mt-1 flex flex-col gap-2">
+                      <textarea
+                        value={editBody}
+                        onChange={(e) => setEditBody(e.target.value)}
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={saveEdit} className="text-xs text-blue-400 font-semibold hover:text-blue-300">
+                          {t('common.save')}
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="text-xs text-muted hover:text-fg">
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-fg/90 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
+                      {isMine && (
+                        <div className="flex gap-3 mt-1">
+                          <button onClick={() => startEdit(c)} className="text-xs text-muted hover:text-fg">
+                            {t('collab.edit')}
+                          </button>
+                          <button onClick={() => onRemove(c.id)} className="text-xs text-red-400/70 hover:text-red-400">
+                            {t('collab.delete')}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Composer */}
+      <div className="relative border-t border-border pt-3">
+        <textarea
+          ref={textareaRef}
+          value={body}
+          onChange={handleChange}
+          placeholder={t('collab.addComment')}
+          rows={2}
+          className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
+        />
+
+        {/* Mention dropdown */}
+        {mentionQuery !== null && mentionMatches.length > 0 && (
+          <div className="absolute left-0 bottom-full mb-1 w-56 max-h-48 overflow-y-auto rounded-xl bg-surface border border-border shadow-xl z-20">
+            {mentionMatches.map((m) => (
+              <button
+                key={m.userId}
+                onClick={() => insertMention(m.username)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-fg hover:bg-elevated transition-colors"
+              >
+                <span
+                  className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                    m.userId,
+                  )}`}
+                >
+                  {(m.fullName || m.username).charAt(0).toUpperCase()}
+                </span>
+                <span className="truncate">
+                  <span className="font-semibold">@{m.username}</span>
+                  {m.fullName && <span className="text-muted"> · {m.fullName}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={handleSend}
+            disabled={!body.trim() || sending}
+            className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            {sending ? t('common.saving') : t('collab.send')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Activity tab ─────────────────────────────────────────────────────────────
+
+function activityKey(action: string): string {
+  switch (action) {
+    case 'CREATED': return 'collab.actCreated';
+    case 'MOVED': return 'collab.actMoved';
+    case 'ASSIGNED': return 'collab.actAssigned';
+    case 'PLANNED': return 'collab.actPlanned';
+    case 'STARTED': return 'collab.actStarted';
+    case 'DONE': return 'collab.actDone';
+    case 'APPROVED': return 'collab.actApproved';
+    case 'COMMENTED': return 'collab.actCommented';
+    default: return '';
+  }
+}
+
+function ActivityTab({ activity, lang }: { activity: TaskActivity[]; lang: 'ro' | 'ru' }) {
+  const { t } = useI18n();
+
+  if (activity.length === 0) {
+    return <p className="text-sm text-muted text-center py-6">{t('collab.noActivity')}</p>;
+  }
+
+  // Newest first.
+  const ordered = [...activity].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {ordered.map((a) => {
+        const actor = a.username || t('collab.someone');
+        const phraseKey = activityKey(a.action);
+        const phrase = phraseKey ? t(phraseKey) : a.action;
+        return (
+          <div key={a.id} className="flex gap-2.5 items-start">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60 mt-2 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-fg/90">
+                <span className="font-semibold text-fg">{actor}</span> {phrase}
+              </p>
+              <span className="text-xs text-muted">{relativeTime(a.createdAt, lang)}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

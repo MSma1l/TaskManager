@@ -10,13 +10,21 @@ import AddTaskModal from '../../tasks/components/AddTaskModal';
 import EditTaskModal from '../../tasks/components/EditTaskModal';
 import MembersBar from '../components/MembersBar';
 import BoardPage from './BoardPage';
+import BacklogPanel from '../components/BacklogPanel';
+import SprintsPanel from '../components/SprintsPanel';
+import PerformancePanel from '../components/PerformancePanel';
+
+type ProjectTab = 'list' | 'board' | 'backlog' | 'sprints' | 'performance';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const t = useT();
-  const isBoard = location.pathname.endsWith('/board');
+  const isBoardRoute = location.pathname.endsWith('/board');
+  // Tabs: List/Board are route-backed (deep-linkable); the rest are local.
+  const [extraTab, setExtraTab] = useState<'backlog' | 'sprints' | 'performance' | null>(null);
+  const tab: ProjectTab = extraTab ?? (isBoardRoute ? 'board' : 'list');
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -147,7 +155,7 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {projectId && !isBoard && <MembersBar projectId={projectId} myRole={project.role} />}
+            {projectId && tab === 'list' && <MembersBar projectId={projectId} myRole={project.role} />}
             {project.githubUrl && (
               <a
                 href={project.githubUrl}
@@ -167,7 +175,7 @@ export default function ProjectDetailPage() {
             >
               Editeaza
             </button>
-            {!isBoard && (
+            {tab === 'list' && (
               <button
                 onClick={() => setShowAddTask(true)}
                 className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
@@ -179,28 +187,58 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Tabs: List | Board */}
-      <div className="flex items-center gap-1 mb-6 border-b border-border">
+      {/* Tabs: List | Board | Backlog | Sprints | Performance */}
+      <div className="flex items-center gap-1 mb-6 border-b border-border overflow-x-auto">
         <button
-          onClick={() => navigate(`/projects/${projectId}`)}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-            !isBoard ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          onClick={() => { setExtraTab(null); navigate(`/projects/${projectId}`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'list' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
           }`}
         >
           {t('board.list')}
         </button>
         <button
-          onClick={() => navigate(`/projects/${projectId}/board`)}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-            isBoard ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          onClick={() => { setExtraTab(null); navigate(`/projects/${projectId}/board`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'board' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
           }`}
         >
           {t('board.board')}
         </button>
+        <button
+          onClick={() => { setExtraTab('backlog'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'backlog' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('pm.backlog')}
+        </button>
+        <button
+          onClick={() => { setExtraTab('sprints'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'sprints' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('pm.sprints')}
+        </button>
+        <button
+          onClick={() => { setExtraTab('performance'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === 'performance' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+          }`}
+        >
+          {t('pm.performance')}
+        </button>
       </div>
 
-      {isBoard ? (
+      {tab === 'board' ? (
         projectId && <BoardPage projectId={projectId} myRole={project.role} />
+      ) : tab === 'backlog' ? (
+        projectId && <BacklogPanel projectId={projectId} myRole={project.role} />
+      ) : tab === 'sprints' ? (
+        projectId && <SprintsPanel projectId={projectId} myRole={project.role} />
+      ) : tab === 'performance' ? (
+        projectId && <PerformancePanel projectId={projectId} />
       ) : (
       <>
       {/* Stats bar */}

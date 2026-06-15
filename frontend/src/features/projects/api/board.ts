@@ -40,6 +40,8 @@ export interface BoardTask {
   estimateMinutes: number | null;
   dayOfWeek: number | null;
   scheduledDate: string | null;
+  storyPoints: number | null;
+  sprintId: string | null;
 }
 
 export interface BoardColumn {
@@ -80,6 +82,7 @@ export interface CreateBoardTaskData {
   labelIds?: string[];
   dueDate?: string;
   estimateMinutes?: number;
+  storyPoints?: number;
 }
 
 export interface UpdateBoardTaskData {
@@ -89,6 +92,7 @@ export interface UpdateBoardTaskData {
   labelIds?: string[];
   dueDate?: string;
   estimateMinutes?: number;
+  storyPoints?: number;
 }
 
 export interface TransitionData {
@@ -105,8 +109,18 @@ export interface CreateLabelData {
 }
 
 export const boardApi = {
-  getBoard: (projectId: string) =>
-    client.get<Board>(`/projects/${projectId}/board`).then((r) => r.data),
+  /**
+   * `sprintId` filters the board:
+   *  - a sprint id → only that sprint's tasks,
+   *  - `'backlog'` → only tasks without a sprint,
+   *  - omitted → all tasks.
+   */
+  getBoard: (projectId: string, sprintId?: string) =>
+    client
+      .get<Board>(`/projects/${projectId}/board`, {
+        params: sprintId ? { sprint_id: sprintId } : undefined,
+      })
+      .then((r) => r.data),
 
   createColumn: (projectId: string, data: CreateColumnData) =>
     client.post<BoardColumn>(`/projects/${projectId}/board/columns`, data).then((r) => r.data),

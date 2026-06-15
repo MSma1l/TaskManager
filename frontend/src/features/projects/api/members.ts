@@ -11,6 +11,7 @@ export interface ProjectMember {
   fullName: string | null;
   role: ProjectRole;
   isYou: boolean;
+  capacityPoints: number;
 }
 
 export interface InviteMemberData {
@@ -26,6 +27,10 @@ export const membersApi = {
   updateRole: (projectId: string, userId: string, role: AssignableRole) =>
     client
       .put<ProjectMember>(`/projects/${projectId}/members/${userId}`, { role })
+      .then((r) => r.data),
+  updateCapacity: (projectId: string, userId: string, capacityPoints: number) =>
+    client
+      .put<ProjectMember>(`/projects/${projectId}/members/${userId}`, { capacityPoints })
       .then((r) => r.data),
   remove: (projectId: string, userId: string) =>
     client.delete(`/projects/${projectId}/members/${userId}`).then((r) => r.data),

@@ -30,8 +30,9 @@ def label_to_dict(label):
     }
 
 
-def board_task_to_dict(task, users: dict | None = None, project_key: str | None = None):
+def board_task_to_dict(task, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None):
     users = users or {}
+    comment_counts = comment_counts or {}
     assignee = None
     if task.assignee_id:
         u = users.get(task.assignee_id)
@@ -58,14 +59,16 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "taskKey": task_key,
         "dueDate": task.due_date.isoformat() if task.due_date else None,
         "estimateMinutes": task.estimated_minutes,
+        "storyPoints": task.story_points,
+        "sprintId": task.sprint_id,
         "dayOfWeek": task.day_of_week,
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
         "reminderTime": task.reminder_time,
-        "commentCount": 0,
+        "commentCount": comment_counts.get(task.id, 0),
     }
 
 
-def column_to_dict(column, tasks=None, users: dict | None = None, project_key: str | None = None):
+def column_to_dict(column, tasks=None, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None):
     return {
         "id": column.id,
         "name": column.name,
@@ -73,7 +76,7 @@ def column_to_dict(column, tasks=None, users: dict | None = None, project_key: s
         "color": column.color,
         "isDoneColumn": column.is_done_column,
         "columnType": column.column_type,
-        "tasks": [board_task_to_dict(t, users, project_key) for t in (tasks or [])],
+        "tasks": [board_task_to_dict(t, users, project_key, comment_counts) for t in (tasks or [])],
     }
 
 
@@ -82,16 +85,18 @@ def column_to_dict(column, tasks=None, users: dict | None = None, project_key: s
 @router.get("")
 async def get_board(
     project_id: str,
+    sprint_id: str | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    board = board_service.get_board(db, user.id, project_id)
+    board = board_service.get_board(db, user.id, project_id, sprint_id)
     users = board["users"]
     tasks_by_column = board["tasks_by_column"]
     project_key = board["project_key"]
+    comment_counts = board["comment_counts"]
     return {
         "columns": [
-            column_to_dict(c, tasks_by_column.get(c.id, []), users, project_key)
+            column_to_dict(c, tasks_by_column.get(c.id, []), users, project_key, comment_counts)
             for c in board["columns"]
         ],
         "labels": [label_to_dict(l) for l in board["labels"]],
@@ -150,7 +155,8 @@ def _task_with_assignee(db: Session, task, project_id: str | None = None):
     if pid:
         row = db.query(Project.key).filter(Project.id == pid).first()
         project_key = row[0] if row else None
-    return board_task_to_dict(task, users, project_key)
+    comment_counts = {task.id: board_service._comment_count(db, task.id)}
+    return board_task_to_dict(task, users, project_key, comment_counts)
 
 
 @router.post("/tasks")

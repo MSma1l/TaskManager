@@ -32,6 +32,10 @@ class Task(Base):
     assignee_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     task_number = Column(Integer, nullable=True)  # numar secvential per proiect (cheie: KEY-<task_number>)
 
+    # ── Story points + sprint (Faza 3A) ─────────────────────────────
+    story_points = Column(Integer, nullable=True)  # estimare efort 1-10
+    sprint_id = Column(String, ForeignKey("sprints.id"), nullable=True, index=True)
+
     category = relationship("Category", back_populates="tasks")
     completions = relationship("TaskCompletion", back_populates="task")
     project = relationship("Project", back_populates="tasks")

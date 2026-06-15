@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, tasks, completions, categories, stats, projects, members, board, notifications, notebook, calendar, users, access_requests
+from app.api import auth, tasks, completions, categories, stats, projects, members, board, notifications, notebook, calendar, users, access_requests, sprints, performance, ai, comments, activity, watchers
 
 api_router = APIRouter()
 
@@ -13,6 +13,13 @@ api_router.include_router(stats.router)
 api_router.include_router(projects.router)
 api_router.include_router(members.router)
 api_router.include_router(board.router)
+api_router.include_router(sprints.router)
+api_router.include_router(sprints.backlog_router)
+api_router.include_router(performance.router)
+api_router.include_router(ai.router)
 api_router.include_router(notifications.router)
 api_router.include_router(notebook.router)
 api_router.include_router(calendar.router)
+api_router.include_router(comments.router)
+api_router.include_router(activity.router)
+api_router.include_router(watchers.router)

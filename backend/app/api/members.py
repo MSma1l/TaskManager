@@ -20,6 +20,7 @@ def member_to_dict(member, user, current_user_id):
         "username": user.username if user else None,
         "fullName": user.full_name if user else None,
         "role": member.role,
+        "capacityPoints": member.capacity_points,
         "isYou": member.user_id == current_user_id,
     }
 
@@ -84,24 +85,38 @@ async def update_member_role(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    membership_service.require_membership(db, project_id, user.id, min_role="OWNER")
-
-    if data.role not in {r.value for r in ProjectRole}:
-        raise HTTPException(status_code=400, detail="Rol invalid")
+    # Apelantul trebuie sa fie cel putin membru; nivelul concret e validat per actiune.
+    caller = membership_service.require_membership(db, project_id, user.id, min_role="VIEWER")
 
     member = membership_service.get_member(db, project_id, user_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Membru inexistent")
 
-    # Protectie ultimul OWNER: nu poti retrograda singurul OWNER
-    if (
-        member.role == "OWNER"
-        and data.role != "OWNER"
-        and membership_service.count_owners(db, project_id) == 1
-    ):
-        raise HTTPException(status_code=400, detail="Trebuie sa ramana cel putin un OWNER")
+    # ── schimbare rol: doar OWNER ───────────────────────────────────
+    if data.role is not None:
+        if membership_service.ROLE_RANK.get(caller.role, -1) < membership_service.ROLE_RANK["OWNER"]:
+            raise HTTPException(status_code=403, detail="Doar OWNER poate schimba rolul")
+        if data.role not in {r.value for r in ProjectRole}:
+            raise HTTPException(status_code=400, detail="Rol invalid")
 
-    member.role = data.role
+        # Protectie ultimul OWNER: nu poti retrograda singurul OWNER
+        if (
+            member.role == "OWNER"
+            and data.role != "OWNER"
+            and membership_service.count_owners(db, project_id) == 1
+        ):
+            raise HTTPException(status_code=400, detail="Trebuie sa ramana cel putin un OWNER")
+
+        member.role = data.role
+
+    # ── schimbare capacitate: ADMIN+ sau el insusi ──────────────────
+    if data.capacityPoints is not None:
+        is_lead = membership_service.ROLE_RANK.get(caller.role, -1) >= membership_service.ROLE_RANK["ADMIN"]
+        is_self = caller.user_id == user_id
+        if not (is_lead or is_self):
+            raise HTTPException(status_code=403, detail="Permisiuni insuficiente pentru a schimba capacitatea")
+        member.capacity_points = data.capacityPoints
+
     db.commit()
     db.refresh(member)
 

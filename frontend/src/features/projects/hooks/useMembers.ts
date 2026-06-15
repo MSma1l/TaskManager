@@ -32,10 +32,16 @@ export function useMembers(projectId: string) {
     return member;
   };
 
+  const updateCapacity = async (userId: string, capacityPoints: number) => {
+    const member = await membersApi.updateCapacity(projectId, userId, capacityPoints);
+    await fetch();
+    return member;
+  };
+
   const remove = async (userId: string) => {
     await membersApi.remove(projectId, userId);
     await fetch();
   };
 
-  return { members, loading, refetch: fetch, invite, updateRole, remove };
+  return { members, loading, refetch: fetch, invite, updateRole, updateCapacity, remove };
 }

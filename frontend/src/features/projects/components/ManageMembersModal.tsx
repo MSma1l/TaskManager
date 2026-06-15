@@ -23,16 +23,19 @@ function roleKey(role: ProjectRole): string {
 
 export default function ManageMembersModal({ projectId, myRole, onClose }: ManageMembersModalProps) {
   const t = useT();
-  const { members, invite, updateRole, remove } = useMembers(projectId);
+  const { members, invite, updateRole, updateCapacity, remove } = useMembers(projectId);
 
   const [username, setUsername] = useState('');
   const [role, setRole] = useState<AssignableRole>('MEMBER');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  /** Local draft of capacity inputs keyed by userId (committed on blur). */
+  const [capacityDraft, setCapacityDraft] = useState<Record<string, string>>({});
 
   const canManage = myRole === 'OWNER' || myRole === 'ADMIN';
   const canEditRoles = myRole === 'OWNER';
+  const isAdmin = myRole === 'OWNER' || myRole === 'ADMIN';
 
   const errorFor = (e: unknown): string => {
     const status = (e as AxiosError)?.response?.status;
@@ -62,6 +65,24 @@ export default function ManageMembersModal({ projectId, myRole, onClose }: Manag
     setError('');
     try {
       await updateRole(m.userId, newRole);
+    } catch (e) {
+      setError(errorFor(e));
+    }
+  };
+
+  const handleCapacityCommit = async (m: ProjectMember) => {
+    const raw = capacityDraft[m.userId];
+    if (raw === undefined) return;
+    const value = parseInt(raw, 10);
+    setCapacityDraft((prev) => {
+      const next = { ...prev };
+      delete next[m.userId];
+      return next;
+    });
+    if (!Number.isFinite(value) || value < 0 || value === m.capacityPoints) return;
+    setError('');
+    try {
+      await updateCapacity(m.userId, value);
     } catch (e) {
       setError(errorFor(e));
     }
@@ -112,6 +133,25 @@ export default function ManageMembersModal({ projectId, myRole, onClose }: Manag
                   </p>
                   <p className="text-xs text-muted truncate">@{m.username}</p>
                 </div>
+
+                {/* Capacity (points): editable by admin or self, otherwise read-only */}
+                {isAdmin || m.isYou ? (
+                  <div className="flex items-center gap-1 flex-shrink-0" title={t('pm.capacity')}>
+                    <input
+                      type="number"
+                      min={0}
+                      value={capacityDraft[m.userId] ?? String(m.capacityPoints)}
+                      onChange={(e) => setCapacityDraft((prev) => ({ ...prev, [m.userId]: e.target.value }))}
+                      onBlur={() => handleCapacityCommit(m)}
+                      className="w-14 text-xs px-2 py-1 rounded-lg bg-bg border border-border text-fg text-center outline-none focus:border-blue-500 transition-colors"
+                    />
+                    <span className="text-[10px] text-muted">{t('pm.points')}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted flex-shrink-0" title={t('pm.capacity')}>
+                    {m.capacityPoints} {t('pm.points')}
+                  </span>
+                )}
 
                 {/* Role: editable by OWNER (except OWNER rows), otherwise badge */}
                 {canEditRoles && m.role !== 'OWNER' ? (
