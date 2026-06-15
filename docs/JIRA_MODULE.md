@@ -37,8 +37,7 @@ Cod relevant:
 ## 2. Roluri & acces
 
 Accesul la un proiect e dat de tabelul **`ProjectMember`** (`UNIQUE(project_id, user_id)`), cu rolul
-`OWNER / ADMIN / MEMBER / VIEWER` (enum `Pnu ca pornesc eu nu aici 
-rojectRole` în `models/base.py`, stocat ca String).
+`OWNER / ADMIN / MEMBER / VIEWER` (enum `ProjectRole` în `models/base.py`, stocat ca String).
 
 Ierarhia (`ROLE_RANK` în `membership_service.py`):
 
@@ -344,9 +343,14 @@ docker compose exec backend pytest                  # rulează suita + coverage
 docker compose exec backend pytest tests/test_board_transition.py -q
 ```
 
-**Frontend**: momentan **nu există** suită Vitest în `frontend/` (deși planul o menționa). Dacă adaugi
-teste, instalează `vitest` + `@testing-library/react` în container și adaugă scriptul în `package.json` —
-nu inventa o comandă `npm test` care nu există încă.
+**Frontend (Vitest)** — există suită în `frontend/` (config `vitest.config.ts`, setup `src/test/setup.ts`).
+Acoperă logica nouă pură: `shared/utils/dates.ts` (`relativeTime`), `features/projects/components/mention.ts`,
+`boardConstants.ts`, `hooks/applyOptimisticMove.ts`, plus un render-test pe `PerformancePanel`.
+
+```bash
+docker compose exec frontend npm run test         # rulează testele
+docker compose exec frontend npm run test:cov     # cu coverage
+```
 
 Typecheck / build frontend:
 
@@ -396,4 +400,39 @@ Existente, relevante (din `CLAUDE.md` / `backend/app/core/config.py`):
 | `DATABASE_URL` | postgres local | conexiunea Postgres |
 | `FRONTEND_URL` | — | URL frontend (linkuri) |
 
-Nu există `.env.example` versionat — întreabă owner-ul când lipsesc valori.
+Există un `.env.example` versionat (cu placeholder-e, inclusiv `OPENROUTER_*`) — copiază-l în `.env` și completează valorile reale.
+
+---
+
+## 12. Modificări recente & depanare (pentru viitor)
+
+### Ce s-a adăugat/reparat în ultima rundă
+
+- **AI Sprint Planner** — scrii liber tot ce trebuie făcut într-un sprint, AI-ul îl desparte în taskuri IT bine formate (titlu/descriere/criterii + story points), le vezi într-o listă **editabilă**, apoi le creezi pe toate în backlog. Buton „✨ Planifică sprint (AI)" în Backlog.
+  - `POST /api/projects/{id}/ai/plan` (preview, nu creează nimic) → `{ tasks:[{title,description,storyPoints}], source }`.
+  - `POST /api/projects/{id}/ai/plan/apply` → creează toate în coloana `BACKLOG`. Aceeași cale de fallback pe reguli ca restul AI-ului.
+- **„Done" robust la personalizarea coloanelor** — detecția „terminat" (performanță, velocity, complete-sprint, tranziția `done`) ține cont acum și de flag-ul `BoardColumn.is_done_column`, nu doar de `column_type`. Helper: `board_service.is_done_column_obj` / `done_column_ids`. **Practic:** dacă schimbi tipul coloanei „Finalizate" în CUSTOM, bifează-o ca „coloană finală" (`is_done_column`) ca statisticile să rămână corecte.
+- **VIEWER e strict read-only** — nu poate fi asignat la taskuri (400 „Nu poti atribui sarcini unui vizualizator") și nu poate face tranziții (403). Pentru muncă, ridică-l la MEMBER.
+- **Tab „Activitate" pe proiect** — feed-ul `GET /api/projects/{id}/activity` e acum afișat în UI (`ActivityPanel.tsx`).
+- **OpenRouter** integrat (vezi §6) în locul SDK-ului Anthropic; cheie în `.env`.
+- **Reparat** typo `FRONTEND_URL` (`http:/o/...` → `http://...`) și conflictul de dependențe `httpx`/`python-telegram-bot` care bloca build-ul Docker.
+
+### Depanare — probleme frecvente și soluții
+
+| Simptom | Cauză | Soluție |
+|--------|-------|---------|
+| `telegram.error.Conflict: terminated by other getUpdates` în logurile backend | Două instanțe ale botului folosesc același `TELEGRAM_BOT_TOKEN` (polling dublu) | Oprește cealaltă instanță (alt `docker compose` / server) sau folosește un token separat. API-ul funcționează oricum. |
+| Estimarea AI iese mereu „pe reguli" (`source: "rules"`) | Lipsă `OPENROUTER_API_KEY`, rețea, sau **429** pe model `:free` | Pune o cheie validă; pentru AI consistent folosește un model plătit în `OPENROUTER_MODEL`. Comportamentul de fallback e intenționat. |
+| Dashboard performanță / velocity arată 0; taskuri „gata" revin în backlog la complete-sprint | Coloana de final nu mai e tip `DONE`/`APPROVED` și nici bifată `is_done_column` | Bifează coloana finală ca „coloană finală" în editorul de coloană, sau păstrează tipul `DONE`. |
+| PWA nu se instalează / dă erori pe telefon | Service worker cere HTTPS; pe LAN HTTP nu pornește; iconițe SVG | Servește prin HTTPS (tunel `cloudflared`/`ngrok` sau nginx 443 + `mkcert`) și adaugă iconițe **PNG** 192/512 în manifest. |
+| Tokenuri JWT „nu țin" / cont compromis | `JWT_SECRET` rămas pe default | Setează un `JWT_SECRET` random lung în `.env` și repornește. |
+| Linkuri Telegram/deep-link greșite | `FRONTEND_URL` necompletat în `.env` | Pune URL-ul real al frontend-ului. |
+| Migrare nouă nu s-a aplicat | `alembic upgrade head` rulează la boot prin `start.sh` | `docker compose exec backend alembic current` (trebuie `019`); dacă nu, `alembic upgrade head`. |
+
+### De rezolvat pe viitor (rămase din audit, neblocante)
+
+- **i18n**: ecranele vechi `ProjectsPage.tsx`, `ProjectDetailPage.tsx`, `AddProjectModal.tsx` au texte RO hardcodate (userii RU le văd în română) — de trecut prin `t()`.
+- **Single-ACTIVE-sprint**: `start_sprint` nu împiedică două sprinturi ACTIVE simultan; adaugă o verificare dacă vrei un singur sprint activ.
+- **`overCapacity` zgomotos** când capacitatea e 0 (netsetată) — tratează 0 ca „nesetat / fără avertizare".
+- **Securizare înainte de producție**: schimbă `ADMIN_PASSWORD`, `APP_PIN`, credențialele DB (`taskuser:taskpass`); ignoră `backend/.coverage` în git (artefact de build).
+- **AI Sprint Planner** pune taskurile în backlog (nu direct în sprint, by design) — apoi le tragi manual în sprint.
