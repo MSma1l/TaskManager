@@ -1,0 +1,15 @@
+# Override DOAR pentru dezvoltare locală. Docker Compose îl încarcă automat
+# peste docker-compose.yml când rulezi `docker compose up` din acest folder.
+#
+# Pe server NU folosi acest fișier (acolo accesul vine prin nginx-proxy-ul
+# extern). Local, publicăm porturile ca să poți deschide aplicația în browser:
+#   - Web app:  http://localhost:3000
+#   - API/Swagger: http://localhost:3001/api/docs
+# Vite (3000) proxează singur /api către backend:3001, deci nu e nevoie de nginx local.
+services:
+  frontend:
+    ports:
+      - "3000:3000"
+  backend:
+    ports:
+      - "3001:3001"
