@@ -8,10 +8,52 @@ from app.models.task import Task
 from app.models.reminder import ReminderLog
 from app.models.calendar import CalendarEvent, CalendarReminderLog
 from app.models.user import User
-from app.services import calendar_service
+from app.services import calendar_service, notification_service
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 security = HTTPBearer()
+
+
+# ── Persisted in-app notifications (centru de notificari) ────────────────────
+
+@router.get("")
+async def list_notifications(
+    unread: bool = False,
+    limit: int = 50,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    items = notification_service.list_for_user(db, user.id, only_unread=unread, limit=limit)
+    return [notification_service.to_dict(n) for n in items]
+
+
+@router.get("/unread-count")
+async def notifications_unread_count(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return {"count": notification_service.unread_count(db, user.id)}
+
+
+@router.post("/read-all")
+async def notifications_read_all(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return {"updated": notification_service.mark_all_read(db, user.id)}
+
+
+@router.post("/{notification_id}/read")
+async def notification_mark_read(
+    notification_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    n = notification_service.mark_read(db, user.id, notification_id)
+    if not n:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Notificare inexistenta")
+    return notification_service.to_dict(n)
 
 
 @router.get("/pending")

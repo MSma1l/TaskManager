@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { authApi, MeResponse } from '../../auth/api/auth';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
@@ -285,6 +286,41 @@ export default function ProfilePage() {
       </Card>
 
       {tourOpen && <Tour forceOpen onClose={() => setTourOpen(false)} />}
+
+      {/* Gestionare (doar admini) — trecere directa la panoul de admin */}
+      {me?.role === 'ADMIN' && (
+        <Card title="Gestionare (Admin)">
+          <p className="text-sm text-muted">
+            Panoul de administrare: cereri de logare, utilizatori, statistici.
+          </p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Link
+              to="/admin_task_manager/requests"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 text-sm text-center font-medium"
+            >
+              Cereri de logare
+            </Link>
+            <Link
+              to="/admin_task_manager/users"
+              className="bg-surface hover:bg-elevated border border-border text-fg rounded-lg px-4 py-2 text-sm text-center"
+            >
+              Utilizatori
+            </Link>
+            <Link
+              to="/admin_task_manager/dashboard"
+              className="bg-surface hover:bg-elevated border border-border text-fg rounded-lg px-4 py-2 text-sm text-center"
+            >
+              Panou
+            </Link>
+            <Link
+              to="/admin_task_manager/stats"
+              className="bg-surface hover:bg-elevated border border-border text-fg rounded-lg px-4 py-2 text-sm text-center"
+            >
+              Statistici
+            </Link>
+          </div>
+        </Card>
+      )}
 
       {/* Admin password (only visible to admins) */}
       {me?.role === 'ADMIN' && (

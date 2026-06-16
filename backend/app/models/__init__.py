@@ -17,6 +17,7 @@ from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLo
 from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
 from app.models.qr_session import QRSession
+from app.models.notification import Notification
 
 __all__ = [
     "TaskStatus",
@@ -47,4 +48,5 @@ __all__ = [
     "LoginCode",
     "AccessRequest",
     "QRSession",
+    "Notification",
 ]

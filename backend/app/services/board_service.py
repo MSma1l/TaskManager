@@ -531,10 +531,26 @@ def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assign
     if assignee_id is not None:
         _validate_assignee(db, project_id, assignee_id)
 
+    prev_assignee = task.assignee_id
     task.assignee_id = assignee_id
     task.updated_at = datetime.utcnow()
 
     _log(db, task, user_id, "ASSIGNED", {"assigneeId": assignee_id})
+
+    # Notifica noul responsabil (non-fatal): doar la schimbare reala si nu pe
+    # auto-atribuire. Rides existing transaction (commit=False).
+    if assignee_id and assignee_id != user_id and assignee_id != prev_assignee:
+        try:
+            from app.services import notification_service
+            notification_service.create_safe(
+                db, user_id=assignee_id, type="TASK_ASSIGNED",
+                title=f"Ti s-a atribuit taskul {task.title}",
+                link=f"/projects/{project_id}/board",
+                meta={"taskId": task.id, "projectId": project_id, "actorId": user_id},
+                commit=False,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[notification] assign_task notify error: {e}")
 
     db.commit()
     db.refresh(task)

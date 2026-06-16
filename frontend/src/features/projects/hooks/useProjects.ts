@@ -19,6 +19,21 @@ export function useProjects() {
 
   useEffect(() => { fetch(); }, [fetch]);
 
+  // Reîmprospătează lista când userul revine în tab + polling ușor, ca un
+  // proiect în care tocmai a fost adăugat să apară fără refresh manual.
+  useEffect(() => {
+    const onFocus = () => fetch();
+    const onVisible = () => { if (document.visibilityState === 'visible') fetch(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    const id = window.setInterval(fetch, 20000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(id);
+    };
+  }, [fetch]);
+
   const createProject = async (data: CreateProjectData) => {
     const project = await projectsApi.create(data);
     setProjects((prev) => [project, ...prev]);

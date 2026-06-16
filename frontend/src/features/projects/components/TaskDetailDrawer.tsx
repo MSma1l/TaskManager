@@ -11,6 +11,7 @@ import { detectMention, insertMention as insertMentionToken } from './mention';
 import { useComments } from '../hooks/useComments';
 import { useTaskActivity } from '../hooks/useTaskActivity';
 import { useWatchers } from '../hooks/useWatchers';
+import AssigneePicker from './AssigneePicker';
 
 interface TaskDetailDrawerProps {
   task: BoardTask;
