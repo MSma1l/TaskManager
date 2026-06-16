@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user, hash_secret, verify_secret
+from app.core.security import get_current_user, hash_secret, hash_password
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import (
@@ -36,6 +36,7 @@ def _user_to_me(user: User) -> dict:
         "theme": user.theme or "dark",
         "language": getattr(user, "language", None) or "ro",
         "notificationSettings": user.notification_settings or None,
+        "mustChangePassword": bool(getattr(user, "must_change_password", False)),
     }
 
 
@@ -243,6 +244,78 @@ async def qr_confirm(
     }
 
 
+# ── Login simplu din Telegram (cu aprobare admin) ────────────────────────────
+
+@router.post("/tg-login/init")
+async def tg_login_init(db: Session = Depends(get_db)):
+    """Web pornește o sesiune "login Telegram". Întoarce sessionId + deep-link
+    către bot. Web-ul face polling pe /tg-login/status până primește token-ul.
+
+    Userul existent (chat legat) → logare instantă în bot. User nou → botul îi
+    cere numele, apoi adminul global aprobă; la aprobare web-ul primește JWT."""
+    from datetime import datetime, timedelta
+    from app.models.qr_session import QRSession
+
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    db.query(QRSession).filter(QRSession.created_at < cutoff).delete()
+
+    record = QRSession(
+        flow="tglogin",
+        status="PENDING",
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    bot = (settings.TELEGRAM_BOT_USERNAME or "").strip().lstrip("@")
+    deep_link = f"https://t.me/{bot}?start=tglogin_{record.id}" if bot else None
+    return {
+        "sessionId": record.id,
+        "deepLink": deep_link,
+        "expiresAt": record.expires_at.isoformat(),
+        "ttlSeconds": 600,
+    }
+
+
+@router.get("/tg-login/status")
+async def tg_login_status(sessionId: str, db: Session = Depends(get_db)):
+    """Polling al web-ului. Stările: PENDING (aștept botul) / AWAITING_ADMIN
+    (aștept aprobarea) / APPROVED (întoarce token o singură dată, apoi CONSUMED)
+    / REJECTED / EXPIRED."""
+    from datetime import datetime
+    from app.models.qr_session import QRSession
+
+    record = db.query(QRSession).filter(QRSession.id == sessionId).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Sesiune inexistenta")
+
+    if (
+        record.expires_at < datetime.utcnow()
+        and record.status not in {"APPROVED", "CONSUMED", "REJECTED"}
+    ):
+        record.status = "EXPIRED"
+        db.commit()
+
+    if record.status == "APPROVED" and record.issued_token:
+        token = record.issued_token
+        expires = record.token_expires_at
+        record.status = "CONSUMED"
+        record.consumed_at = datetime.utcnow()
+        record.issued_token = None
+        db.commit()
+        user = db.query(User).filter(User.id == record.user_id).first()
+        return {
+            "status": "APPROVED",
+            "token": token,
+            "expiresAt": expires.isoformat() if expires else None,
+            "role": user.role if user else None,
+            "username": user.username if user else None,
+            "userId": user.id if user else None,
+        }
+    return {"status": record.status}
+
+
 # ── Public, unauthenticated config the frontend reads on login pages ─────────
 
 @router.get("/public-config")
@@ -290,17 +363,27 @@ async def admin_login_request_code(data: LoginRequest, db: Session = Depends(get
     }
 
 
+def _reject_if_locked(user: User):
+    """429 cu Retry-After dacă contul e blocat după prea multe eșecuri."""
+    if auth_service.account_locked(user):
+        raise HTTPException(
+            status_code=429,
+            detail="Cont blocat temporar dupa prea multe incercari. Reincearca mai tarziu.",
+            headers={"Retry-After": str(auth_service.lock_remaining_seconds(user))},
+        )
+
+
 @router.post("/admin/password-login", response_model=TokenOut)
 async def admin_password_login(data: AdminPasswordLoginRequest, db: Session = Depends(get_db)):
     """Admin direct login with username + password. Bypasses Telegram 2FA."""
     user = auth_service.get_user_by_username(db, data.username)
     if not user or user.role != "ADMIN":
         raise HTTPException(status_code=401, detail="Credentiale admin invalide")
-    if not user.password_hash or not verify_secret(data.password, user.password_hash):
+    _reject_if_locked(user)
+    if not auth_service.verify_user_password(db, user, data.password):
+        auth_service.register_failed_attempt(db, user)
         raise HTTPException(status_code=401, detail="Credentiale admin invalide")
-    from datetime import datetime
-    user.last_login_at = datetime.utcnow()
-    db.commit()
+    auth_service.register_successful_login(db, user)
     return auth_service.issue_session(user)
 
 
@@ -313,19 +396,22 @@ async def password_login(data: AdminPasswordLoginRequest, db: Session = Depends(
     The frontend dispatches based on the `kind` field in the response.
     """
     user = auth_service.get_user_by_username(db, data.username)
-    if not user or not user.password_hash or not verify_secret(data.password, user.password_hash):
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="Username sau parola gresita")
+    _reject_if_locked(user)
+    if not auth_service.verify_user_password(db, user, data.password):
+        auth_service.register_failed_attempt(db, user)
         raise HTTPException(status_code=401, detail="Username sau parola gresita")
 
     # Admin: no second factor needed (already had a password)
     if user.role == "ADMIN":
-        from datetime import datetime
-        user.last_login_at = datetime.utcnow()
-        db.commit()
+        auth_service.register_successful_login(db, user)
         session = auth_service.issue_session(user)
         return {"kind": "session", **session}
 
     # Regular user with linked Telegram → require 2FA code as second factor
     if user.telegram_chat_id:
+        # Parola e corectă, dar resetăm lockout-ul abia după factorul 2 (verify).
         record, _code, delivered_via = auth_service.create_login_challenge(db, user, purpose="login")
         return {
             "kind": "challenge",
@@ -336,9 +422,7 @@ async def password_login(data: AdminPasswordLoginRequest, db: Session = Depends(
         }
 
     # User without Telegram linked: password alone is enough (single factor)
-    from datetime import datetime
-    user.last_login_at = datetime.utcnow()
-    db.commit()
+    auth_service.register_successful_login(db, user)
     session = auth_service.issue_session(user)
     return {"kind": "session", **session}
 
@@ -353,7 +437,8 @@ async def set_user_password(
     pwd = (data.password or "").strip()
     if len(pwd) < 6:
         raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
-    user.password_hash = hash_secret(pwd)
+    user.password_hash = hash_password(pwd)
+    user.must_change_password = False
     db.commit()
     return {"ok": True}
 
@@ -370,7 +455,8 @@ async def set_admin_password(
     pwd = (data.password or "").strip()
     if len(pwd) < 6:
         raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
-    user.password_hash = hash_secret(pwd)
+    user.password_hash = hash_password(pwd)
+    user.must_change_password = False
     db.commit()
     db.refresh(user)
     return _user_to_me(user)
@@ -394,7 +480,14 @@ async def refresh(data: RefreshRequest, db: Session = Depends(get_db)):
       - Code refresh: requires a fresh challengeId+code via /login first
     """
     if data.pin and data.username:
-        user = auth_service.refresh_with_pin(db, data.username, data.pin)
+        try:
+            user = auth_service.refresh_with_pin(db, data.username, data.pin)
+        except auth_service.AccountLockedError as e:
+            raise HTTPException(
+                status_code=429,
+                detail="Cont blocat temporar dupa prea multe incercari. Reincearca mai tarziu.",
+                headers={"Retry-After": str(e.retry_after)},
+            )
         if not user:
             raise HTTPException(status_code=401, detail="Username sau PIN gresit")
         return auth_service.issue_session(user)
@@ -447,7 +540,7 @@ async def set_pin(data: PinInput, user: User = Depends(get_current_user), db: Se
     pin = (data.pin or "").strip()
     if not pin.isdigit() or not (4 <= len(pin) <= 8):
         raise HTTPException(status_code=400, detail="PIN-ul trebuie sa fie 4–8 cifre")
-    user.pin_hash = hash_secret(pin)
+    user.pin_hash = hash_password(pin)
     db.commit()
     return {"ok": True}
 
@@ -561,21 +654,3 @@ async def unlink_telegram(
     user.telegram_chat_id = None
     db.commit()
     return {"ok": True}
-
-
-# ── Legacy endpoint (kept so old single-PIN clients keep working) ─────────────
-
-@router.post("/login-legacy", response_model=TokenOut)
-async def legacy_login(data: PinInput, db: Session = Depends(get_db)):
-    """Single-PIN login from before multi-user — finds the admin and issues a token."""
-    if data.pin != settings.APP_PIN:
-        raise HTTPException(status_code=401, detail="Invalid PIN")
-    admin = (
-        db.query(User)
-        .filter(User.role == "ADMIN", User.is_active == True)
-        .order_by(User.created_at.asc())
-        .first()
-    )
-    if not admin:
-        raise HTTPException(status_code=503, detail="Niciun admin configurat")
-    return auth_service.issue_session(admin)

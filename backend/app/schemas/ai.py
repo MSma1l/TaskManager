@@ -16,6 +16,10 @@ class EstimateRequest(BaseModel):
 class CreateTaskRequest(BaseModel):
     title: str
     description: Optional[str] = None
+    # Story points alese de user (din estimarea AI deja facuta sau manual).
+    # Niciodata re-estimat aici — crearea e un insert direct, fara apel AI.
+    storyPoints: Optional[int] = None
+    # Acceptat pentru compatibilitate cu wizard-ul; nefolosit la creare.
     answers: Optional[dict] = None
     columnId: Optional[str] = None
     assigneeId: Optional[str] = None

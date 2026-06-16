@@ -34,6 +34,11 @@ async def _stop_bot(app):
 async def lifespan(app: FastAPI):
     print("Starting Task Manager Backend...")
 
+    # Securitate: refuză pornirea în producție cu un JWT_SECRET nesigur (în dev
+    # doar avertizează, ca testele și lucrul local să meargă cu default-ul).
+    from app.core.security import assert_secure_config
+    assert_secure_config()
+
     start_scheduler()
 
     main_bot = None

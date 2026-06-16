@@ -15,7 +15,7 @@ from app.telegram.keyboards import (
 )
 from app.telegram.conversations import (
     start_add_flow, start_skip_flow, start_notdone_flow, clear_session,
-    start_register_flow,
+    start_register_flow, start_tglogin_flow,
 )
 
 DAYS_RO = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
@@ -129,6 +129,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args and args[0].lower().startswith("qr_"):
         qr_id = args[0][3:]  # strip "qr_" prefix
         await _handle_qr_deep_link(update, qr_id)
+        return
+
+    # Deep-link handler: /start tglogin_<sessionId> — login simplu din Telegram
+    if args and args[0].lower().startswith("tglogin_"):
+        session_id = args[0][len("tglogin_"):]
+        await _handle_tglogin_deep_link(update, context, session_id)
         return
 
     db = SessionLocal()
@@ -250,6 +256,60 @@ async def _handle_qr_deep_link(update: Update, qr_id: str):
         db.close()
 
 
+async def _handle_tglogin_deep_link(update: Update, context: ContextTypes.DEFAULT_TYPE, session_id: str):
+    """Web a pornit un "login Telegram" și userul a deschis botul.
+
+    Chat legat la un cont → aprobăm sesiunea instant (emitem JWT pe ea, web-ul
+    intră prin polling). Chat nelegat → cerem numele și deschidem flow-ul de
+    aprobare (cererea va fi legată de această sesiune)."""
+    from datetime import datetime
+    from app.models.qr_session import QRSession
+    from app.core.security import issue_token
+
+    chat_id = str(update.effective_chat.id)
+    db = SessionLocal()
+    try:
+        record = db.query(QRSession).filter(QRSession.id == session_id).first()
+        if not record or record.flow != "tglogin":
+            await update.message.reply_text("Sesiune de login invalida sau expirata.")
+            return
+        if record.expires_at < datetime.utcnow() and record.status not in {"APPROVED", "CONSUMED"}:
+            await update.message.reply_text("Sesiunea a expirat. Reincearca pe site.")
+            return
+
+        bound = (
+            db.query(User)
+            .filter(User.telegram_chat_id == chat_id, User.is_active == True)
+            .first()
+        )
+        if bound:
+            if record.status not in {"PENDING", "AWAITING_ADMIN"}:
+                await update.message.reply_text(
+                    f"Sesiunea a fost deja folosita (status: {record.status.lower()})."
+                )
+                return
+            token, exp = issue_token(bound)
+            record.status = "APPROVED"
+            record.user_id = bound.id
+            record.issued_token = token
+            record.token_expires_at = exp
+            record.approved_at = datetime.utcnow()
+            bound.last_login_at = datetime.utcnow()
+            db.commit()
+            await update.message.reply_text(
+                f"Te-am logat ca @{bound.username}. Browser-ul va intra in cateva secunde."
+            )
+            return
+
+        # Chat nelegat → colectăm numele și pornim aprobarea.
+        start_tglogin_flow(db, chat_id, session_id)
+    finally:
+        db.close()
+    await update.effective_message.reply_text(
+        "Bine ai venit! Ca sa-ti facem cont, spune-mi numele complet (ex: Ion Popescu):"
+    )
+
+
 async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick off the in-bot registration wizard."""
     chat_id = str(update.effective_chat.id)
@@ -277,7 +337,8 @@ async def _start_register_flow(update: Update, context: ContextTypes.DEFAULT_TYP
         db.close()
     await send(
         "Hai sa-ti facem cont!\n\n"
-        "Pasul 1/2: Cum te numesti? (numele complet, ex: Ion Popescu)"
+        "Cum te numesti? (numele complet, ex: Ion Popescu)\n"
+        "Dupa ce trimiti numele, cererea merge la admin pentru aprobare."
     )
 
 

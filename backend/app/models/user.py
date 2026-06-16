@@ -19,6 +19,12 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 
+    # Securitate: brute-force lockout + revocare token + forțare schimbare parolă
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    token_version = Column(Integer, nullable=False, default=0)
+    must_change_password = Column(Boolean, nullable=False, default=False)
+
     # Preferences
     theme = Column(String(20), nullable=False, default="dark")  # dark | light
     language = Column(String(5), nullable=False, default="ro")   # ro | ru

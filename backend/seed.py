@@ -8,9 +8,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from app.core.database import SessionLocal
 from app.core.config import settings
-from app.core.security import hash_secret
+from app.core.security import hash_password
 from app.models.category import Category
 from app.models.user import User
+
+# Parola checked-in din repo — dacă admin-ul e creat cu ea, îl forțăm să o
+# schimbe la primul login (must_change_password) și avertizăm în consolă.
+_WEAK_DEFAULT_ADMIN_PASSWORD = "admin1234"
 
 CATEGORIES = [
     {"id": "cat-infrastructure", "name": "Infrastructure", "icon": "\U0001F5A5️", "color": "#3B82F6"},
@@ -40,15 +44,23 @@ def seed_admin(db):
     has_admin = db.query(User).filter(User.role == "ADMIN").first()
     pin = settings.APP_PIN
     admin_password = settings.ADMIN_PASSWORD
+    weak_pw = bool(admin_password) and admin_password == _WEAK_DEFAULT_ADMIN_PASSWORD
+    if weak_pw:
+        print(
+            "[SECURITY][WARN] ADMIN_PASSWORD este valoarea default slabă. Adminul va fi "
+            "obligat să o schimbe la primul login. Setează ADMIN_PASSWORD în .env."
+        )
 
     if has_admin:
         changed = False
         # Ensure admin can always log in via password (fixes "can't enter as admin")
         if admin_password and not has_admin.password_hash:
-            has_admin.password_hash = hash_secret(admin_password)
+            has_admin.password_hash = hash_password(admin_password)
+            if weak_pw:
+                has_admin.must_change_password = True
             changed = True
         if pin and not has_admin.pin_hash:
-            has_admin.pin_hash = hash_secret(pin)
+            has_admin.pin_hash = hash_password(pin)
             changed = True
         if not has_admin.is_active:
             has_admin.is_active = True
@@ -71,8 +83,9 @@ def seed_admin(db):
         full_name=settings.ADMIN_FULL_NAME or "Administrator",
         telegram_chat_id=chat_id,
         role="ADMIN",
-        pin_hash=hash_secret(pin) if pin else None,
-        password_hash=hash_secret(admin_password) if admin_password else None,
+        pin_hash=hash_password(pin) if pin else None,
+        password_hash=hash_password(admin_password) if admin_password else None,
+        must_change_password=weak_pw,
         is_active=True,
     )
     if chat_id:

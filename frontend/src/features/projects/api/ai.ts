@@ -27,7 +27,6 @@ export interface EstimateResult {
 
 export interface CreateAiTaskResult {
   task: BoardTask;
-  estimate: EstimateResult;
 }
 
 /** A single AI-proposed task in a sprint plan (preview, not yet persisted). */
@@ -70,7 +69,7 @@ export const aiApi = {
     data: {
       title: string;
       description?: string;
-      answers: AiAnswers;
+      storyPoints?: number;
       columnId?: string;
       assigneeId?: string;
     },

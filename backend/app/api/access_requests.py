@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import require_admin, hash_secret
+from app.core.security import require_admin
 from app.models.access_request import AccessRequest
 from app.models.user import User
 from app.schemas.access_request import (
@@ -13,6 +13,7 @@ from app.schemas.access_request import (
     AccessRequestApprove,
     AccessRequestReject,
 )
+from app.services import access_service
 
 router = APIRouter(prefix="/api/access-requests", tags=["access-requests"])
 
@@ -48,12 +49,13 @@ async def submit_request(data: AccessRequestCreate, db: Session = Depends(get_db
     if purpose not in {"personal", "collective"}:
         raise HTTPException(status_code=400, detail="Scop invalid (personal sau collective)")
 
-    # Soft anti-spam: cap pending requests from same telegram_chat_id / email
-    if data.telegramChatId:
+    # Soft anti-spam: cap pending requests from same email (dacă e dat).
+    email = (data.email or "").strip()[:150] or None
+    if email:
         existing = (
             db.query(AccessRequest)
             .filter(
-                AccessRequest.telegram_chat_id == data.telegramChatId.strip(),
+                AccessRequest.email == email,
                 AccessRequest.status == "PENDING",
             )
             .first()
@@ -61,12 +63,15 @@ async def submit_request(data: AccessRequestCreate, db: Session = Depends(get_db
         if existing:
             return {"id": existing.id, "status": "PENDING", "message": "Cerere deja trimisa, asteapta aprobare."}
 
+    # SECURITATE: nu avem încredere în telegram_chat_id trimis de client (spoofing).
+    # Legarea Telegram se face DOAR prin flux verificat server-side (/link <cod>
+    # după aprobare, sau deep-link semnat din bot). Aici e mereu None.
     request = AccessRequest(
         first_name=first[:100],
         last_name=last[:100],
-        email=(data.email or "").strip()[:150] or None,
+        email=email,
         phone=(data.phone or "").strip()[:40] or None,
-        telegram_chat_id=(data.telegramChatId or "").strip()[:50] or None,
+        telegram_chat_id=None,
         purpose=purpose,
         reason=(data.reason or "").strip()[:2000] or None,
     )
@@ -140,44 +145,20 @@ async def approve_request(
     r = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Cerere inexistenta")
-    if r.status != "PENDING":
-        raise HTTPException(status_code=400, detail=f"Cererea este deja {r.status}")
 
-    username = (data.username or "").strip().lower()
-    if len(username) < 3:
-        raise HTTPException(status_code=400, detail="Username minim 3 caractere")
-    if db.query(User).filter(User.username == username).first():
-        raise HTTPException(status_code=409, detail="Username deja folosit")
-    role = (data.role or "USER").upper()
-    if role not in {"USER", "ADMIN"}:
-        raise HTTPException(status_code=400, detail="Rol invalid")
-
-    pin = (data.pin or "").strip()
-    pin_hash = None
-    if pin:
-        if not pin.isdigit() or not (4 <= len(pin) <= 8):
-            raise HTTPException(status_code=400, detail="PIN-ul trebuie sa fie 4–8 cifre")
-        pin_hash = hash_secret(pin)
-
-    new_user = User(
-        username=username,
-        email=r.email,
-        full_name=f"{r.first_name} {r.last_name}".strip(),
-        phone=r.phone,
-        telegram_chat_id=r.telegram_chat_id,
-        role=role,
-        pin_hash=pin_hash,
-        is_active=True,
-    )
-    db.add(new_user)
-    db.flush()  # get id
-
-    r.status = "APPROVED"
-    r.processed_by_user_id = actor.id
-    r.processed_at = datetime.utcnow()
-    r.created_user_id = new_user.id
-    db.commit()
-    db.refresh(new_user)
+    pin = (data.pin or "").strip() or None
+    # Username opțional: dacă lipsește, serviciul îl generează automat din nume.
+    try:
+        new_user = access_service.approve_access_request(
+            db, r, actor.id,
+            username=(data.username or "").strip().lower() or None,
+            role=(data.role or "USER"),
+            pin=pin,
+        )
+    except ValueError as e:
+        msg = str(e)
+        code = 409 if "folosit" in msg else 400
+        raise HTTPException(status_code=code, detail=msg)
 
     # Welcome message via Telegram if linked
     if new_user.telegram_chat_id:
@@ -221,14 +202,10 @@ async def reject_request(
     r = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Cerere inexistenta")
-    if r.status != "PENDING":
-        raise HTTPException(status_code=400, detail=f"Cererea este deja {r.status}")
-
-    r.status = "REJECTED"
-    r.rejection_reason = (data.reason or "").strip()[:2000] or None
-    r.processed_by_user_id = actor.id
-    r.processed_at = datetime.utcnow()
-    db.commit()
+    try:
+        access_service.reject_access_request(db, r, actor.id, data.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Optional: notify the requester if they provided a chat id
     if r.telegram_chat_id:

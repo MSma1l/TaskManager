@@ -10,9 +10,60 @@ from app.core.security import (
     generate_login_code,
     hash_secret,
     verify_secret,
+    verify_password,
+    hash_password,
+    password_needs_rehash,
     issue_token,
 )
 from app.models.user import User, LoginCode
+
+
+# ── Brute-force lockout (parolă / PIN) ───────────────────────────────────────
+# După MAX_FAILED încercări greșite consecutive, contul e blocat LOCKOUT_MINUTES.
+# Contorul se resetează la o autentificare reușită sau după expirarea blocării.
+MAX_FAILED = 5
+LOCKOUT_MINUTES = 15
+
+
+def account_locked(user: User) -> bool:
+    locked_until = getattr(user, "locked_until", None)
+    return bool(locked_until and locked_until > datetime.utcnow())
+
+
+def lock_remaining_seconds(user: User) -> int:
+    locked_until = getattr(user, "locked_until", None)
+    if not locked_until:
+        return 0
+    return max(0, int((locked_until - datetime.utcnow()).total_seconds()))
+
+
+def register_failed_attempt(db: Session, user: User) -> None:
+    """Incrementează contorul de eșecuri; blochează contul la prag."""
+    user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+    if user.failed_login_attempts >= MAX_FAILED:
+        user.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+        user.failed_login_attempts = 0
+    db.commit()
+
+
+def register_successful_login(db: Session, user: User) -> None:
+    """Resetează lockout-ul și marchează ultima autentificare."""
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+
+
+def verify_user_password(db: Session, user: User, password: str) -> bool:
+    """Verifică parola cu KDF-ul curent; upgradează hash-ul vechi la succes."""
+    if not user or not user.password_hash:
+        return False
+    if not verify_password((password or "").strip(), user.password_hash):
+        return False
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password((password or "").strip())
+        db.commit()
+    return True
 
 
 def _mask_chat(chat_id: str) -> str:
@@ -160,14 +211,26 @@ def verify_login_code(db: Session, challenge_id: str, code: str) -> Optional[Use
     return user
 
 
+class AccountLockedError(Exception):
+    """Ridicată când contul e blocat temporar după prea multe eșecuri."""
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__("account locked")
+
+
 def refresh_with_pin(db: Session, username: str, pin: str) -> Optional[User]:
     user = get_user_by_username(db, username)
     if not user or not user.pin_hash:
         return None
-    if not verify_secret((pin or "").strip(), user.pin_hash):
+    if account_locked(user):
+        raise AccountLockedError(lock_remaining_seconds(user))
+    if not verify_password((pin or "").strip(), user.pin_hash):
+        register_failed_attempt(db, user)
         return None
-    user.last_login_at = datetime.utcnow()
-    db.commit()
+    # Upgrade hash-ul vechi (SHA256) la KDF-ul curent, transparent.
+    if password_needs_rehash(user.pin_hash):
+        user.pin_hash = hash_password((pin or "").strip())
+    register_successful_login(db, user)
     return user
 
 

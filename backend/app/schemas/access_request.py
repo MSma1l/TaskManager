@@ -14,7 +14,7 @@ class AccessRequestCreate(BaseModel):
 
 
 class AccessRequestApprove(BaseModel):
-    username: str
+    username: Optional[str] = None  # if omitted, auto-generated from the name
     role: str = "USER"  # USER | ADMIN
     pin: Optional[str] = None  # if omitted, the user can set later
 

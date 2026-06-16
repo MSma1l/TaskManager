@@ -98,7 +98,8 @@ export default function AiTaskWizard({ projectId, members, onClose, onCreated }:
       await aiApi.createTask(projectId, {
         title: title.trim(),
         description: description.trim() || undefined,
-        answers,
+        // Refoloseste story points-ul deja estimat — fara re-apel AI la creare.
+        storyPoints: estimate?.storyPoints,
         assigneeId: assigneeId || undefined,
       });
       onCreated();

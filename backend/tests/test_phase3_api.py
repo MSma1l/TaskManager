@@ -181,13 +181,15 @@ def test_ai_create_task_endpoint(db, phase3_client, make_user, make_project):
     owner = make_user()
     project = make_project(owner)
     set_user(owner)
-    # No columnId -> falls back to BACKLOG column.
+    # No columnId -> falls back to BACKLOG column. storyPoints provided by client.
     r = client.post(f"/api/projects/{project.id}/ai/create-task",
-                    json={"title": "Build thing", "description": "complex migr"})
+                    json={"title": "Build thing", "description": "d", "storyPoints": 5})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["task"]["title"] == "Build thing"
-    assert body["task"]["storyPoints"] == body["estimate"]["storyPoints"]
+    assert body["task"]["storyPoints"] == 5
+    # Quick-add is a plain insert — no AI estimate echoed back.
+    assert "estimate" not in body
     # Landed in the BACKLOG column.
     backlog = (
         db.query(BoardColumn)
@@ -195,6 +197,42 @@ def test_ai_create_task_endpoint(db, phase3_client, make_user, make_project):
         .first()
     )
     assert body["task"]["boardColumnId"] == backlog.id
+
+
+def test_ai_create_task_without_story_points_leaves_none(db, phase3_client, make_user, make_project):
+    """Quick-add fara story points -> task creat cu storyPoints null (nu 1 fortat)."""
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    r = client.post(f"/api/projects/{project.id}/ai/create-task", json={"title": "Quick"})
+    assert r.status_code == 200, r.text
+    assert r.json()["task"]["storyPoints"] is None
+
+
+def test_ai_create_task_never_calls_ai(db, phase3_client, make_user, make_project, monkeypatch):
+    """Regresie de performanta: crearea rapida NU trebuie sa atinga reteaua AI,
+    chiar daca exista o cheie OpenRouter configurata."""
+    from app.services import ai_service
+
+    calls = {"n": 0}
+
+    def _spy(_prompt):
+        calls["n"] += 1
+        raise AssertionError("create-task nu trebuie sa cheme AI-ul")
+
+    # Cheie prezenta + spion pe apelul de retea: daca s-ar chema AI, ar exploda.
+    monkeypatch.setattr(ai_service.settings, "OPENROUTER_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(ai_service, "_openrouter_chat", _spy)
+
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    r = client.post(f"/api/projects/{project.id}/ai/create-task",
+                    json={"title": "No AI please", "storyPoints": 3})
+    assert r.status_code == 200, r.text
+    assert calls["n"] == 0  # zero apeluri AI la creare
 
 
 def test_ai_create_task_explicit_column_and_assignee(db, phase3_client, make_user, make_project, add_member):
@@ -219,6 +257,67 @@ def test_ai_create_task_bad_assignee_400(db, phase3_client, make_user, make_proj
     set_user(owner)
     r = client.post(f"/api/projects/{project.id}/ai/create-task",
                     json={"title": "T", "assigneeId": stranger.id})
+    assert r.status_code == 400
+
+
+# ── ai plan sprint API (genereaza -> reda -> aplica) ──────────────────
+
+def test_ai_plan_sprint_generates_tasks(db, phase3_client, make_user, make_project):
+    """Brief liber -> lista de taskuri propuse (preview), fara sa creeze nimic."""
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    brief = "Adauga login\nRepara bug la calendar\nScrie teste"
+    r = client.post(f"/api/projects/{project.id}/ai/plan", json={"brief": brief})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "rules"
+    assert len(body["tasks"]) == 3
+    for task in body["tasks"]:
+        assert task["title"]
+        assert 1 <= task["storyPoints"] <= 10
+    # Preview pur: nimic in backlog inca.
+    assert client.get(f"/api/projects/{project.id}/backlog").json() == []
+
+
+def test_ai_plan_sprint_empty_brief_400(db, phase3_client, make_user, make_project):
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    r = client.post(f"/api/projects/{project.id}/ai/plan", json={"brief": "   "})
+    assert r.status_code == 400
+
+
+def test_ai_plan_apply_creates_tasks_in_backlog(db, phase3_client, make_user, make_project):
+    """Aplicarea planului insereaza in masa taskurile (posibil editate) in backlog."""
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    payload = {"tasks": [
+        {"title": "Task A", "description": "da", "storyPoints": 2},
+        {"title": "Task B", "storyPoints": 13},  # clamp la 10
+    ]}
+    r = client.post(f"/api/projects/{project.id}/ai/plan/apply", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["count"] == 2
+    sp = {t["title"]: t["storyPoints"] for t in body["created"]}
+    assert sp["Task A"] == 2
+    assert sp["Task B"] == 10
+    # Taskurile sunt acum redate in backlog.
+    backlog = client.get(f"/api/projects/{project.id}/backlog").json()
+    assert {t["title"] for t in backlog} == {"Task A", "Task B"}
+
+
+def test_ai_plan_apply_empty_list_400(db, phase3_client, make_user, make_project):
+    client, set_user = phase3_client
+    owner = make_user()
+    project = make_project(owner)
+    set_user(owner)
+    r = client.post(f"/api/projects/{project.id}/ai/plan/apply", json={"tasks": []})
     assert r.status_code == 400
 
 

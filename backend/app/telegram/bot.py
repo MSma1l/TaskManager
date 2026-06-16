@@ -94,6 +94,11 @@ async def _handle_callback(update: Update, context):
         await handle_lang_callback(update, context, data[len("lang_"):])
         return
 
+    # Admin approve/reject for access requests (login Telegram cu aprobare)
+    if data.startswith("accreq_"):
+        await _handle_accreq_callback(query, data)
+        return
+
     # Resolve owner from chat — every task action below must verify the
     # task belongs to this chat's user before mutating anything.
     chat_id = str(query.message.chat_id)
@@ -263,6 +268,67 @@ async def _handle_callback(update: Update, context):
 
     elif data == "noop":
         pass
+
+
+async def _handle_accreq_callback(query, data: str):
+    """Adminul apasă ✅/❌ pe o cerere de logare. Doar un user ADMIN legat la
+    chat-ul care apasă poate decide (anti-spoofing)."""
+    from app.models.user import User
+    from app.models.access_request import AccessRequest
+    from app.services import access_service
+
+    try:
+        _, action, req_id = data.split("_", 2)
+    except ValueError:
+        return
+
+    chat_id = str(query.message.chat_id)
+    db = SessionLocal()
+    try:
+        admin = (
+            db.query(User)
+            .filter(
+                User.telegram_chat_id == chat_id,
+                User.role == "ADMIN",
+                User.is_active == True,
+            )
+            .first()
+        )
+        if not admin:
+            await query.edit_message_text("Doar adminul poate aproba aceasta cerere.")
+            return
+
+        r = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
+        if not r:
+            await query.edit_message_text("Cerere inexistenta.")
+            return
+        if r.status != "PENDING":
+            await query.edit_message_text(f"Cererea este deja {r.status.lower()}.")
+            return
+
+        name = f"{r.first_name} {r.last_name}".strip()
+        if action == "approve":
+            try:
+                new_user = access_service.approve_access_request(db, r, admin.id)
+            except ValueError as e:
+                await query.edit_message_text(f"Nu am putut aproba: {e}")
+                return
+            await query.edit_message_text(f"✅ Aprobat: @{new_user.username} ({name}).")
+            if new_user.telegram_chat_id:
+                await send_message(
+                    "Contul tau a fost aprobat! Esti logat acum — apasa /help ca sa incepi.",
+                    chat_id=new_user.telegram_chat_id, role=new_user.role,
+                )
+        elif action == "reject":
+            access_service.reject_access_request(db, r, admin.id)
+            await query.edit_message_text(f"❌ Respins: {name}.")
+            if r.telegram_chat_id:
+                await send_message(
+                    "Cererea ta de logare a fost respinsa de admin.",
+                    chat_id=r.telegram_chat_id,
+                )
+    finally:
+        db.close()
 
 
 def _mini_app_url() -> str | None:

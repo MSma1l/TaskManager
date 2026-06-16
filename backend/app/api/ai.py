@@ -74,10 +74,12 @@ async def create_task(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
+    """Creare rapida: insert direct in baza, FARA niciun apel la AI.
 
-    # Estimeaza intai (AI sau reguli) ca sa luam story points + motivare.
-    estimate = ai_service.estimate(data.title, data.description or "", data.answers or {})
+    Story points-ul vine de la client (estimarea AI deja facuta in wizard sau
+    o valoare manuala). Estimarea AI traieste doar pe /ai/estimate si /ai/plan.
+    """
+    membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
 
     # Determina coloana tinta (cea data sau BACKLOG / prima coloana).
     column_id = data.columnId or _backlog_column(db, project_id).id
@@ -87,19 +89,22 @@ async def create_task(
         if membership_service.get_member(db, project_id, data.assigneeId) is None:
             raise HTTPException(status_code=400, detail="Responsabilul trebuie sa fie membru al proiectului")
 
+    story_points = (
+        ai_service._clamp_points(data.storyPoints)
+        if data.storyPoints is not None
+        else None
+    )
+
     task = board_service.create_task(db, user.id, project_id, {
         "title": data.title,
         "description": data.description,
         "columnId": column_id,
         "assigneeId": data.assigneeId,
-        "storyPoints": estimate["storyPoints"],
+        "storyPoints": story_points,
         "labelIds": [],
     })
 
-    return {
-        "task": board_service.board_task_to_dict(db, task),
-        "estimate": estimate,
-    }
+    return {"task": board_service.board_task_to_dict(db, task)}
 
 
 # ── planificare sprint AI (MEMBER in proiect) ───────────────────────

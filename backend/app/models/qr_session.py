@@ -22,8 +22,14 @@ class QRSession(Base):
     __tablename__ = "qr_sessions"
 
     id = Column(String, primary_key=True, default=generate_cuid)
-    status = Column(String(20), nullable=False, default="PENDING")  # PENDING|APPROVED|CONSUMED|EXPIRED
+    # qr → scan-to-login clasic; tglogin → login simplu din Telegram cu aprobare admin.
+    # Status-uri tglogin: PENDING (aștept botul) → AWAITING_ADMIN (aștept aprobarea)
+    #   → APPROVED (token emis) / REJECTED / EXPIRED → CONSUMED (token preluat de web).
+    flow = Column(String(20), nullable=False, default="qr")
+    status = Column(String(20), nullable=False, default="PENDING")
     user_id = Column(String, nullable=True)            # set when approved
+    # Cererea de acces legată (flow=tglogin, user nou ce așteaptă aprobare admin).
+    access_request_id = Column(String, nullable=True)
     issued_token = Column(String, nullable=True)       # short-lived JWT, returned to desktop on poll
     token_expires_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=False)

@@ -65,6 +65,7 @@ class MeOut(BaseModel):
     theme: str = "dark"
     language: str = "ro"
     notificationSettings: Optional[dict] = None
+    mustChangePassword: bool = False
 
 
 class UpdateMeRequest(BaseModel):

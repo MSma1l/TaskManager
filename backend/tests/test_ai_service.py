@@ -148,3 +148,63 @@ def test_estimate_ai_non_list_subtasks(monkeypatch):
     monkeypatch.setattr(ai_service, "_openrouter_chat", lambda p: payload)
     out = ai_service.estimate("Title", "Desc")
     assert out["suggestedSubtasks"] == []  # not a list and not should_split
+
+
+# ── plan_sprint (genereaza taskuri din brief liber) ───────────────────
+
+def test_plan_sprint_rules_splits_lines():
+    """Fara cheie: fiecare linie a brief-ului devine un task determinist."""
+    out = ai_service.plan_sprint("Adauga login\nRepara bug\nScrie teste")
+    assert out["source"] == "rules"
+    assert len(out["tasks"]) == 3
+    titles = [t["title"] for t in out["tasks"]]
+    assert titles == ["Adauga login", "Repara bug", "Scrie teste"]
+    for t in out["tasks"]:
+        assert 1 <= t["storyPoints"] <= 10
+
+
+def test_plan_sprint_rules_empty_brief():
+    out = ai_service.plan_sprint("   ")
+    assert out["source"] == "rules"
+    assert out["tasks"] == []
+
+
+def test_plan_sprint_ai_source(monkeypatch):
+    _enable_key(monkeypatch)
+    payload = (
+        '{"tasks": ['
+        '{"title": "Implementeaza login", "description": "criterii", "story_points": 5},'
+        '{"title": "Scrie teste", "description": "", "story_points": 13}'
+        ']}'
+    )
+    monkeypatch.setattr(ai_service, "_openrouter_chat", lambda p: payload)
+    out = ai_service.plan_sprint("brief liber")
+    assert out["source"] == "ai"
+    assert len(out["tasks"]) == 2
+    assert out["tasks"][0]["title"] == "Implementeaza login"
+    assert out["tasks"][1]["storyPoints"] == 10  # 13 -> clamp la 10
+
+
+def test_plan_sprint_ai_skips_items_without_title(monkeypatch):
+    _enable_key(monkeypatch)
+    payload = '{"tasks": [{"description": "fara titlu"}, {"title": "Bun", "story_points": 2}]}'
+    monkeypatch.setattr(ai_service, "_openrouter_chat", lambda p: payload)
+    out = ai_service.plan_sprint("brief")
+    assert [t["title"] for t in out["tasks"]] == ["Bun"]
+
+
+def test_plan_sprint_ai_falls_back_on_error(monkeypatch):
+    _enable_key(monkeypatch)
+    def boom(prompt):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(ai_service, "_openrouter_chat", boom)
+    out = ai_service.plan_sprint("Adauga login\nRepara bug")
+    assert out["source"] == "rules"
+    assert len(out["tasks"]) == 2
+
+
+def test_plan_sprint_ai_empty_falls_back(monkeypatch):
+    _enable_key(monkeypatch)
+    monkeypatch.setattr(ai_service, "_openrouter_chat", lambda p: '{"tasks": []}')
+    out = ai_service.plan_sprint("Adauga login")
+    assert out["source"] == "rules"  # raspuns AI gol -> reguli

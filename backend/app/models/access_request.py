@@ -24,4 +24,10 @@ class AccessRequest(Base):
     processed_at = Column(DateTime, nullable=True)
     created_user_id = Column(String, nullable=True)  # populated after approval
 
+    # Sesiunea web "login Telegram" care așteaptă aprobarea (flow tglogin).
+    # La aprobare îi emitem token-ul ca să intre automat și pe web.
+    qr_session_id = Column(String, nullable=True)
+    # personal | collective | telegram (signup direct din bot)
+    source = Column(String(20), nullable=False, default="web")
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
