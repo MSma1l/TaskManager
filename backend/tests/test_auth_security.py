@@ -179,3 +179,30 @@ def test_password_login_lockout_returns_429(db, auth_client):
 def test_login_legacy_endpoint_removed(auth_client):
     r = auth_client.post("/api/auth/login-legacy", json={"pin": "1111"})
     assert r.status_code == 404  # backdoor eliminat
+
+
+def test_seed_admin_self_heals_after_secret_rotation(db, monkeypatch):
+    """Regresie: dacă JWT_SECRET a fost rotit, hash-urile legacy (sărate cu el)
+    nu mai verifică. Seed-ul trebuie să RESETEZE parola/PIN-ul adminului din
+    .env ca să se poată loga din nou."""
+    import seed as seed_mod
+
+    monkeypatch.setattr(seed_mod.settings, "ADMIN_PASSWORD", "admin1234", raising=False)
+    monkeypatch.setattr(seed_mod.settings, "APP_PIN", "1111", raising=False)
+
+    # Admin existent cu hash-uri care NU verifică (simulează secret rotit).
+    admin = User(
+        id=generate_cuid(), username="admin", role="ADMIN", is_active=True,
+        password_hash="deadbeef" * 8, pin_hash="cafe" * 16,
+    )
+    db.add(admin)
+    db.commit()
+    assert security.verify_password("admin1234", admin.password_hash) is False
+
+    seed_mod.seed_admin(db)
+    db.commit()
+    db.refresh(admin)
+
+    # După seed, adminul se poate loga din nou cu credențialele din .env.
+    assert security.verify_password("admin1234", admin.password_hash) is True
+    assert security.verify_password("1111", admin.pin_hash) is True

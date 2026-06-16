@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from app.core.database import SessionLocal
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models.category import Category
 from app.models.user import User
 
@@ -53,13 +53,22 @@ def seed_admin(db):
 
     if has_admin:
         changed = False
-        # Ensure admin can always log in via password (fixes "can't enter as admin")
-        if admin_password and not has_admin.password_hash:
+        # Ensure admin can ALWAYS log in with the .env credentials. Re-set the
+        # hash when it's missing OR no longer verifies — this self-heals after a
+        # JWT_SECRET rotation (legacy hashes were salted with JWT_SECRET) and
+        # migrates the admin to the new KDF.
+        if admin_password and (
+            not has_admin.password_hash
+            or not verify_password(admin_password, has_admin.password_hash)
+        ):
             has_admin.password_hash = hash_password(admin_password)
             if weak_pw:
                 has_admin.must_change_password = True
             changed = True
-        if pin and not has_admin.pin_hash:
+        if pin and (
+            not has_admin.pin_hash
+            or not verify_password(pin, has_admin.pin_hash)
+        ):
             has_admin.pin_hash = hash_password(pin)
             changed = True
         if not has_admin.is_active:
