@@ -4,6 +4,7 @@ import { authApi, LoginChallenge, AuthSession } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import PinInput from '../components/PinInput';
 import QRLoginCard from '../components/QRLoginCard';
+import TelegramLoginCard from '../components/TelegramLoginCard';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import LanguageSwitcher from '../../../shared/i18n/LanguageSwitcher';
 
@@ -42,6 +43,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [tgRegisterLink, setTgRegisterLink] = useState<string | null>(null);
   const [showQR, setShowQR] = useState(false);
+  const [showTgLogin, setShowTgLogin] = useState(false);
 
   const isAdmin = isAdminMode;
   const returnTo = params.get('returnTo') || '';
@@ -271,15 +273,14 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
       </div>
 
       {/* ── Main entry: Telegram-first hero ───────────────────────── */}
-      {!isAdmin && step === 'main' && !showQR && (
+      {!isAdmin && step === 'main' && !showQR && !showTgLogin && (
         <div className="w-full max-w-xs">
-          {/* Primary: Register/open via Telegram bot */}
+          {/* Primary: login direct din Telegram (cu aprobare admin) */}
           {tgRegisterLink ? (
-            <a
-              href={tgRegisterLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block bg-gradient-to-br from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white rounded-2xl p-5 mb-3 transition-all shadow-xl shadow-blue-900/30 active:scale-[0.99]"
+            <button
+              type="button"
+              onClick={() => { setShowTgLogin(true); setError(null); }}
+              className="block w-full text-left bg-gradient-to-br from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white rounded-2xl p-5 mb-3 transition-all shadow-xl shadow-blue-900/30 active:scale-[0.99]"
             >
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -298,7 +299,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
               <p className="text-xs text-blue-100/90 leading-relaxed">
                 {t('login.telegramHint')}
               </p>
-            </a>
+            </button>
           ) : (
             <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl p-3 mb-3 text-xs">
               Telegram nu este configurat — admin-ul trebuie sa seteze TELEGRAM_BOT_USERNAME.
@@ -369,6 +370,20 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
               }
             />
           </div>
+        </div>
+      )}
+
+      {/* Login simplu din Telegram (cu aprobare admin) */}
+      {!isAdmin && showTgLogin && (
+        <div className="mb-5">
+          <TelegramLoginCard onLogin={handleQRLogin} />
+          <button
+            type="button"
+            onClick={() => setShowTgLogin(false)}
+            className="block mx-auto mt-3 text-sm text-slate-400 hover:text-slate-200"
+          >
+            ← {t('common.back')}
+          </button>
         </div>
       )}
 
@@ -527,7 +542,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
       {error && <p className={`${accentColor} text-sm mt-4 text-center max-w-xs`}>{error}</p>}
 
-      {!isAdmin && step === 'main' && !showQR && (
+      {!isAdmin && step === 'main' && !showQR && !showTgLogin && (
         <div className="mt-6 text-center">
           <Link to="/request-access" className="text-sm text-slate-500 hover:text-slate-300">
             {t('login.helpLink')}

@@ -100,6 +100,19 @@ export const authApi = {
   qrConfirm: (qrId: string): Promise<{ ok: boolean; username: string; fullName: string | null }> =>
     client.post('/auth/qr/confirm', { qrId }).then((r) => r.data),
 
+  // ── Login simplu din Telegram (cu aprobare admin) ─────────────────────
+  tgLoginInit: (): Promise<{
+    sessionId: string;
+    deepLink: string | null;
+    expiresAt: string;
+    ttlSeconds: number;
+  }> => client.post('/auth/tg-login/init').then((r) => r.data),
+
+  tgLoginStatus: (sessionId: string): Promise<
+    | { status: 'PENDING' | 'AWAITING_ADMIN' | 'REJECTED' | 'EXPIRED' | 'CONSUMED' }
+    | ({ status: 'APPROVED' } & AuthSession)
+  > => client.get('/auth/tg-login/status', { params: { sessionId } }).then((r) => r.data),
+
   // ── Telegram Mini App ─────────────────────────────────────────────────
   telegramWebappAuth: (initData: string): Promise<AuthSession> =>
     client.post('/auth/telegram-webapp', { initData }).then((r) => r.data),
