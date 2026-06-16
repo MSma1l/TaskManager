@@ -90,8 +90,9 @@ def approve_access_request(
     if role not in {"USER", "ADMIN"}:
         raise ValueError("Rol invalid")
 
+    # Username: explicit (admin) > ales de user la signup > auto din nume.
+    username = (username or "").strip().lower() or (r.desired_username or "").strip().lower()
     if username:
-        username = username.strip().lower()
         if not _USERNAME_RE.match(username):
             raise ValueError("Username invalid (3-30: a-z, 0-9, _, .)")
         if db.query(User).filter(User.username == username).first():
@@ -100,7 +101,8 @@ def approve_access_request(
         full = f"{r.first_name} {r.last_name}".strip()
         username = generate_unique_username(db, full)
 
-    pin_hash = None
+    # PIN: explicit (admin) > ales de user la signup.
+    pin_hash = r.pin_hash
     if pin:
         pin = pin.strip()
         if not pin.isdigit() or not (4 <= len(pin) <= 8):
@@ -114,6 +116,8 @@ def approve_access_request(
         phone=r.phone,
         telegram_chat_id=r.telegram_chat_id,
         role=role,
+        # Parola aleasă de user la signup (dacă a pus una).
+        password_hash=r.password_hash,
         pin_hash=pin_hash,
         is_active=True,
     )

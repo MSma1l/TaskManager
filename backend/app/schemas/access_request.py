@@ -11,6 +11,10 @@ class AccessRequestCreate(BaseModel):
     telegramChatId: Optional[str] = None
     purpose: str = "personal"  # personal | collective
     reason: Optional[str] = None
+    # Self-signup: username + parola + PIN alese de user (toate optionale).
+    username: Optional[str] = None
+    password: Optional[str] = None
+    pin: Optional[str] = None
 
 
 class AccessRequestApprove(BaseModel):

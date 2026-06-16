@@ -63,6 +63,31 @@ async def submit_request(data: AccessRequestCreate, db: Session = Depends(get_db
         if existing:
             return {"id": existing.id, "status": "PENDING", "message": "Cerere deja trimisa, asteapta aprobare."}
 
+    # Self-signup: userul isi alege username + parola + PIN. Le validam si le
+    # stocam (parola/PIN hash-uite) ca sa le aplicam la aprobare.
+    import re as _re
+    from app.core.security import hash_password
+
+    desired_username = (data.username or "").strip().lower() or None
+    if desired_username:
+        if not _re.match(r"^[a-z0-9_.]{3,30}$", desired_username):
+            raise HTTPException(status_code=400, detail="Username invalid (3-30: a-z, 0-9, _, .)")
+        if db.query(User).filter(User.username == desired_username).first():
+            raise HTTPException(status_code=409, detail="Username deja folosit")
+
+    password_hash = None
+    if data.password:
+        if len(data.password) < 6:
+            raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
+        password_hash = hash_password(data.password)
+
+    pin_hash = None
+    if data.pin:
+        pin = data.pin.strip()
+        if not pin.isdigit() or not (4 <= len(pin) <= 8):
+            raise HTTPException(status_code=400, detail="PIN-ul trebuie sa fie 4-8 cifre")
+        pin_hash = hash_password(pin)
+
     # SECURITATE: nu avem încredere în telegram_chat_id trimis de client (spoofing).
     # Legarea Telegram se face DOAR prin flux verificat server-side (/link <cod>
     # după aprobare, sau deep-link semnat din bot). Aici e mereu None.
@@ -74,6 +99,9 @@ async def submit_request(data: AccessRequestCreate, db: Session = Depends(get_db
         telegram_chat_id=None,
         purpose=purpose,
         reason=(data.reason or "").strip()[:2000] or None,
+        desired_username=desired_username,
+        password_hash=password_hash,
+        pin_hash=pin_hash,
     )
     db.add(request)
     db.commit()

@@ -30,4 +30,9 @@ class AccessRequest(Base):
     # personal | collective | telegram (signup direct din bot)
     source = Column(String(20), nullable=False, default="web")
 
+    # Self-signup: userul isi alege username + parola + PIN; le aplicam la aprobare.
+    desired_username = Column(String(50), nullable=True)
+    password_hash = Column(String(200), nullable=True)
+    pin_hash = Column(String(200), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

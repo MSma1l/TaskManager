@@ -8,6 +8,10 @@ export interface AccessRequestData {
   telegramChatId?: string;
   purpose: 'personal' | 'collective';
   reason?: string;
+  // Self-signup: username + parola + PIN alese de user.
+  username?: string;
+  password?: string;
+  pin?: string;
 }
 
 export const accessRequestApi = {

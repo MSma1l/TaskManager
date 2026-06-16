@@ -14,6 +14,9 @@ export default function RequestAccessPage() {
   const [telegramChatId, setTelegramChatId] = useState(tgFromUrl);
   const [purpose, setPurpose] = useState<'personal' | 'collective'>('personal');
   const [reason, setReason] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +39,19 @@ export default function RequestAccessPage() {
       setError('Numele si prenumele sunt obligatorii');
       return;
     }
+    const u = username.trim().toLowerCase();
+    if (!/^[a-z0-9_.]{3,30}$/.test(u)) {
+      setError('Username: 3-30 caractere (a-z, 0-9, _, .)');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Parola trebuie sa aiba minim 6 caractere');
+      return;
+    }
+    if (pin && !/^\d{4,8}$/.test(pin)) {
+      setError('PIN-ul trebuie sa aiba 4-8 cifre');
+      return;
+    }
     setBusy(true);
     try {
       const res = await accessRequestApi.submit({
@@ -46,6 +62,9 @@ export default function RequestAccessPage() {
         telegramChatId: telegramChatId.trim() || undefined,
         purpose,
         reason: reason.trim() || undefined,
+        username: u,
+        password,
+        pin: pin || undefined,
       });
       setSuccess(res.message || 'Cerere trimisa. Te vom contacta cand contul e activ.');
     } catch (err: any) {
@@ -83,8 +102,8 @@ export default function RequestAccessPage() {
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">Inregistrare instant prin Telegram</p>
-                <p className="text-xs text-blue-100/80">Botul iti creeaza contul + PIN. Fara aprobare admin.</p>
+                <p className="font-semibold text-sm">Inregistrare prin Telegram</p>
+                <p className="text-xs text-blue-100/80">Botul iti cere numele, adminul aproba, apoi esti logat.</p>
               </div>
               <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -133,6 +152,43 @@ export default function RequestAccessPage() {
             <Field label="Numar de telefon">
               <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} placeholder="+373 ..." />
             </Field>
+
+            {/* Date de logare alese de user — dupa aprobare intri cu username + parola (sau PIN) */}
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 space-y-3">
+              <p className="text-xs text-slate-400">
+                Alege-ti datele de logare. Dupa ce adminul aproba, intri direct cu <b>username + parola</b> (sau PIN).
+              </p>
+              <Field label="Username *">
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                  className={inputCls}
+                  placeholder="ex: ion.popescu"
+                  autoComplete="username"
+                  required
+                />
+              </Field>
+              <Field label="Parola * (min 6 caractere)">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={inputCls}
+                  placeholder="parola ta"
+                  autoComplete="new-password"
+                  required
+                />
+              </Field>
+              <Field label="PIN (optional, 4-8 cifre) — pentru re-logare rapida">
+                <input
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  className={inputCls}
+                  placeholder="ex: 1234"
+                />
+              </Field>
+            </div>
 
             <Field label="Scop folosire">
               <div className="grid grid-cols-2 gap-2">
