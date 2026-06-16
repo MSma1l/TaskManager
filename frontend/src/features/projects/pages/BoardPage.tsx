@@ -418,6 +418,7 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
           onClose={() => setDetailTaskId(null)}
           onEdit={(tk) => { setDetailTaskId(null); setEditTask(tk); }}
           onWorkflowAction={handleWorkflowAction}
+          onAssign={assignTask}
         />
       )}
 

@@ -6,15 +6,17 @@ interface AssigneePickerProps {
   members: ProjectMember[];
   value: string | null;
   onChange: (userId: string | null) => void;
+  disabled?: boolean;
 }
 
-export default function AssigneePicker({ members, value, onChange }: AssigneePickerProps) {
+export default function AssigneePicker({ members, value, onChange, disabled = false }: AssigneePickerProps) {
   const t = useT();
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={`flex flex-wrap gap-2 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onChange(null)}
         className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
           value === null
@@ -31,6 +33,7 @@ export default function AssigneePicker({ members, value, onChange }: AssigneePic
           <button
             key={m.userId}
             type="button"
+            disabled={disabled}
             onClick={() => onChange(m.userId)}
             className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-lg text-sm border transition-colors ${
               active

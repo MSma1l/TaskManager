@@ -87,6 +87,11 @@ const ro = {
     tgRejected: 'Cererea a fost respinsa de admin.',
     tgExpired: 'Sesiunea a expirat.',
   },
+  notifications: {
+    title: 'Notificari',
+    markAllRead: 'Marcheaza toate citite',
+    empty: 'Nicio notificare',
+  },
   setup: {
     label: 'Setup obligatoriu',
     title: 'Configureaza-ti contul',
@@ -428,6 +433,11 @@ const ru = {
     tgApproved: 'Одобрено — выполняем вход...',
     tgRejected: 'Запрос отклонён админом.',
     tgExpired: 'Сессия истекла.',
+  },
+  notifications: {
+    title: 'Уведомления',
+    markAllRead: 'Отметить все прочитанными',
+    empty: 'Нет уведомлений',
   },
   setup: {
     label: 'Обязательная настройка',

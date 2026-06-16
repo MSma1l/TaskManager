@@ -5,6 +5,7 @@ import { useNotifications } from '../../hooks/useNotifications';
 import Tour from '../tour/Tour';
 import { authApi, MeResponse } from '../../../features/auth/api/auth';
 import ForcedSetupModal from '../../../features/auth/components/ForcedSetupModal';
+import NotificationBell from '../../../features/notifications/components/NotificationBell';
 
 export default function AppLayout() {
   useNotifications();
@@ -40,6 +41,7 @@ export default function AppLayout() {
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
       }}
     >
+      <NotificationBell />
       <Outlet />
       <BottomNav />
       <Tour />

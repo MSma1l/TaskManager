@@ -24,6 +24,8 @@ interface TaskDetailDrawerProps {
   onClose: () => void;
   onEdit: (task: BoardTask) => void;
   onWorkflowAction: (task: BoardTask, action: TransitionAction) => void;
+  /** Schimbă responsabilul direct din drawer (orice membru poate). */
+  onAssign?: (taskId: string, assigneeId: string | null) => Promise<unknown> | void;
 }
 
 type Tab = 'comments' | 'activity';
@@ -38,9 +40,11 @@ export default function TaskDetailDrawer({
   onClose,
   onEdit,
   onWorkflowAction,
+  onAssign,
 }: TaskDetailDrawerProps) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('comments');
+  const [assigning, setAssigning] = useState(false);
 
   const { comments, add, edit, remove } = useComments(task.id);
   const { activity } = useTaskActivity(task.id);
@@ -134,11 +138,28 @@ export default function TaskDetailDrawer({
             )}
 
             <div className="flex flex-col gap-2.5 text-sm">
-              {/* Assignee */}
-              <div className="flex items-center gap-2">
-                <span className="text-muted w-24 flex-shrink-0">{t('board.assignee')}</span>
-                {task.assignee ? (
-                  <span className="flex items-center gap-2 text-fg">
+              {/* Assignee — editabil: orice membru poate schimba responsabilul */}
+              <div className="flex items-start gap-2">
+                <span className="text-muted w-24 flex-shrink-0 pt-1.5">{t('board.assignee')}</span>
+                {onAssign ? (
+                  <div className="flex-1 min-w-0">
+                    <AssigneePicker
+                      members={members}
+                      value={task.assignee?.userId ?? null}
+                      disabled={assigning}
+                      onChange={async (uid) => {
+                        if (uid === (task.assignee?.userId ?? null)) return;
+                        setAssigning(true);
+                        try {
+                          await onAssign(task.id, uid);
+                        } finally {
+                          setAssigning(false);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : task.assignee ? (
+                  <span className="flex items-center gap-2 text-fg pt-1">
                     <span
                       className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
                         task.assignee.userId,
@@ -149,7 +170,7 @@ export default function TaskDetailDrawer({
                     {task.assignee.fullName || task.assignee.username}
                   </span>
                 ) : (
-                  <span className="text-muted">{t('board.unassigned')}</span>
+                  <span className="text-muted pt-1">{t('board.unassigned')}</span>
                 )}
               </div>
 
