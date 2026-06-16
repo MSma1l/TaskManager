@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.sprint import Sprint
 from app.models.task import Task
@@ -51,7 +52,7 @@ def _assignee_points_in_sprint(db: Session, sprint_id: str, assignee_id: str) ->
 # ── serializer ──────────────────────────────────────────────────────
 
 def sprint_to_dict(db: Session, sprint: Sprint, members: list[ProjectMember] | None = None,
-                   users: dict | None = None) -> dict:
+                   users: dict | None = None, tasks: list[Task] | None = None) -> dict:
     if members is None:
         members = membership_service.list_members(db, sprint.project_id)
     if users is None:
@@ -59,7 +60,8 @@ def sprint_to_dict(db: Session, sprint: Sprint, members: list[ProjectMember] | N
         rows = db.query(User).filter(User.id.in_(ids)).all() if ids else []
         users = {u.id: u for u in rows}
 
-    tasks = _sprint_tasks(db, sprint.id)
+    if tasks is None:
+        tasks = _sprint_tasks(db, sprint.id)
     total_points = sum(t.story_points or 0 for t in tasks)
 
     # Puncte pe membru (suma story_points pentru taskurile pe care le are alocate).
@@ -81,6 +83,23 @@ def sprint_to_dict(db: Session, sprint: Sprint, members: list[ProjectMember] | N
             "overCapacity": points > capacity,
         })
 
+    # Serializeaza taskurile sprintului in acelasi contract ca backlog/board,
+    # ca planificarea (drag&drop intre backlog si sprinturi) sa aiba cardurile.
+    project_key = None
+    if tasks:
+        row = db.query(Project.key).filter(Project.id == sprint.project_id).first()
+        project_key = row[0] if row else None
+    counts = board_service.comment_counts(db, [t.id for t in tasks])
+    task_dicts = [
+        board_service.board_task_to_dict(
+            db, t,
+            comment_count=counts.get(t.id, 0),
+            users=users,
+            project_key=project_key,
+        )
+        for t in tasks
+    ]
+
     return {
         "id": sprint.id,
         "name": sprint.name,
@@ -91,6 +110,7 @@ def sprint_to_dict(db: Session, sprint: Sprint, members: list[ProjectMember] | N
         "totalPoints": total_points,
         "taskCount": len(tasks),
         "perMember": per_member,
+        "tasks": task_dicts,
     }
 
 
@@ -108,7 +128,24 @@ def list_sprints(db: Session, user_id: str, project_id: str) -> list[dict]:
     ids = [m.user_id for m in members]
     rows = db.query(User).filter(User.id.in_(ids)).all() if ids else []
     users = {u.id: u for u in rows}
-    return [sprint_to_dict(db, s, members, users) for s in sprints]
+
+    # Preia toate taskurile active din sprinturile proiectului intr-un singur
+    # query si grupeaza-le pe sprint (evita N+1: cate un query per sprint).
+    sprint_ids = [s.id for s in sprints]
+    tasks_by_sprint: dict[str, list] = {}
+    if sprint_ids:
+        all_tasks = (
+            db.query(Task)
+            .filter(Task.sprint_id.in_(sprint_ids), Task.is_active == True)
+            .all()
+        )
+        for t in all_tasks:
+            tasks_by_sprint.setdefault(t.sprint_id, []).append(t)
+
+    return [
+        sprint_to_dict(db, s, members, users, tasks_by_sprint.get(s.id, []))
+        for s in sprints
+    ]
 
 
 def list_backlog(db: Session, user_id: str, project_id: str) -> list[dict]:
@@ -125,7 +162,29 @@ def list_backlog(db: Session, user_id: str, project_id: str) -> list[dict]:
         .order_by(Task.board_order.asc())
         .all()
     )
-    return [board_service.board_task_to_dict(db, t) for t in tasks]
+
+    # Preincarca assignee-ii, cheia proiectului si numarul de comentarii intr-un
+    # numar fix de query-uri (evita N+1 in serializatorul board_task_to_dict).
+    project = db.query(Project).filter(Project.id == project_id).first()
+    project_key = project.key if project else None
+
+    assignee_ids = {t.assignee_id for t in tasks if t.assignee_id}
+    users = {}
+    if assignee_ids:
+        rows = db.query(User).filter(User.id.in_(assignee_ids)).all()
+        users = {u.id: u for u in rows}
+
+    counts = board_service.comment_counts(db, [t.id for t in tasks])
+
+    return [
+        board_service.board_task_to_dict(
+            db, t,
+            comment_count=counts.get(t.id, 0),
+            users=users,
+            project_key=project_key,
+        )
+        for t in tasks
+    ]
 
 
 # ── write (CRUD) ────────────────────────────────────────────────────

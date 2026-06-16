@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, date as date_t
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.task import Task
 from app.models.completion import TaskCompletion
@@ -10,11 +11,12 @@ from app.models.session import TelegramSession
 from app.models.calendar import CalendarEvent, CalendarReminderLog
 from app.models.user import User
 from app.models.base import TaskStatus
-from app.services import task_service, stats_service, calendar_service, completion_service
+from app.services import task_service, stats_service, calendar_service, completion_service, push_service
 
 scheduler = AsyncIOScheduler()
 
 DAYS_RO = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"]
+DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 
 async def _send_telegram(text: str, chat_id: str | None = None, role: str | None = None):
@@ -63,10 +65,6 @@ def check_reminders():
             # Resolve the owner — silently skip orphan / unowned tasks rather
             # than dumping them to a single shared chat.
             owner = _get_user(db, task.user_id) if task.user_id else None
-            if not owner or not owner.telegram_chat_id or not _telegram_allowed(owner, now):
-                # Still log so we don't keep retrying the same minute
-                db.add(ReminderLog(task_id=task.id, channel="telegram_skipped"))
-                continue
 
             lines = [f"Reminder: {task.title}"]
             if task.description:
@@ -83,9 +81,18 @@ def check_reminders():
                     dur = f"{task.estimated_minutes}m"
                 lines.append(f"Durata: ~{dur}")
             lines.append(f"Ora: {task.reminder_time}")
+            message = "\n".join(lines)
+
+            # Web Push (best-effort, non-fatal) — merge chiar daca Telegram nu e legat.
+            _push_to_user(owner, now, f"Reminder: {task.title}", message, url="/")
+
+            if not owner or not owner.telegram_chat_id or not _telegram_allowed(owner, now):
+                # Still log so we don't keep retrying the same minute
+                db.add(ReminderLog(task_id=task.id, channel="telegram_skipped"))
+                continue
 
             asyncio.create_task(_send_telegram(
-                "\n".join(lines), chat_id=owner.telegram_chat_id, role=owner.role,
+                message, chat_id=owner.telegram_chat_id, role=owner.role,
             ))
             db.add(ReminderLog(task_id=task.id, channel="telegram"))
 
@@ -242,6 +249,37 @@ def _telegram_allowed(user: User | None, now: datetime) -> bool:
     return not _in_dnd_window(start, end, now)
 
 
+def _web_allowed(user: User | None, now: datetime) -> bool:
+    """La fel ca _telegram_allowed dar pentru canalul web/push: respecta toggle-ul
+    `web` din notification_settings + fereastra "Nu deranja"."""
+    if not user:
+        return True
+    settings_dict = user.notification_settings or {}
+    if settings_dict.get("web") is False:
+        return False
+    start = (settings_dict.get("doNotDisturbStart") or "").strip()
+    end = (settings_dict.get("doNotDisturbEnd") or "").strip()
+    if not start or not end:
+        return True
+    return not _in_dnd_window(start, end, now)
+
+
+def _push_to_user(user: User | None, now: datetime, title: str, body: str, url: str = "/"):
+    """Trimite un Web Push best-effort catre user, respectand `web` + DND.
+    Non-fatal: orice eroare e inghitita ca sa nu strice loop-ul de reminder.
+    Foloseste o sesiune proprie ca sa nu interfereze cu tranzactia apelantului."""
+    if not user or not _web_allowed(user, now):
+        return
+    try:
+        push_db = SessionLocal()
+        try:
+            push_service.send_to_user(push_db, user.id, title, body, url)
+        finally:
+            push_db.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"[reminder] push error: {e}")
+
+
 def _in_dnd_window(start: str, end: str, now: datetime) -> bool:
     """Both 'HH:MM'. Window can wrap midnight (e.g. 22:00 - 07:00)."""
     try:
@@ -319,6 +357,33 @@ def check_calendar_reminders():
                         continue
 
                     user_obj = _get_user(db, event.user_id)
+
+                    # Web Push (best-effort, non-fatal). Anti-duplicare proprie pe
+                    # canalul "push" ca sa nu trimitem acelasi reminder de doua ori.
+                    push_already = (
+                        db.query(CalendarReminderLog)
+                        .filter(
+                            CalendarReminderLog.event_id == event.id,
+                            CalendarReminderLog.occurrence_date == occ,
+                            CalendarReminderLog.minutes_before == str(offset),
+                            CalendarReminderLog.channel == "push",
+                        )
+                        .first()
+                    )
+                    if not push_already and _web_allowed(user_obj, now):
+                        text_push = _format_event_message(event, occ, offset)
+                        _push_to_user(
+                            user_obj, now,
+                            f"{EVENT_TYPE_LABELS.get(event.event_type or 'personal', 'Eveniment')}: {event.title}",
+                            text_push, url="/calendar",
+                        )
+                        db.add(CalendarReminderLog(
+                            event_id=event.id,
+                            occurrence_date=occ,
+                            minutes_before=str(offset),
+                            channel="push",
+                        ))
+
                     if not _telegram_allowed(user_obj, now):
                         # Still mark as fired so we don't retry on the next minute
                         db.add(CalendarReminderLog(
@@ -512,6 +577,158 @@ def auto_move_overdue_tasks():
         db.close()
 
 
+# ── Daily digest ("Agenda ta de azi") ─────────────────────────────────────────
+
+# Anti-duplicare in-memory: retine (user_id, data_iso) pentru care s-a trimis deja
+# digest-ul azi. Simplu si robust pentru un singur proces (scheduler-ul ruleaza in
+# acelasi proces cu API-ul). NOTA: se reseteaza la restart — daca procesul reporneste
+# fix la ora digest-ului, un user ar putea primi un al doilea digest in acelasi minut;
+# acceptabil pentru un mesaj informativ (nu actiune).
+_digest_sent: set[tuple[str, str]] = set()
+
+
+def _digest_i18n(lang: str) -> dict:
+    """Stringuri RO/RU pentru digest (default RO)."""
+    if (lang or "ro").lower().startswith("ru"):
+        return {
+            "header": "Твоя повестка на сегодня",
+            "tasks": "Задачи на сегодня",
+            "board": "Назначенные задачи (проекты)",
+            "events": "События календаря",
+            "empty": "На сегодня ничего не запланировано. Хорошего дня!",
+            "all_day": "весь день",
+            "days": DAYS_RU,
+        }
+    return {
+        "header": "Agenda ta de azi",
+        "tasks": "Taskuri de azi",
+        "board": "Taskuri atribuite (proiecte)",
+        "events": "Evenimente in calendar",
+        "empty": "Nimic programat azi. Zi buna!",
+        "all_day": "toata ziua",
+        "days": DAYS_RO,
+    }
+
+
+def _board_tasks_due_today(db: Session, user_id: str, today: date_t) -> list[Task]:
+    """Taskuri de board atribuite userului cu due_date azi (optional in digest)."""
+    start = datetime(today.year, today.month, today.day)
+    end = start + timedelta(days=1)
+    return (
+        db.query(Task)
+        .filter(
+            Task.is_active == True,
+            Task.assignee_id == user_id,
+            Task.board_column_id.isnot(None),
+            Task.due_date >= start,
+            Task.due_date < end,
+        )
+        .order_by(Task.title)
+        .all()
+    )
+
+
+def build_daily_digest(db: Session, user: User, now: datetime | None = None) -> str | None:
+    """Construieste textul digest-ului zilnic pentru un user.
+
+    Aduna: taskuri personale de azi (task_service), taskuri de board atribuite cu
+    due azi (board), si evenimentele de calendar de azi. Localizeaza dupa
+    `user.language`. Intoarce None daca nu e nimic de afisat? Nu — intoarce un
+    mesaj "gol" prietenos, ca userul sa stie ca digest-ul functioneaza.
+    """
+    now = now or datetime.utcnow()
+    today = now.date()
+    day_of_week = now.isoweekday()
+    t = _digest_i18n(user.language)
+
+    lines = [f"{t['header']} — {t['days'][day_of_week - 1]}, {today.strftime('%d.%m.%Y')}"]
+    has_content = False
+
+    # 1) Taskuri personale (saptamanale) de azi
+    personal = task_service.get_tasks_for_day(db, user.id, day_of_week, date=now)
+    if personal:
+        has_content = True
+        lines.append("")
+        lines.append(f"{t['tasks']}:")
+        for task in personal:
+            reminder = f" la {task.reminder_time}" if task.reminder_time else ""
+            lines.append(f"  - {task.title}{reminder}")
+
+    # 2) Taskuri de board atribuite cu due azi
+    board_tasks = _board_tasks_due_today(db, user.id, today)
+    if board_tasks:
+        has_content = True
+        lines.append("")
+        lines.append(f"{t['board']}:")
+        for task in board_tasks:
+            lines.append(f"  - {task.title}")
+
+    # 3) Evenimente de calendar de azi
+    events = calendar_service.get_events_for_date(db, user.id, today)
+    if events:
+        has_content = True
+        lines.append("")
+        lines.append(f"{t['events']}:")
+        # events e o lista de (master_event, occurrence_date) — sortam dupa ora
+        for event, _occ in sorted(events, key=lambda e: (e[0].is_all_day, e[0].start_time or "")):
+            when = t["all_day"] if event.is_all_day else f"{event.start_time}–{event.end_time}"
+            location = f" @ {event.location}" if event.location else ""
+            lines.append(f"  - {when}  {event.title}{location}")
+
+    if not has_content:
+        lines.append("")
+        lines.append(t["empty"])
+
+    return "\n".join(lines)
+
+
+def _digest_enabled(user: User) -> bool:
+    """Userul primeste digest daca toggle-ul telegram nu e False SI dailyDigest nu e
+    False (ambele default true daca lipsesc)."""
+    s = user.notification_settings or {}
+    if s.get("telegram") is False:
+        return False
+    if s.get("dailyDigest") is False:
+        return False
+    return True
+
+
+def send_daily_digest():
+    """Ruleaza la HH:00 unde HH == DAILY_DIGEST_HOUR (UTC). Trimite UN SINGUR mesaj
+    pe Telegram fiecarui user activ cu chat legat care nu a dezactivat digest-ul.
+
+    Fereastra "nu deranja" e IGNORATA intentionat: digest-ul e la o ora fixa aleasa
+    de admin, deci nu il suprimam chiar daca pica in DND (altfel userul nu l-ar primi
+    niciodata daca ora coincide cu fereastra de liniste).
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today_iso = now.date().isoformat()
+        for user in _iter_users_with_telegram(db):
+            if not _digest_enabled(user):
+                continue
+            guard = (user.id, today_iso)
+            if guard in _digest_sent:
+                continue
+            text = build_daily_digest(db, user, now)
+            if not text:
+                continue
+            asyncio.create_task(_send_telegram(
+                text, chat_id=user.telegram_chat_id, role=user.role,
+            ))
+            _digest_sent.add(guard)
+
+        # Curata intrarile vechi (din zilele trecute) ca setul sa nu creasca la infinit
+        for entry in list(_digest_sent):
+            if entry[1] != today_iso:
+                _digest_sent.discard(entry)
+    except Exception as e:
+        print(f"Daily digest error: {e}")
+    finally:
+        db.close()
+
+
 def cleanup_sessions():
     """Expire telegram sessions older than 10 minutes."""
     db = SessionLocal()
@@ -538,6 +755,8 @@ def start_scheduler():
     scheduler.add_job(weekly_summary, 'cron', day_of_week='mon', hour=9, minute=0, id='weekly_summary')
     # Sunday 20:00 - weekly report
     scheduler.add_job(weekly_report, 'cron', day_of_week='sun', hour=20, minute=0, id='weekly_report')
+    # Daily HH:00 (UTC, HH = DAILY_DIGEST_HOUR) - daily digest ("Agenda ta de azi")
+    scheduler.add_job(send_daily_digest, 'cron', hour=settings.DAILY_DIGEST_HOUR, minute=0, id='daily_digest')
     # Every minute - cleanup expired sessions
     scheduler.add_job(cleanup_sessions, 'cron', minute='*', id='cleanup_sessions')
 

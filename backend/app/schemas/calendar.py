@@ -28,6 +28,8 @@ class CalendarEventCreate(BaseModel):
 
     reminderMinutes: Optional[List[int]] = None
     attendees: Optional[List[AttendeeIn]] = None
+    # Participanti reali (utilizatori ai aplicatiei) — id-uri user invitate
+    participantIds: Optional[List[str]] = None
     categoryId: Optional[str] = None
 
 
@@ -50,6 +52,7 @@ class CalendarEventUpdate(BaseModel):
 
     reminderMinutes: Optional[List[int]] = None
     attendees: Optional[List[AttendeeIn]] = None
+    participantIds: Optional[List[str]] = None
     categoryId: Optional[str] = None
 
 

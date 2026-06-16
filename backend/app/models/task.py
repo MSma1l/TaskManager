@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.base import generate_cuid
@@ -35,6 +35,10 @@ class Task(Base):
     # ── Story points + sprint (Faza 3A) ─────────────────────────────
     story_points = Column(Integer, nullable=True)  # estimare efort 1-10
     sprint_id = Column(String, ForeignKey("sprints.id"), nullable=True, index=True)
+
+    # ── Subtaskuri / checklist (Faza 4) ─────────────────────────────
+    # Lista de {"id": cuid, "title": str, "done": bool}, ordonata.
+    subtasks = Column(JSON, nullable=True)
 
     category = relationship("Category", back_populates="tasks")
     completions = relationship("TaskCompletion", back_populates="task")

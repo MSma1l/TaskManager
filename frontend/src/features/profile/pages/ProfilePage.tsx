@@ -4,6 +4,8 @@ import { authApi, MeResponse } from '../../auth/api/auth';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import Tour from '../../../shared/components/tour/Tour';
+import FriendsCard from '../../friends/components/FriendsCard';
+import PushToggle from '../../notifications/components/PushToggle';
 
 interface NotificationPrefs {
   telegram?: boolean;
@@ -165,6 +167,9 @@ export default function ProfilePage() {
         </div>
       </Card>
 
+      {/* Colaboratori (prieteni / colegi) */}
+      <FriendsCard />
+
       {/* Telegram link */}
       <Card title="Telegram">
         {me?.telegramLinked ? (
@@ -222,6 +227,11 @@ export default function ProfilePage() {
       <Card title="Notificari">
         <Toggle label="Trimite reminderuri pe Telegram" value={!!notif.telegram} onChange={(v) => setNotif({ ...notif, telegram: v })} />
         <Toggle label="Notificari in browser" value={!!notif.web} onChange={(v) => setNotif({ ...notif, web: v })} />
+
+        {/* Web Push — notificari chiar cu aplicatia inchisa */}
+        <div className="border-t border-border pt-3">
+          <PushToggle />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Nu deranja - de la">

@@ -305,6 +305,24 @@ def _notify_comment(db: Session, task: Task, comment: TaskComment, author_id: st
     mentioned = _resolve_mentions(db, task.project_id, comment.body, author_id)
     mentioned_ids = {u.id for u in mentioned}
 
+    # Notificare in-app (clopotel) pentru fiecare user mentionat — pe langa
+    # Telegram. Non-fatala (create_safe nu arunca). `_resolve_mentions` exclude
+    # deja autorul, deci nu ne auto-notificam. Telegram-ul de mai jos ramane
+    # neschimbat; aici doar adaugam notificarea in-app in plus.
+    if mentioned:
+        from app.services import notification_service
+        for u in mentioned:
+            notification_service.create_safe(
+                db,
+                user_id=u.id,
+                type="MENTION",
+                title=f"{actor_name} te-a mentionat la {task_key}",
+                body=snippet,
+                link=f"/projects/{task.project_id}/board",
+                meta={"taskId": task.id, "commentId": comment.id, "actorId": author_id},
+                commit=True,
+            )
+
     # Watcheri (mai putin autorul si cei deja notificati ca mentionati).
     watcher_ids = {
         r[0] for r in db.query(TaskWatcher.user_id).filter(

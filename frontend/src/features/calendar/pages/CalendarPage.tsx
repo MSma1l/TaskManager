@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { calendarApi, CalendarEvent, EventCategory } from '../api/calendar';
 import type { CreateEventData } from '../api/calendar';
 import { formatDate, getMonday, MONTHS_RO, DAYS_RO_LONG } from '../utils/dates';
@@ -11,6 +12,7 @@ import EventModal from '../components/EventModal';
 type ViewMode = 'day' | 'week' | 'month';
 
 export default function CalendarPage() {
+  const navigate = useNavigate();
   const [view, setView] = useState<ViewMode>(() => (localStorage.getItem('calendarView') as ViewMode) || 'week');
   const [cursor, setCursor] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -55,8 +57,50 @@ export default function CalendarPage() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const data = await calendarApi.getEvents(range.start, range.end);
-      setEvents(data);
+      const [data, taskItems] = await Promise.all([
+        calendarApi.getEvents(range.start, range.end),
+        calendarApi.getTaskItems(range.start, range.end).catch(() => []),
+      ]);
+      // Taskurile atribuite cu data devin "evenimente" read-only in calendar.
+      const taskEvents: CalendarEvent[] = taskItems.map((ti) => {
+        const [h, m] = (ti.startTime || '09:00').split(':').map(Number);
+        const endMins = Math.min(24 * 60 - 1, (h || 9) * 60 + (m || 0) + 30);
+        const end = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+        return {
+          id: ti.id,
+          masterId: ti.taskId,
+          title: ti.title,
+          description: null,
+          color: '#64748b',
+          eventType: 'task',
+          location: null,
+          meetingUrl: null,
+          isAllDay: false,
+          eventStatus: 'CONFIRMED',
+          attendanceStatus: 'PENDING',
+          attendanceNote: null,
+          recurrenceRule: null,
+          recurrenceUntil: null,
+          reminderMinutes: [],
+          attendees: [],
+          ownerId: '',
+          isOwner: true,
+          myAttendance: null,
+          participants: [],
+          categoryId: null,
+          eventDate: ti.eventDate,
+          originalDate: ti.eventDate,
+          isRecurringInstance: false,
+          startTime: ti.startTime || '09:00',
+          endTime: end,
+          createdAt: '',
+          updatedAt: '',
+          // marcaj intern pentru a sti ca e un task read-only
+          isTaskItem: true,
+          taskProjectId: ti.projectId,
+        } as CalendarEvent & { isTaskItem: boolean; taskProjectId: string | null };
+      });
+      setEvents([...data, ...taskEvents]);
     } finally {
       setLoading(false);
     }
@@ -96,6 +140,12 @@ export default function CalendarPage() {
     setShowModal(true);
   };
   const openEdit = (event: CalendarEvent) => {
+    // Taskurile de board atribuite sunt read-only in calendar — duc la board.
+    const asTask = event as CalendarEvent & { isTaskItem?: boolean; taskProjectId?: string | null };
+    if (asTask.isTaskItem) {
+      navigate(asTask.taskProjectId ? `/projects/${asTask.taskProjectId}/board` : '/');
+      return;
+    }
     setEditingEvent(event);
     setDefaultDate(event.eventDate);
     setDefaultStart(event.startTime);
@@ -116,8 +166,10 @@ export default function CalendarPage() {
       else await calendarApi.createEvent(data);
       setShowModal(false);
       fetchEvents();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save error', err);
+      // Nu mai eșua tăcut — arată cauza reală userului.
+      alert(err?.response?.data?.detail || 'Nu am putut salva evenimentul. Reincearca.');
     }
   };
 

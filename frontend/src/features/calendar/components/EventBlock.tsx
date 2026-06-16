@@ -71,6 +71,7 @@ export default function EventBlock({ event, top, height, onClick }: Props) {
     >
       <div className={isShort ? 'flex items-center gap-1' : ''}>
         <p className={`text-white text-xs font-semibold truncate leading-tight ${isAttended ? 'line-through decoration-white/60' : ''}`}>
+          {event.isOwner === false && <span className="mr-1" title="Invitat">👤</span>}
           {TYPE_ICONS[event.eventType] && <span className="mr-1">{TYPE_ICONS[event.eventType]}</span>}
           {event.title}
           {event.isRecurringInstance && <span className="ml-1 opacity-70">↻</span>}

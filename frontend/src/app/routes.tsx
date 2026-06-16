@@ -14,6 +14,7 @@ const RequestAccessPage = lazy(() => import('../features/auth/pages/RequestAcces
 const QRConfirmPage = lazy(() => import('../features/auth/pages/QRConfirmPage'));
 const TelegramAppPage = lazy(() => import('../features/auth/pages/TelegramAppPage'));
 const WeekPage = lazy(() => import('../features/tasks/pages/WeekPage'));
+const TodayPage = lazy(() => import('../features/tasks/pages/TodayPage'));
 const StatsPage = lazy(() => import('../features/stats/pages/StatsPage'));
 const ProjectsPage = lazy(() => import('../features/projects/pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('../features/projects/pages/ProjectDetailPage'));
@@ -83,6 +84,7 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<WeekPage />} />
+          <Route path="today" element={<TodayPage />} />
           <Route path="stats" element={<StatsPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />

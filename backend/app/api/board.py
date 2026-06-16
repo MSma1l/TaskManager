@@ -14,6 +14,9 @@ from app.schemas.board import (
     AssignTask,
     LabelCreate,
     TaskTransition,
+    SubtaskCreate,
+    SubtaskUpdate,
+    SubtaskReorder,
 )
 from app.services import board_service
 
@@ -65,6 +68,7 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
         "reminderTime": task.reminder_time,
         "commentCount": comment_counts.get(task.id, 0),
+        "subtasks": list(task.subtasks or []),
     }
 
 
@@ -271,3 +275,57 @@ async def delete_label(
 ):
     board_service.delete_label(db, user.id, project_id, label_id)
     return {"message": "Eticheta stearsa"}
+
+
+# ── subtaskuri (checklist) ──────────────────────────────────────────
+
+@router.post("/tasks/{task_id}/subtasks")
+async def add_subtask(
+    project_id: str,
+    task_id: str,
+    data: SubtaskCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = board_service.add_subtask(db, user.id, project_id, task_id, data.title)
+    return _task_with_assignee(db, task, project_id)
+
+
+@router.patch("/tasks/{task_id}/subtasks/{subtask_id}")
+async def update_subtask(
+    project_id: str,
+    task_id: str,
+    subtask_id: str,
+    data: SubtaskUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = board_service.update_subtask(
+        db, user.id, project_id, task_id, subtask_id,
+        title=data.title, done=data.done,
+    )
+    return _task_with_assignee(db, task, project_id)
+
+
+@router.delete("/tasks/{task_id}/subtasks/{subtask_id}")
+async def remove_subtask(
+    project_id: str,
+    task_id: str,
+    subtask_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = board_service.remove_subtask(db, user.id, project_id, task_id, subtask_id)
+    return _task_with_assignee(db, task, project_id)
+
+
+@router.put("/tasks/{task_id}/subtasks/reorder")
+async def reorder_subtasks(
+    project_id: str,
+    task_id: str,
+    data: SubtaskReorder,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = board_service.reorder_subtasks(db, user.id, project_id, task_id, data.order)
+    return _task_with_assignee(db, task, project_id)

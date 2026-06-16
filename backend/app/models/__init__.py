@@ -18,6 +18,8 @@ from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
 from app.models.qr_session import QRSession
 from app.models.notification import Notification
+from app.models.friendship import Friendship
+from app.models.push_subscription import PushSubscription
 
 __all__ = [
     "TaskStatus",
@@ -49,4 +51,6 @@ __all__ = [
     "AccessRequest",
     "QRSession",
     "Notification",
+    "Friendship",
+    "PushSubscription",
 ]

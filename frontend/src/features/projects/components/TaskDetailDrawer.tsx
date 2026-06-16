@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useI18n } from '../../../shared/i18n/I18nProvider';
 import { relativeTime } from '../../../shared/utils/dates';
 import { BoardTask, TransitionAction, ColumnType } from '../api/board';
+import SubtaskChecklist from './SubtaskChecklist';
 import { ProjectMember } from '../api/members';
 import { TaskActivity } from '../api/activity';
 import { TaskComment } from '../api/comments';
@@ -26,6 +27,10 @@ interface TaskDetailDrawerProps {
   onWorkflowAction: (task: BoardTask, action: TransitionAction) => void;
   /** Schimbă responsabilul direct din drawer (orice membru poate). */
   onAssign?: (taskId: string, assigneeId: string | null) => Promise<unknown> | void;
+  /** Subtaskuri (checklist) — disponibile doar pentru membri care pot edita. */
+  onAddSubtask?: (taskId: string, title: string) => Promise<unknown> | void;
+  onToggleSubtask?: (taskId: string, subtaskId: string, done: boolean) => Promise<unknown> | void;
+  onRemoveSubtask?: (taskId: string, subtaskId: string) => Promise<unknown> | void;
 }
 
 type Tab = 'comments' | 'activity';
@@ -41,6 +46,9 @@ export default function TaskDetailDrawer({
   onEdit,
   onWorkflowAction,
   onAssign,
+  onAddSubtask,
+  onToggleSubtask,
+  onRemoveSubtask,
 }: TaskDetailDrawerProps) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('comments');
@@ -215,6 +223,16 @@ export default function TaskDetailDrawer({
                 ))}
               </div>
             )}
+
+            {/* Subtaskuri (checklist) */}
+            <SubtaskChecklist
+              subtasks={task.subtasks}
+              onAdd={onAddSubtask ? (title) => onAddSubtask(task.id, title) : undefined}
+              onToggle={
+                onToggleSubtask ? (sid, done) => onToggleSubtask(task.id, sid, done) : undefined
+              }
+              onRemove={onRemoveSubtask ? (sid) => onRemoveSubtask(task.id, sid) : undefined}
+            />
 
             {/* Actions: workflow + edit */}
             <div className="flex gap-2">

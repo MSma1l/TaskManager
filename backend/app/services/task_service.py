@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.task import Task
 from app.models.completion import TaskCompletion
 from app.models.base import TaskStatus
+from app.models.board_column import BoardColumn
+from app.models.project import Project
 
 
 def get_week_start(date: datetime) -> datetime:
@@ -95,7 +97,44 @@ def get_tasks_for_week(db: Session, user_id: str | None = None, date_str: str | 
     return result
 
 
+def _backlog_column(db: Session, project_id: str) -> BoardColumn | None:
+    """Coloana de BACKLOG a proiectului (column_type=='BACKLOG'), altfel prima
+    dupa pozitie. Asigura coloanele implicite daca proiectul nu are inca."""
+    from app.services import board_service
+    board_service.ensure_columns(db, project_id)
+    columns = (
+        db.query(BoardColumn)
+        .filter(BoardColumn.project_id == project_id)
+        .order_by(BoardColumn.position.asc())
+        .all()
+    )
+    if not columns:
+        return None
+    return next(
+        (c for c in columns if c.column_type == "BACKLOG"),
+        columns[0],
+    )
+
+
 def create_task(db: Session, user_id: str, data: dict) -> Task:
+    project_id = data.get("projectId")
+
+    # Daca taskul apartine unui proiect si nu vine deja cu o coloana de board,
+    # intra automat in BACKLOG (sprint_id NULL + coloana de board + task_number).
+    board_column_id = data.get("board_column_id")
+    board_order = None
+    task_number = None
+    if project_id and not board_column_id:
+        from app.services import board_service
+        column = _backlog_column(db, project_id)
+        if column is not None:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project is not None:
+                project.task_counter = (project.task_counter or 0) + 1
+                task_number = project.task_counter
+            board_column_id = column.id
+            board_order = board_service._max_order(db, column.id) + 1
+
     task = Task(
         user_id=user_id,
         title=data["title"],
@@ -107,7 +146,10 @@ def create_task(db: Session, user_id: str, data: dict) -> Task:
         is_recurring=data.get("isRecurring", False),
         priority=data.get("priority", "MEDIUM"),
         estimated_minutes=data.get("estimatedMinutes"),
-        project_id=data.get("projectId"),
+        project_id=project_id,
+        board_column_id=board_column_id,
+        board_order=board_order,
+        task_number=task_number,
     )
     db.add(task)
     db.commit()

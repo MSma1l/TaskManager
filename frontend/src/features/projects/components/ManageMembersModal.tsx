@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AxiosError } from 'axios';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { useMembers } from '../hooks/useMembers';
 import { AssignableRole, ProjectRole, ProjectMember } from '../api/members';
+import { friendsApi, Friend } from '../../friends/api/friends';
 
 interface ManageMembersModalProps {
   projectId: string;
@@ -36,6 +37,14 @@ export default function ManageMembersModal({ projectId, myRole, onClose }: Manag
   const canManage = myRole === 'OWNER' || myRole === 'ADMIN';
   const canEditRoles = myRole === 'OWNER';
   const isAdmin = myRole === 'OWNER' || myRole === 'ADMIN';
+
+  // Colaboratori (prieteni/colegi) pentru quick-pick la adaugare.
+  const [friends, setFriends] = useState<Friend[]>([]);
+  useEffect(() => {
+    if (canManage) friendsApi.list().then(setFriends).catch(() => { /* ignore */ });
+  }, [canManage]);
+  const memberUsernames = new Set(members.map((m) => m.username));
+  const pickableFriends = friends.filter((f) => !memberUsernames.has(f.username));
 
   const errorFor = (e: unknown): string => {
     const status = (e as AxiosError)?.response?.status;
@@ -206,6 +215,24 @@ export default function ManageMembersModal({ projectId, myRole, onClose }: Manag
         {/* Invite */}
         {canManage && (
           <div className="border-t border-border pt-4">
+            {/* Quick-pick din colaboratori (prieteni/colegi) */}
+            {pickableFriends.length > 0 && (
+              <div className="mb-3">
+                <label className="text-xs text-muted mb-1.5 block">{t('members.fromCollaborators')}</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {pickableFriends.map((f) => (
+                    <button
+                      key={f.userId}
+                      type="button"
+                      onClick={() => { setUsername(f.username); setError(''); }}
+                      className="px-2.5 py-1 rounded-full text-xs bg-surface border border-border text-fg hover:border-blue-500 transition-colors"
+                    >
+                      @{f.username}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <label className="text-sm text-fg mb-2 block font-medium">{t('members.inviteByUsername')}</label>
             <div className="flex gap-2">
               <input

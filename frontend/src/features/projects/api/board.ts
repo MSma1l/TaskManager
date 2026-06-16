@@ -24,6 +24,12 @@ export interface BoardAssignee {
   fullName: string | null;
 }
 
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface BoardTask {
   id: string;
   title: string;
@@ -42,6 +48,7 @@ export interface BoardTask {
   scheduledDate: string | null;
   storyPoints: number | null;
   sprintId: string | null;
+  subtasks: Subtask[];
 }
 
 export interface BoardColumn {
@@ -158,4 +165,27 @@ export const boardApi = {
     client.post<Label>(`/projects/${projectId}/board/labels`, data).then((r) => r.data),
   deleteLabel: (projectId: string, labelId: string) =>
     client.delete(`/projects/${projectId}/board/labels/${labelId}`).then((r) => r.data),
+
+  // ── subtaskuri (checklist) ──
+  addSubtask: (projectId: string, taskId: string, title: string) =>
+    client
+      .post<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/subtasks`, { title })
+      .then((r) => r.data),
+  updateSubtask: (
+    projectId: string,
+    taskId: string,
+    subtaskId: string,
+    data: { title?: string; done?: boolean },
+  ) =>
+    client
+      .patch<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/subtasks/${subtaskId}`, data)
+      .then((r) => r.data),
+  removeSubtask: (projectId: string, taskId: string, subtaskId: string) =>
+    client
+      .delete<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/subtasks/${subtaskId}`)
+      .then((r) => r.data),
+  reorderSubtasks: (projectId: string, taskId: string, order: string[]) =>
+    client
+      .put<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/subtasks/reorder`, { order })
+      .then((r) => r.data),
 };

@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.base import generate_cuid
 from app.models.board_column import BoardColumn
 from app.models.label import Label, TaskLabel
 from app.models.project import Project
@@ -183,23 +184,49 @@ def _comment_count(db: Session, task_id: str) -> int:
     ) or 0
 
 
-def board_task_to_dict(db: Session, task: Task, comment_count: int | None = None) -> dict:
+def comment_counts(db: Session, task_ids: list[str]) -> dict[str, int]:
+    """Numarul de comentarii pentru o lista de taskuri intr-un singur query."""
+    if not task_ids:
+        return {}
+    from app.models.task_comment import TaskComment
+    rows = (
+        db.query(TaskComment.task_id, func.count(TaskComment.id))
+        .filter(TaskComment.task_id.in_(task_ids))
+        .group_by(TaskComment.task_id)
+        .all()
+    )
+    return {tid: cnt for tid, cnt in rows}
+
+
+def board_task_to_dict(
+    db: Session,
+    task: Task,
+    comment_count: int | None = None,
+    *,
+    users: dict | None = None,
+    project_key: str | None = None,
+) -> dict:
     """Serializeaza un task de board in dict camelCase (cu assignee + cheie).
 
     Folosit de sprint_service / ai_service ca sa intoarca acelasi contract ca
     api/board.py, fara a importa stratul api (evita import circular).
+
+    Pentru apeluri in bucla (ex. sprint_service.list_backlog), apelantul poate
+    pasa `users` (map id->User), `project_key` si `comment_count` deja incarcate,
+    ca sa evite query-uri per-task (N+1). Daca lipsesc, se rezolva lazy.
     """
     assignee = None
     if task.assignee_id:
-        u = db.query(User).filter(User.id == task.assignee_id).first()
+        u = users.get(task.assignee_id) if users is not None else (
+            db.query(User).filter(User.id == task.assignee_id).first()
+        )
         assignee = {
             "userId": task.assignee_id,
             "username": u.username if u else None,
             "fullName": u.full_name if u else None,
         }
 
-    project_key = None
-    if task.project_id:
+    if project_key is None and task.project_id:
         row = db.query(Project.key).filter(Project.id == task.project_id).first()
         project_key = row[0] if row else None
     task_key = (
@@ -227,13 +254,14 @@ def board_task_to_dict(db: Session, task: Task, comment_count: int | None = None
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
         "reminderTime": task.reminder_time,
         "commentCount": comment_count if comment_count is not None else _comment_count(db, task.id),
+        "subtasks": list(task.subtasks or []),
     }
 
 
 # ── board read ──────────────────────────────────────────────────────
 
 def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None = None):
-    membership_service.require_membership(db, project_id, user_id, min_role="VIEWER")
+    member = membership_service.require_membership(db, project_id, user_id, min_role="VIEWER")
     ensure_columns(db, project_id)
 
     project = _get_project(db, project_id)
@@ -253,6 +281,11 @@ def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None 
             Task.board_column_id.isnot(None),
         )
     )
+
+    # Vizibilitate pe rol: un MEMBER simplu vede DOAR taskurile atribuite lui.
+    # ADMIN/OWNER (gestionari) și VIEWER (read-only) văd toate taskurile.
+    if member.role == "MEMBER":
+        query = query.filter(Task.assignee_id == user_id)
 
     # Scoping optional dupa sprint:
     #   "backlog" -> taskuri fara sprint; <id> -> taskuri din sprintul respectiv;
@@ -488,9 +521,19 @@ def delete_task(db: Session, user_id: str, project_id: str, task_id: str) -> Non
 
 
 def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_column_id: str, to_index: int) -> None:
-    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    member = membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
     task = _get_board_task(db, project_id, task_id)
     target_column = _get_column(db, project_id, to_column_id)
+
+    # Restrictii pentru un MEMBER simplu (nu OWNER/ADMIN):
+    #   - poate muta DOAR taskurile atribuite lui,
+    #   - NU poate muta in coloana de APROBARE (aprobarea e doar a leadului).
+    is_lead = membership_service.ROLE_RANK.get(member.role, -1) >= membership_service.ROLE_RANK["ADMIN"]
+    if not is_lead:
+        if task.assignee_id != user_id:
+            raise HTTPException(status_code=403, detail="Poti muta doar taskurile atribuite tie")
+        if target_column.column_type == "APPROVED":
+            raise HTTPException(status_code=403, detail="Doar team lead-ul poate aproba (muta in coloana aprobat)")
 
     source_column_id = task.board_column_id
 
@@ -525,7 +568,8 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
 
 
 def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assignee_id: str | None) -> Task:
-    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    # Doar OWNER/ADMIN pot atribui sau schimba responsabilul.
+    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
     task = _get_board_task(db, project_id, task_id)
 
     if assignee_id is not None:
@@ -727,3 +771,107 @@ def delete_label(db: Session, user_id: str, project_id: str, label_id: str) -> N
     db.query(TaskLabel).filter(TaskLabel.label_id == label_id).delete(synchronize_session=False)
     db.delete(label)
     db.commit()
+
+
+# ── subtaskuri (checklist) ──────────────────────────────────────────
+
+def _normalize_subtasks(raw) -> list[dict]:
+    """Curata lista de subtaskuri intr-o forma canonica {id, title, done}."""
+    out: list[dict] = []
+    for item in (raw or []):
+        if not isinstance(item, dict):
+            continue
+        out.append({
+            "id": item.get("id") or generate_cuid(),
+            "title": str(item.get("title") or "").strip(),
+            "done": bool(item.get("done")),
+        })
+    return out
+
+
+def _save_subtasks(db: Session, task: Task, items: list[dict]) -> None:
+    """Persista lista de subtaskuri (JSON e mutat ca obiect nou ca SA sa observe)."""
+    task.subtasks = items
+    task.updated_at = datetime.utcnow()
+
+
+def add_subtask(db: Session, user_id: str, project_id: str, task_id: str, title: str) -> Task:
+    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    task = _get_board_task(db, project_id, task_id)
+
+    title = (title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Titlul subtaskului e obligatoriu")
+
+    items = _normalize_subtasks(task.subtasks)
+    items.append({"id": generate_cuid(), "title": title, "done": False})
+    _save_subtasks(db, task, items)
+
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def update_subtask(
+    db: Session,
+    user_id: str,
+    project_id: str,
+    task_id: str,
+    subtask_id: str,
+    *,
+    title: str | None = None,
+    done: bool | None = None,
+) -> Task:
+    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    task = _get_board_task(db, project_id, task_id)
+
+    items = _normalize_subtasks(task.subtasks)
+    target = next((s for s in items if s["id"] == subtask_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Subtask inexistent")
+
+    if title is not None:
+        new_title = title.strip()
+        if not new_title:
+            raise HTTPException(status_code=400, detail="Titlul subtaskului e obligatoriu")
+        target["title"] = new_title
+    if done is not None:
+        target["done"] = bool(done)
+
+    _save_subtasks(db, task, items)
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def remove_subtask(db: Session, user_id: str, project_id: str, task_id: str, subtask_id: str) -> Task:
+    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    task = _get_board_task(db, project_id, task_id)
+
+    items = _normalize_subtasks(task.subtasks)
+    new_items = [s for s in items if s["id"] != subtask_id]
+    if len(new_items) == len(items):
+        raise HTTPException(status_code=404, detail="Subtask inexistent")
+
+    _save_subtasks(db, task, new_items)
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def reorder_subtasks(db: Session, user_id: str, project_id: str, task_id: str, order: list[str]) -> Task:
+    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    task = _get_board_task(db, project_id, task_id)
+
+    items = _normalize_subtasks(task.subtasks)
+    by_id = {s["id"]: s for s in items}
+    # Subtaskurile in ordinea ceruta, urmate de eventuale ramase (robust la id-uri lipsa).
+    reordered = [by_id[sid] for sid in (order or []) if sid in by_id]
+    for s in items:
+        if s["id"] not in {x["id"] for x in reordered}:
+            reordered.append(s)
+
+    _save_subtasks(db, task, reordered)
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)

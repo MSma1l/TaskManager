@@ -10,6 +10,7 @@ python-dotenv==1.0.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 anthropic>=0.39
+pywebpush==2.0.0
 
 # Test deps
 pytest==8.3.4

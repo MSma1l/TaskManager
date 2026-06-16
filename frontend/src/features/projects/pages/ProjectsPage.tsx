@@ -14,14 +14,14 @@ export default function ProjectsPage() {
     <div className="px-4 pt-5 max-w-[1600px] mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Proiecte</h1>
-          <p className="text-sm text-slate-400 mt-0.5">{projects.length} proiecte active</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('projects.title')}</h1>
+          <p className="text-sm text-slate-400 mt-0.5">{projects.length} {t('projects.activeCount')}</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
           className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
         >
-          + Proiect
+          {t('projects.addProject')}
         </button>
       </div>
 
@@ -36,8 +36,8 @@ export default function ProjectsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </div>
-          <p className="text-slate-400 mb-2">Niciun proiect inca</p>
-          <p className="text-sm text-slate-500">Adauga un proiect pentru a-ti organiza taskurile</p>
+          <p className="text-slate-400 mb-2">{t('projects.noProjects')}</p>
+          <p className="text-sm text-slate-500">{t('projects.noProjectsHint')}</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -80,7 +80,7 @@ export default function ProjectsPage() {
               )}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">
-                  {project.taskCount} taskuri
+                  {project.taskCount} {t('projects.taskCount')}
                 </span>
                 {typeof project.memberCount === 'number' && (
                   <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">

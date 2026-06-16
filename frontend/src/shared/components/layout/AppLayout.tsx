@@ -6,6 +6,8 @@ import Tour from '../tour/Tour';
 import { authApi, MeResponse } from '../../../features/auth/api/auth';
 import ForcedSetupModal from '../../../features/auth/components/ForcedSetupModal';
 import NotificationBell from '../../../features/notifications/components/NotificationBell';
+import CommandPalette from '../search/CommandPalette';
+import QuickAddFab from '../quickadd/QuickAddFab';
 
 export default function AppLayout() {
   useNotifications();
@@ -42,6 +44,8 @@ export default function AppLayout() {
       }}
     >
       <NotificationBell />
+      <CommandPalette />
+      <QuickAddFab />
       <Outlet />
       <BottomNav />
       <Tour />

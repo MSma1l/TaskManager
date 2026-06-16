@@ -80,25 +80,33 @@ def get_streaks(db: Session, user_id: str | None = None) -> list[dict]:
     now = datetime.utcnow()
     current_week_start = get_week_start(now)
 
+    # Fetch all DONE completions for these tasks in a single query, then compute
+    # the contiguous streak (from the current week backwards) in memory. Evita
+    # N+1: vechiul cod facea cate un query per task per saptamana.
+    task_ids = [t.id for t in tasks]
+    done_weeks: dict[str, set] = {}
+    if task_ids:
+        rows = (
+            db.query(TaskCompletion.task_id, TaskCompletion.week_start)
+            .filter(
+                TaskCompletion.task_id.in_(task_ids),
+                TaskCompletion.status == TaskStatus.DONE,
+            )
+            .all()
+        )
+        for tid, week_start in rows:
+            done_weeks.setdefault(tid, set()).add(week_start)
+
     for task in tasks:
+        weeks_done = done_weeks.get(task.id)
+        if not weeks_done:
+            continue
+
         streak = 0
         week = current_week_start
-
-        while True:
-            completion = (
-                db.query(TaskCompletion)
-                .filter(
-                    TaskCompletion.task_id == task.id,
-                    TaskCompletion.week_start == week,
-                    TaskCompletion.status == TaskStatus.DONE,
-                )
-                .first()
-            )
-            if completion:
-                streak += 1
-                week -= timedelta(weeks=1)
-            else:
-                break
+        while week in weeks_done:
+            streak += 1
+            week -= timedelta(weeks=1)
 
         if streak > 0:
             streaks.append({
@@ -130,13 +138,19 @@ def get_missed(db: Session, user_id: str | None = None) -> list[dict]:
         .all()
     )
 
+    # Rezolva titlurile taskurilor intr-un singur query (evita N+1 per rezultat).
+    result_ids = [task_id for task_id, _ in results]
+    titles = {}
+    if result_ids:
+        rows = db.query(Task.id, Task.title).filter(Task.id.in_(result_ids)).all()
+        titles = dict(rows)
+
     missed = []
     for task_id, count in results:
-        task = db.query(Task).filter(Task.id == task_id).first()
-        if task:
+        if task_id in titles:
             missed.append({
-                "taskId": task.id,
-                "taskTitle": task.title,
+                "taskId": task_id,
+                "taskTitle": titles[task_id],
                 "missedCount": count,
             })
 

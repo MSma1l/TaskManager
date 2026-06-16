@@ -133,7 +133,7 @@ export default function ProjectDetailPage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Inapoi la proiecte
+          {t('projects.backToProjects')}
         </button>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -174,14 +174,14 @@ export default function ProjectDetailPage() {
               onClick={openEdit}
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700/50 text-sm transition-all duration-200"
             >
-              Editeaza
+              {t('projects.edit')}
             </button>
             {tab === 'list' && (
               <button
                 onClick={() => setShowAddTask(true)}
                 className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
               >
-                + Task
+                {t('projects.addTask')}
               </button>
             )}
           </div>
@@ -255,15 +255,15 @@ export default function ProjectDetailPage() {
       {/* Stats bar */}
       <div className="flex gap-4 mb-6">
         <div className="px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/40">
-          <p className="text-xs text-slate-500">Total</p>
+          <p className="text-xs text-slate-500">{t('projects.total')}</p>
           <p className="text-lg font-bold">{project.tasks.length}</p>
         </div>
         <div className="px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/40">
-          <p className="text-xs text-slate-500">In asteptare</p>
+          <p className="text-xs text-slate-500">{t('projects.pending')}</p>
           <p className="text-lg font-bold text-blue-400">{pendingTasks.length}</p>
         </div>
         <div className="px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/40">
-          <p className="text-xs text-slate-500">Completate</p>
+          <p className="text-xs text-slate-500">{t('projects.completed')}</p>
           <p className="text-lg font-bold text-green-400">{doneTasks.length}</p>
         </div>
       </div>
@@ -271,8 +271,8 @@ export default function ProjectDetailPage() {
       {/* Tasks */}
       {project.tasks.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-slate-400 mb-2">Niciun task in acest proiect</p>
-          <p className="text-sm text-slate-500">Adauga taskuri pentru a incepe</p>
+          <p className="text-slate-400 mb-2">{t('projects.noTasksInProject')}</p>
+          <p className="text-sm text-slate-500">{t('projects.noTasksHint')}</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -315,10 +315,10 @@ export default function ProjectDetailPage() {
       {showEdit && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowEdit(false)}>
           <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-slate-700" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Editeaza Proiect</h3>
+            <h3 className="text-lg font-bold mb-4">{t('projects.editProject')}</h3>
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-sm text-slate-300 mb-1 block">Nume</label>
+                <label className="text-sm text-slate-300 mb-1 block">{t('projects.name')}</label>
                 <input
                   type="text"
                   value={editName}
@@ -338,7 +338,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-slate-300 mb-1 block">Descriere</label>
+                <label className="text-sm text-slate-300 mb-1 block">{t('projects.description')}</label>
                 <textarea
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
@@ -347,7 +347,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-slate-300 mb-1 block">GitHub URL</label>
+                <label className="text-sm text-slate-300 mb-1 block">{t('projects.githubUrl')}</label>
                 <input
                   type="url"
                   value={editGithub}
@@ -356,7 +356,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-slate-300 mb-1 block">Culoare</label>
+                <label className="text-sm text-slate-300 mb-1 block">{t('projects.color')}</label>
                 <div className="flex gap-2">
                   {['#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4'].map((c) => (
                     <button
@@ -371,10 +371,10 @@ export default function ProjectDetailPage() {
 
               <div className="flex gap-3 mt-1">
                 <button onClick={() => setShowEdit(false)} className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 font-semibold transition-colors">
-                  Anuleaza
+                  {t('projects.cancel')}
                 </button>
                 <button onClick={handleSaveEdit} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold transition-all duration-200 shadow-lg shadow-blue-600/20">
-                  Salveaza
+                  {t('projects.save')}
                 </button>
               </div>
 
@@ -387,13 +387,13 @@ export default function ProjectDetailPage() {
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Sterge proiectul
+                    {t('projects.deleteProject')}
                   </button>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-red-400">Esti sigur?</span>
-                    <button onClick={handleDelete} className="text-sm text-red-400 font-bold hover:text-red-300">Da, sterge</button>
-                    <button onClick={() => setConfirmDelete(false)} className="text-sm text-slate-400 hover:text-white">Nu</button>
+                    <span className="text-sm text-red-400">{t('projects.deleteConfirm')}</span>
+                    <button onClick={handleDelete} className="text-sm text-red-400 font-bold hover:text-red-300">{t('projects.deleteYes')}</button>
+                    <button onClick={() => setConfirmDelete(false)} className="text-sm text-slate-400 hover:text-white">{t('projects.deleteNo')}</button>
                   </div>
                 )}
               </div>

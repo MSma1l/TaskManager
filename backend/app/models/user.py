@@ -16,6 +16,9 @@ class User(Base):
     role = Column(String(20), nullable=False, default="USER")  # USER | ADMIN
     pin_hash = Column(String(200), nullable=True)
     password_hash = Column(String(200), nullable=True)  # admins log in with username + password (skips Telegram 2FA)
+    # Secret token for the read-only iCal (.ics) feed subscription (Google/Apple/Outlook).
+    # Stable per user; rotated only on demand. Acts as a bearer for the public feed URL.
+    calendar_token = Column(String(64), unique=True, nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 

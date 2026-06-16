@@ -3,6 +3,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 
 from app.models.calendar import CalendarEvent, EventCategory
+from app.models.calendar_attendee import CalendarEventAttendee
 
 
 # ── Categories ───────────────────────────────────────────────────────────────
@@ -131,12 +132,36 @@ def _days_in_month(year: int, month: int) -> int:
     return (date(year, month + 1, 1) - date(year, month, 1)).days
 
 
+def _attendee_event_ids(db: Session, user_id: str) -> set[str]:
+    """ID-urile evenimentelor unde userul e invitat si NU a refuzat (DECLINED ascunde)."""
+    rows = (
+        db.query(CalendarEventAttendee.event_id)
+        .filter(
+            CalendarEventAttendee.user_id == user_id,
+            CalendarEventAttendee.status != "DECLINED",
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
 def get_events_for_range(db: Session, user_id: str, start_date: date, end_date: date):
-    """Return master events whose recurrence touches [start_date, end_date]."""
+    """Return master events whose recurrence touches [start_date, end_date].
+
+    Include atat evenimentele detinute de user, cat si cele unde e PARTICIPANT
+    (invitat, ne-refuzat). Filtrarea owner vs. invitat se face in `_event_to_dict`.
+    """
+    invited_ids = _attendee_event_ids(db, user_id)
+
+    from sqlalchemy import or_
+    own_or_invited = CalendarEvent.user_id == user_id
+    if invited_ids:
+        own_or_invited = or_(own_or_invited, CalendarEvent.id.in_(invited_ids))
+
     masters = (
         db.query(CalendarEvent)
         .filter(
-            CalendarEvent.user_id == user_id,
+            own_or_invited,
             CalendarEvent.is_deleted == False,
             CalendarEvent.event_date <= end_date,
         )
@@ -154,6 +179,130 @@ def get_events_for_range(db: Session, user_id: str, start_date: date, end_date: 
         for occ in _occurrences_in_range(m, start_date, end_date):
             instances.append((m, occ))
     return instances
+
+
+# ── Real attendees (utilizatori invitati) ─────────────────────────────────────
+
+def list_event_attendees(db: Session, event_id: str) -> List[CalendarEventAttendee]:
+    return (
+        db.query(CalendarEventAttendee)
+        .filter(CalendarEventAttendee.event_id == event_id)
+        .order_by(CalendarEventAttendee.created_at.asc())
+        .all()
+    )
+
+
+def get_attendance(db: Session, event_id: str, user_id: str) -> Optional[CalendarEventAttendee]:
+    return (
+        db.query(CalendarEventAttendee)
+        .filter(
+            CalendarEventAttendee.event_id == event_id,
+            CalendarEventAttendee.user_id == user_id,
+        )
+        .first()
+    )
+
+
+def _notify_invite(db: Session, event: CalendarEvent, attendee_user_id: str) -> None:
+    """Notificare in-app non-fatala catre participant."""
+    try:
+        from app.services import notification_service
+        when = f"{event.event_date.isoformat()} {event.start_time}"
+        notification_service.create_safe(
+            db,
+            user_id=attendee_user_id,
+            type="EVENT_INVITE",
+            title=f"Esti invitat la: {event.title} ({when})",
+            link="/calendar",
+            meta={"eventId": event.id, "ownerId": event.user_id},
+            commit=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"[notification] event invite notify error: {e}")
+
+
+def set_event_attendees(db: Session, event: CalendarEvent, user_ids: List[str]) -> List[CalendarEventAttendee]:
+    """Sincronizeaza setul de participanti reali ai unui eveniment.
+
+    - Adauga noii user_ids (INVITED) + notifica fiecare nou invitat.
+    - Sterge participantii care nu mai sunt in lista.
+    - Pastreaza status-ul existent (ACCEPTED/DECLINED) pentru cei deja invitati.
+    Owner-ul nu poate fi propriul invitat (filtrat).
+    """
+    wanted = {uid for uid in (user_ids or []) if uid and uid != event.user_id}
+    existing = {a.user_id: a for a in list_event_attendees(db, event.id)}
+
+    # Remove dropped
+    for uid, att in existing.items():
+        if uid not in wanted:
+            db.delete(att)
+
+    # Add new + notify
+    for uid in wanted:
+        if uid in existing:
+            continue
+        att = CalendarEventAttendee(event_id=event.id, user_id=uid, status="INVITED")
+        db.add(att)
+        _notify_invite(db, event, uid)
+
+    db.commit()
+    return list_event_attendees(db, event.id)
+
+
+def respond_to_invite(db: Session, event_id: str, user_id: str, accept: bool) -> Optional[CalendarEventAttendee]:
+    """Participantul accepta/refuza invitatia. Doar invitatul isi schimba statusul."""
+    att = get_attendance(db, event_id, user_id)
+    if not att:
+        return None
+    att.status = "ACCEPTED" if accept else "DECLINED"
+    att.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(att)
+    return att
+
+
+# ── Task items (taskuri de board atribuite, cu data) ──────────────────────────
+
+def get_task_items_for_range(db: Session, user_id: str, start_date: date, end_date: date) -> List[dict]:
+    """Taskuri de board atribuite userului curent cu o data in [start, end].
+
+    Read-only "items" de calendar (nu evenimente). Folosim due_date sau, in
+    lipsa, scheduled_date ca data de afisare.
+    """
+    from app.models.task import Task
+
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0)
+    end_dt = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.assignee_id == user_id,
+            Task.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    out: List[dict] = []
+    for t in tasks:
+        when = t.due_date or t.scheduled_date
+        if not when:
+            continue
+        if not (start_dt <= when <= end_dt):
+            continue
+        d = when.date()
+        out.append({
+            "id": f"task::{t.id}",
+            "taskId": t.id,
+            "kind": "task",
+            "title": t.title,
+            "projectId": t.project_id,
+            "priority": t.priority,
+            "eventDate": d.isoformat(),
+            "startTime": when.strftime("%H:%M") if (t.due_date or t.scheduled_date) else "00:00",
+            "isDue": bool(t.due_date),
+        })
+    return out
 
 
 def get_events_for_date(db: Session, user_id: str, target_date: date):

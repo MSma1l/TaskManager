@@ -18,6 +18,37 @@ export interface Attendee {
   telegramChatId?: string | null;
 }
 
+export type AttendeeStatus = 'INVITED' | 'ACCEPTED' | 'DECLINED';
+
+// Participant real (utilizator al aplicatiei) invitat la eveniment
+export interface EventParticipant {
+  userId: string;
+  username: string | null;
+  fullName: string | null;
+  status: AttendeeStatus;
+}
+
+// Utilizator candidat la invitatie (colaborator sau co-membru de proiect)
+export interface InviteCandidate {
+  userId: string;
+  username: string | null;
+  fullName: string | null;
+  source: 'friend' | 'project';
+}
+
+// Task de board atribuit, afisat in calendar (read-only)
+export interface CalendarTaskItem {
+  id: string;
+  taskId: string;
+  kind: 'task';
+  title: string;
+  projectId: string | null;
+  priority: string;
+  eventDate: string;
+  startTime: string;
+  isDue: boolean;
+}
+
 export interface CalendarEvent {
   id: string;            // virtual id for recurring instances ("masterId::date")
   masterId: string;
@@ -35,6 +66,11 @@ export interface CalendarEvent {
   recurrenceUntil: string | null;
   reminderMinutes: number[];
   attendees: Attendee[];
+  // Participanti reali (utilizatori) + flag-uri owner/invitat
+  ownerId: string;
+  isOwner: boolean;
+  myAttendance: AttendeeStatus | null;
+  participants: EventParticipant[];
   categoryId: string | null;
   eventDate: string;          // occurrence date
   originalDate: string | null;
@@ -58,6 +94,8 @@ export interface CreateEventData {
   recurrenceUntil?: string | null;
   reminderMinutes?: number[];
   attendees?: Attendee[];
+  // Id-uri de utilizatori invitati ca participanti reali
+  participantIds?: string[];
   categoryId?: string | null;
   eventDate: string;
   startTime: string;
@@ -104,4 +142,17 @@ export const calendarApi = {
 
   setAttendance: (eventId: string, status: AttendanceStatus, note?: string | null) =>
     client.put<CalendarEvent>(`/calendar/events/${eventId}/attendance`, { status, note }).then((r) => r.data),
+
+  // ── Participanti reali ───────────────────────────────────────────────
+  getInviteCandidates: () =>
+    client.get<InviteCandidate[]>('/calendar/invite-candidates').then((r) => r.data),
+
+  respondInvite: (eventId: string, status: Exclude<AttendeeStatus, 'INVITED'>) =>
+    client.put<{ eventId: string; status: AttendeeStatus }>(
+      `/calendar/events/${eventId}/invite-response`, { status },
+    ).then((r) => r.data),
+
+  // Taskuri de board atribuite, cu data, ca items read-only in calendar
+  getTaskItems: (start: string, end: string) =>
+    client.get<CalendarTaskItem[]>(`/calendar/task-items?start=${start}&end=${end}`).then((r) => r.data),
 };

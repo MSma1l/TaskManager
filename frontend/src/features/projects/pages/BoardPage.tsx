@@ -54,6 +54,9 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
     assignTask,
     transitionTask,
     createLabel,
+    addSubtask,
+    updateSubtask,
+    removeSubtask,
   } = useBoard(projectId, sprintFilter || undefined);
   const { members } = useMembers(projectId);
 
@@ -418,7 +421,10 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
           onClose={() => setDetailTaskId(null)}
           onEdit={(tk) => { setDetailTaskId(null); setEditTask(tk); }}
           onWorkflowAction={handleWorkflowAction}
-          onAssign={assignTask}
+          onAssign={canApprove ? assignTask : undefined}
+          onAddSubtask={canManage ? addSubtask : undefined}
+          onToggleSubtask={canManage ? (taskId, sid, done) => updateSubtask(taskId, sid, { done }) : undefined}
+          onRemoveSubtask={canManage ? removeSubtask : undefined}
         />
       )}
 

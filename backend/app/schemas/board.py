@@ -58,3 +58,16 @@ class AssignTask(BaseModel):
 class LabelCreate(BaseModel):
     name: str
     color: str = "#3b82f6"
+
+
+class SubtaskCreate(BaseModel):
+    title: str
+
+
+class SubtaskUpdate(BaseModel):
+    title: Optional[str] = None
+    done: Optional[bool] = None
+
+
+class SubtaskReorder(BaseModel):
+    order: list[str]

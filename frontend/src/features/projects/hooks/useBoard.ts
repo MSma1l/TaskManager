@@ -133,6 +133,29 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     await fetchBoard(false);
   };
 
+  // ── Subtasks (checklist) ───────────────────────────────────────────────────
+  const addSubtask = async (taskId: string, title: string) => {
+    const task = await boardApi.addSubtask(projectId, taskId, title);
+    await fetchBoard(false);
+    return task;
+  };
+
+  const updateSubtask = async (
+    taskId: string,
+    subtaskId: string,
+    data: { title?: string; done?: boolean },
+  ) => {
+    const task = await boardApi.updateSubtask(projectId, taskId, subtaskId, data);
+    await fetchBoard(false);
+    return task;
+  };
+
+  const removeSubtask = async (taskId: string, subtaskId: string) => {
+    const task = await boardApi.removeSubtask(projectId, taskId, subtaskId);
+    await fetchBoard(false);
+    return task;
+  };
+
   return {
     board,
     loading,
@@ -150,5 +173,8 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     transitionTask,
     createLabel,
     deleteLabel,
+    addSubtask,
+    updateSubtask,
+    removeSubtask,
   };
 }
