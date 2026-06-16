@@ -357,18 +357,18 @@ export default function EventModal({
 
               {/* Type pills — full width */}
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {EVENT_TYPES.map((t) => (
+                {EVENT_TYPES.map((et) => (
                   <button
-                    key={t.value}
-                    onClick={() => setEventType(t.value)}
+                    key={et.value}
+                    onClick={() => setEventType(et.value)}
                     className={`text-xs flex flex-col items-center gap-1 py-2 rounded-lg border transition-colors ${
-                      eventType === t.value
+                      eventType === et.value
                         ? 'border-blue-500 bg-blue-500/10 text-fg'
                         : 'border-border text-muted hover:text-fg'
                     }`}
                   >
-                    <span className="text-lg leading-none">{t.icon}</span>
-                    <span>{t.label}</span>
+                    <span className="text-lg leading-none">{et.icon}</span>
+                    <span>{et.label}</span>
                   </button>
                 ))}
               </div>

@@ -14,6 +14,7 @@ from app.models.reminder import ReminderLog
 from app.models.session import TelegramSession
 from app.models.notebook import NotebookTopic, NotebookNote, NotebookNoteHistory, NotebookSketch
 from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLog
+from app.models.calendar_attendee import CalendarEventAttendee
 from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
 from app.models.qr_session import QRSession
@@ -46,6 +47,7 @@ __all__ = [
     "CalendarEvent",
     "EventCategory",
     "CalendarReminderLog",
+    "CalendarEventAttendee",
     "User",
     "LoginCode",
     "AccessRequest",

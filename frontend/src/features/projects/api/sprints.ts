@@ -21,6 +21,8 @@ export interface Sprint {
   totalPoints: number;
   taskCount: number;
   perMember: SprintMember[];
+  /** Taskurile planificate in acest sprint (acelasi contract ca backlog/board). */
+  tasks: BoardTask[];
 }
 
 export interface CreateSprintData {

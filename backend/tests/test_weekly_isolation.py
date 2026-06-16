@@ -56,6 +56,13 @@ def test_board_task_excluded_from_weekly_views(db, make_user, make_project, make
 
 
 def test_project_detail_excludes_board_tasks(db, make_user, make_project, make_category):
+    """Legacy "list" view (get_project_with_tasks) shows only non-board tasks.
+
+    Dupa fluxul BACKLOG-default, un task creat prin task_service.create_task cu
+    projectId devine task de board (intra in backlog), deci NU mai apare in
+    lista legacy — apare in backlog. Un task fara coloana de board (ex. legacy
+    cu board_column_id setat manual la None) ramane in lista.
+    """
     owner = make_user()
     project = make_project(owner)
     board_service.ensure_columns(db, project.id)
@@ -64,8 +71,8 @@ def test_project_detail_excludes_board_tasks(db, make_user, make_project, make_c
     board_task = board_service.create_task(
         db, owner.id, project.id, {"title": "board", "columnId": col.id}
     )
-    # A non-board task attached to the project.
-    plain = task_service.create_task(
+    # Un task de proiect intra automat in backlog (devine task de board).
+    backlog_task = task_service.create_task(
         db, owner.id,
         {
             "title": "plain",
@@ -74,12 +81,21 @@ def test_project_detail_excludes_board_tasks(db, make_user, make_project, make_c
             "projectId": project.id,
         },
     )
+    assert backlog_task.board_column_id is not None
+    assert backlog_task.sprint_id is None
 
     from app.services import project_service
     _, tasks = project_service.get_project_with_tasks(db, owner.id, project.id)
     ids = {t.id for t in tasks}
-    assert plain.id in ids
+    # Ambele sunt taskuri de board -> excluse din lista legacy.
+    assert backlog_task.id not in ids
     assert board_task.id not in ids
+
+    # In schimb, taskul de proiect apare in backlog.
+    from app.services import sprint_service
+    backlog = sprint_service.list_backlog(db, owner.id, project.id)
+    backlog_ids = {t["id"] for t in backlog}
+    assert backlog_task.id in backlog_ids
 
 
 def test_board_task_appears_in_board_view(db, make_user, make_project):

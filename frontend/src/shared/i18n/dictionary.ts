@@ -242,6 +242,13 @@ const ro = {
     blocked: 'Notificarile sunt blocate in setarile browserului.',
     error: 'Eroare la activarea notificarilor push.',
   },
+  sprintPlan: {
+    dragHint: 'Trage taskuri din backlog intr-un sprint pentru a le planifica.',
+    backlogZone: 'Backlog',
+    noSprints: 'Niciun sprint activ. Creeaza un sprint pentru a planifica.',
+    dropHere: 'Trage taskuri aici',
+    overCapacity: 'Capacitate depasita',
+  },
   members: {
     members: 'Membri',
     member: 'membru',
@@ -706,6 +713,13 @@ const ru = {
     permissionDenied: 'Разрешение на уведомления отклонено.',
     blocked: 'Уведомления заблокированы в настройках браузера.',
     error: 'Ошибка при включении push-уведомлений.',
+  },
+  sprintPlan: {
+    dragHint: 'Перетащите задачи из бэклога в спринт, чтобы запланировать их.',
+    backlogZone: 'Бэклог',
+    noSprints: 'Нет активных спринтов. Создайте спринт для планирования.',
+    dropHere: 'Перетащите задачи сюда',
+    overCapacity: 'Превышена ёмкость',
   },
   members: {
     members: 'Участники',

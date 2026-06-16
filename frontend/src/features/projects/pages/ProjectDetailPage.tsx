@@ -10,7 +10,7 @@ import AddTaskModal from '../../tasks/components/AddTaskModal';
 import EditTaskModal from '../../tasks/components/EditTaskModal';
 import MembersBar from '../components/MembersBar';
 import BoardPage from './BoardPage';
-import BacklogPanel from '../components/BacklogPanel';
+import SprintPlanningBoard from '../components/SprintPlanningBoard';
 import SprintsPanel from '../components/SprintsPanel';
 import PerformancePanel from '../components/PerformancePanel';
 import ActivityPanel from '../components/ActivityPanel';
@@ -23,9 +23,10 @@ export default function ProjectDetailPage() {
   const location = useLocation();
   const t = useT();
   const isBoardRoute = location.pathname.endsWith('/board');
-  // Tabs: List/Board are route-backed (deep-linkable); the rest are local.
-  const [extraTab, setExtraTab] = useState<'backlog' | 'sprints' | 'performance' | 'activity' | null>(null);
-  const tab: ProjectTab = extraTab ?? (isBoardRoute ? 'board' : 'list');
+  // Board is route-backed (deep-linkable); the rest are local. Landing-ul
+  // implicit al proiectului e BACKLOG (planificare prin drag&drop).
+  const [extraTab, setExtraTab] = useState<'list' | 'backlog' | 'sprints' | 'performance' | 'activity' | null>(null);
+  const tab: ProjectTab = isBoardRoute ? 'board' : (extraTab ?? 'backlog');
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -191,12 +192,12 @@ export default function ProjectDetailPage() {
       {/* Tabs: List | Board | Backlog | Sprints | Performance */}
       <div className="flex items-center gap-1 mb-6 border-b border-border overflow-x-auto">
         <button
-          onClick={() => { setExtraTab(null); navigate(`/projects/${projectId}`); }}
+          onClick={() => { setExtraTab(null); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
           className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
-            tab === 'list' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+            tab === 'backlog' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
           }`}
         >
-          {t('board.list')}
+          {t('pm.backlog')}
         </button>
         <button
           onClick={() => { setExtraTab(null); navigate(`/projects/${projectId}/board`); }}
@@ -207,12 +208,12 @@ export default function ProjectDetailPage() {
           {t('board.board')}
         </button>
         <button
-          onClick={() => { setExtraTab('backlog'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
+          onClick={() => { setExtraTab('list'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
           className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
-            tab === 'backlog' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
+            tab === 'list' ? 'border-blue-500 text-fg' : 'border-transparent text-muted hover:text-fg'
           }`}
         >
-          {t('pm.backlog')}
+          {t('board.list')}
         </button>
         <button
           onClick={() => { setExtraTab('sprints'); if (isBoardRoute) navigate(`/projects/${projectId}`); }}
@@ -243,7 +244,7 @@ export default function ProjectDetailPage() {
       {tab === 'board' ? (
         projectId && <BoardPage projectId={projectId} myRole={project.role} />
       ) : tab === 'backlog' ? (
-        projectId && <BacklogPanel projectId={projectId} myRole={project.role} />
+        projectId && <SprintPlanningBoard projectId={projectId} myRole={project.role} />
       ) : tab === 'sprints' ? (
         projectId && <SprintsPanel projectId={projectId} myRole={project.role} />
       ) : tab === 'performance' ? (
