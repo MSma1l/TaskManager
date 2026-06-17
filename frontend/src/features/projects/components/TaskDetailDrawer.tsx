@@ -78,9 +78,9 @@ export default function TaskDetailDrawer({
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md h-full bg-bg border-l border-border shadow-2xl flex flex-col animate-[slidein_0.18s_ease-out]">
+      <div className="relative w-full max-w-md h-full max-h-[100dvh] bg-bg border-l border-border shadow-2xl flex flex-col overflow-hidden animate-[slidein_0.18s_ease-out]">
         {/* Header */}
-        <div className="flex items-start gap-2 p-4 border-b border-border">
+        <div className="flex items-start gap-2 p-4 border-b border-border flex-shrink-0">
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
               {task.taskKey && (
@@ -136,7 +136,7 @@ export default function TaskDetailDrawer({
         </div>
 
         {/* Body (scrollable) */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Meta section */}
           <div className="p-4 flex flex-col gap-4 border-b border-border">
             {task.description && (
@@ -277,12 +277,10 @@ export default function TaskDetailDrawer({
           {/* Tab content */}
           <div className="p-4">
             {tab === 'comments' ? (
-              <CommentsTab
+              <CommentsList
                 comments={comments}
-                members={members}
                 myUserId={myUserId}
                 lang={lang}
-                onAdd={add}
                 onEdit={edit}
                 onRemove={remove}
               />
@@ -291,6 +289,12 @@ export default function TaskDetailDrawer({
             )}
           </div>
         </div>
+
+        {/* Composer — pinned at the panel bottom, outside the scroll region so it
+            stays reachable no matter how many comments accumulate. */}
+        {tab === 'comments' && (
+          <CommentComposer members={members} onAdd={add} />
+        )}
       </div>
 
       <style>{`@keyframes slidein { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
@@ -298,30 +302,112 @@ export default function TaskDetailDrawer({
   );
 }
 
-// ── Comments tab ─────────────────────────────────────────────────────────────
+// ── Comments list (scrollable) ───────────────────────────────────────────────
 
-function CommentsTab({
+function CommentsList({
   comments,
-  members,
   myUserId,
   lang,
-  onAdd,
   onEdit,
   onRemove,
 }: {
   comments: TaskComment[];
-  members: ProjectMember[];
   myUserId: string | null;
   lang: 'ro' | 'ru';
-  onAdd: (body: string) => Promise<void>;
   onEdit: (commentId: string, body: string) => Promise<void>;
   onRemove: (commentId: string) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
+
+  const startEdit = (c: TaskComment) => {
+    setEditingId(c.id);
+    setEditBody(c.body);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editBody.trim()) return;
+    await onEdit(editingId, editBody.trim());
+    setEditingId(null);
+    setEditBody('');
+  };
+
+  if (comments.length === 0) {
+    return <p className="text-sm text-muted text-center py-6">{t('collab.noComments')}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {comments.map((c) => {
+        const isMine = !!myUserId && c.userId === myUserId;
+        const initials = (c.fullName || c.username).charAt(0).toUpperCase();
+        return (
+          <div key={c.id} className="flex gap-2.5">
+            <span
+              className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                c.userId,
+              )}`}
+            >
+              {initials}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-fg">{c.fullName || c.username}</span>
+                <span className="text-xs text-muted">{relativeTime(c.createdAt, lang)}</span>
+              </div>
+              {editingId === c.id ? (
+                <div className="mt-1 flex flex-col gap-2">
+                  <textarea
+                    value={editBody}
+                    onChange={(e) => setEditBody(e.target.value)}
+                    rows={2}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="text-xs text-blue-400 font-semibold hover:text-blue-300">
+                      {t('common.save')}
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="text-xs text-muted hover:text-fg">
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-fg/90 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
+                  {isMine && (
+                    <div className="flex gap-3 mt-1">
+                      <button onClick={() => startEdit(c)} className="text-xs text-muted hover:text-fg">
+                        {t('collab.edit')}
+                      </button>
+                      <button onClick={() => onRemove(c.id)} className="text-xs text-red-400/70 hover:text-red-400">
+                        {t('collab.delete')}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Comment composer (pinned at the bottom of the drawer) ─────────────────────
+
+function CommentComposer({
+  members,
+  onAdd,
+}: {
+  members: ProjectMember[];
+  onAdd: (body: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ── @mention autocomplete ──────────────────────────────────────────────────
@@ -370,126 +456,50 @@ function CommentsTab({
     }
   };
 
-  const startEdit = (c: TaskComment) => {
-    setEditingId(c.id);
-    setEditBody(c.body);
-  };
-
-  const saveEdit = async () => {
-    if (!editingId || !editBody.trim()) return;
-    await onEdit(editingId, editBody.trim());
-    setEditingId(null);
-    setEditBody('');
-  };
-
   return (
-    <div className="flex flex-col gap-3">
-      {/* List */}
-      {comments.length === 0 ? (
-        <p className="text-sm text-muted text-center py-6">{t('collab.noComments')}</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {comments.map((c) => {
-            const isMine = !!myUserId && c.userId === myUserId;
-            const initials = (c.fullName || c.username).charAt(0).toUpperCase();
-            return (
-              <div key={c.id} className="flex gap-2.5">
-                <span
-                  className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                    c.userId,
-                  )}`}
-                >
-                  {initials}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-fg">{c.fullName || c.username}</span>
-                    <span className="text-xs text-muted">{relativeTime(c.createdAt, lang)}</span>
-                  </div>
-                  {editingId === c.id ? (
-                    <div className="mt-1 flex flex-col gap-2">
-                      <textarea
-                        value={editBody}
-                        onChange={(e) => setEditBody(e.target.value)}
-                        rows={2}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
-                      />
-                      <div className="flex gap-2">
-                        <button onClick={saveEdit} className="text-xs text-blue-400 font-semibold hover:text-blue-300">
-                          {t('common.save')}
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="text-xs text-muted hover:text-fg">
-                          {t('common.cancel')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-sm text-fg/90 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
-                      {isMine && (
-                        <div className="flex gap-3 mt-1">
-                          <button onClick={() => startEdit(c)} className="text-xs text-muted hover:text-fg">
-                            {t('collab.edit')}
-                          </button>
-                          <button onClick={() => onRemove(c.id)} className="text-xs text-red-400/70 hover:text-red-400">
-                            {t('collab.delete')}
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+    <div className="relative flex-shrink-0 border-t border-border bg-bg p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <textarea
+        ref={textareaRef}
+        value={body}
+        onChange={handleChange}
+        placeholder={t('collab.addComment')}
+        rows={2}
+        className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
+      />
+
+      {/* Mention dropdown */}
+      {mentionQuery !== null && mentionMatches.length > 0 && (
+        <div className="absolute left-4 bottom-full mb-1 w-56 max-h-48 overflow-y-auto rounded-xl bg-surface border border-border shadow-xl z-20">
+          {mentionMatches.map((m) => (
+            <button
+              key={m.userId}
+              onClick={() => insertMention(m.username)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-fg hover:bg-elevated transition-colors"
+            >
+              <span
+                className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                  m.userId,
+                )}`}
+              >
+                {(m.fullName || m.username).charAt(0).toUpperCase()}
+              </span>
+              <span className="truncate">
+                <span className="font-semibold">@{m.username}</span>
+                {m.fullName && <span className="text-muted"> · {m.fullName}</span>}
+              </span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Composer */}
-      <div className="relative border-t border-border pt-3">
-        <textarea
-          ref={textareaRef}
-          value={body}
-          onChange={handleChange}
-          placeholder={t('collab.addComment')}
-          rows={2}
-          className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-fg outline-none focus:border-blue-500 resize-none"
-        />
-
-        {/* Mention dropdown */}
-        {mentionQuery !== null && mentionMatches.length > 0 && (
-          <div className="absolute left-0 bottom-full mb-1 w-56 max-h-48 overflow-y-auto rounded-xl bg-surface border border-border shadow-xl z-20">
-            {mentionMatches.map((m) => (
-              <button
-                key={m.userId}
-                onClick={() => insertMention(m.username)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-fg hover:bg-elevated transition-colors"
-              >
-                <span
-                  className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                    m.userId,
-                  )}`}
-                >
-                  {(m.fullName || m.username).charAt(0).toUpperCase()}
-                </span>
-                <span className="truncate">
-                  <span className="font-semibold">@{m.username}</span>
-                  {m.fullName && <span className="text-muted"> · {m.fullName}</span>}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={handleSend}
-            disabled={!body.trim() || sending}
-            className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-          >
-            {sending ? t('common.saving') : t('collab.send')}
-          </button>
-        </div>
+      <div className="flex justify-end mt-2">
+        <button
+          onClick={handleSend}
+          disabled={!body.trim() || sending}
+          className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+        >
+          {sending ? t('common.saving') : t('collab.send')}
+        </button>
       </div>
     </div>
   );
