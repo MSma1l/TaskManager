@@ -6,6 +6,8 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import Tour from '../../../shared/components/tour/Tour';
 import FriendsCard from '../../friends/components/FriendsCard';
 import PushToggle from '../../notifications/components/PushToggle';
+import PersonalStatsCard from '../../stats/components/PersonalStatsCard';
+import TeamStatsCard from '../../stats/components/TeamStatsCard';
 
 interface NotificationPrefs {
   telegram?: boolean;
@@ -166,6 +168,12 @@ export default function ProfilePage() {
           </button>
         </div>
       </Card>
+
+      {/* Statistici personale (story points) */}
+      <PersonalStatsCard />
+
+      {/* Statistici de echipa (doar admini) */}
+      {me?.role === 'ADMIN' && <TeamStatsCard />}
 
       {/* Colaboratori (prieteni / colegi) */}
       <FriendsCard />

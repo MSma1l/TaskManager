@@ -5,6 +5,7 @@ import {
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { projectsApi, Project } from '../../projects/api/projects';
 import { reportsApi, SprintReport } from '../api/reports';
+import ShareReportPanel from '../../viewaccount/components/ShareReportPanel';
 
 function fmtDate(iso: string | null): string {
   return iso ? iso.slice(0, 10) : '—';
@@ -99,6 +100,11 @@ export default function ReportsPage() {
           )}
         </>
       )}
+
+      {/* View Account — linkuri publice read-only */}
+      <div className="mt-8">
+        <ShareReportPanel />
+      </div>
     </div>
   );
 }

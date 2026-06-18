@@ -25,6 +25,23 @@ export interface EstimateResult {
   source: AiSource;
 }
 
+/** A complete task proposed by the AI (preview, not yet persisted). */
+export interface GeneratedTask {
+  title: string;
+  description: string;
+  storyPoints: number;
+  subtasks: string[];
+  dependencies: string[];
+  /** ISO datetime suggested as the deadline, or null. */
+  dueDate: string | null;
+  rationale?: string;
+}
+
+export interface GenerateTaskResult {
+  task: GeneratedTask;
+  source: AiSource;
+}
+
 export interface CreateAiTaskResult {
   task: BoardTask;
 }
@@ -34,6 +51,9 @@ export interface PlannedTask {
   title: string;
   description: string;
   storyPoints: number;
+  subtasks?: string[];
+  dependencies?: string[];
+  dueDate?: string | null;
 }
 
 export interface PlanResult {
@@ -46,6 +66,8 @@ export interface ApplyPlanTask {
   title: string;
   description?: string;
   storyPoints?: number;
+  subtasks?: string[];
+  dueDate?: string | null;
   columnId?: string;
 }
 
@@ -64,13 +86,19 @@ export const aiApi = {
     client
       .post<EstimateResult>(`/projects/${projectId}/ai/estimate`, data)
       .then((r) => r.data),
+  /** Generate ONE complete task (subtasks, story points, dependencies, timeline) from a description. */
+  generateTask: (projectId: string, data: { title: string; description?: string }) =>
+    client
+      .post<GenerateTaskResult>(`/projects/${projectId}/ai/generate-task`, data)
+      .then((r) => r.data),
   createTask: (
     projectId: string,
     data: {
       title: string;
       description?: string;
       storyPoints?: number;
-      columnId?: string;
+      subtasks?: string[];
+      dueDate?: string | null;
       assigneeId?: string;
     },
   ) =>

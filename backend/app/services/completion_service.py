@@ -104,3 +104,31 @@ def mark_not_done(db: Session, task_id: str, skip_reason: str, week_start_iso: s
 
 def move_task(db: Session, task_id: str, moved_to_date: str, note: str | None = None, week_start_iso: str | None = None) -> TaskCompletion | None:
     return mark_skip(db, task_id, moved_to_date, note, week_start_iso)
+
+
+def mark_started(db: Session, task_id: str, note: str | None = None, week_start_iso: str | None = None) -> TaskCompletion | None:
+    """Marcheaza un task ca „luat in lucru".
+
+    Enum-ul TaskStatus nu are o stare dedicata „IN_PROGRESS" (ar cere o migrare,
+    in afara scope-ului), asa ca starea „in lucru" e reprezentata pragmatic
+    printr-un completion PENDING care are un `note` ne-gol. Frontend-ul afiseaza
+    un badge „In lucru" pentru orice completion PENDING cu nota setata.
+
+    Functia reseteaza si starile terminale (DONE / NOT_DONE / SKIPPED) inapoi la
+    PENDING — deci serveste si ca „muta la De facut" cand `note` e gol.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        return None
+
+    week_start = _resolve_week_start(week_start_iso)
+    completion = _get_or_create_completion(db, task_id, week_start)
+    completion.status = TaskStatus.PENDING
+    completion.completed_at = None
+    completion.moved_to_date = None
+    completion.skip_reason = None
+    completion.note = (note or "").strip() or None
+    completion.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(completion)
+    return completion

@@ -11,6 +11,8 @@ interface MobileDayViewProps {
   onAddClick: (date: Date) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
+  onTakeInWork?: (task: Task) => void;
+  onComplete?: (task: Task) => void;
 }
 
 /**
@@ -25,6 +27,8 @@ export default function MobileDayView({
   onAddClick,
   onPrevWeek,
   onNextWeek,
+  onTakeInWork,
+  onComplete,
 }: MobileDayViewProps) {
   const todayInWeek = weekDays.findIndex((d) => isToday(d));
   const initial = todayInWeek >= 0 ? todayInWeek : 0;
@@ -158,7 +162,13 @@ export default function MobileDayView({
             </div>
           )}
           {dayTasks.map((task) => (
-            <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onClick={onTaskClick}
+              onTakeInWork={onTakeInWork}
+              onComplete={onComplete}
+            />
           ))}
         </div>
       </div>

@@ -50,6 +50,22 @@ async def mark_done(
     return completion_to_dict(result)
 
 
+@router.post("/{task_id}/start")
+async def mark_started(
+    task_id: str,
+    data: MarkDoneInput = MarkDoneInput(),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Marcheaza taskul „luat in lucru" (PENDING + nota) sau il reseteaza la
+    „De facut" cand nota e goala. Reuseaza schema MarkDoneInput {note, weekStart}."""
+    _own_or_404(db, user, task_id)
+    result = completion_service.mark_started(db, task_id, data.note, data.weekStart)
+    if not result:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return completion_to_dict(result)
+
+
 @router.post("/{task_id}/skip")
 async def mark_skip(
     task_id: str,

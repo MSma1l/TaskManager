@@ -3,18 +3,35 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.base import generate_cuid
 from app.models.board_column import BoardColumn
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.ai import (
     TaskQuestionsRequest,
     EstimateRequest,
+    GenerateTaskRequest,
     CreateTaskRequest,
     SprintPlanInput,
     SprintPlanApplyInput,
 )
 from app.services import ai_service, board_service, membership_service
+from app.services.ai_service import AiResponseError
 
 router = APIRouter(prefix="/api", tags=["ai"])
+
+
+def _attach_subtasks(db: Session, task: Task, subtasks: list[str] | None) -> None:
+    """Persista o lista de titluri de subtaskuri ca checklist pe task."""
+    items = [
+        {"id": generate_cuid(), "title": s.strip(), "done": False}
+        for s in (subtasks or [])
+        if isinstance(s, str) and s.strip()
+    ]
+    if items:
+        task.subtasks = items
+        db.commit()
+        db.refresh(task)
 
 
 # ── intrebari (orice user autentificat) ─────────────────────────────
@@ -39,6 +56,30 @@ async def estimate(
 ):
     membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
     return ai_service.estimate(data.title, data.description or "", data.answers or {})
+
+
+# ── generare task complet (preview, MEMBER in proiect) ──────────────
+
+@router.post("/projects/{project_id}/ai/generate-task")
+async def generate_task(
+    project_id: str,
+    data: GenerateTaskRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Preview: dintr-o descriere genereaza UN task complet (subtaskuri, story
+    points, dependente, timeline). NU persista nimic — userul confirma apoi
+    cu /ai/create-task."""
+    membership_service.require_membership(db, project_id, user.id, min_role="MEMBER")
+
+    title = (data.title or "").strip()
+    if not title and not (data.description or "").strip():
+        raise HTTPException(status_code=400, detail="Titlul sau descrierea sunt obligatorii")
+
+    try:
+        return ai_service.generate_task(title, data.description or "")
+    except AiResponseError:
+        raise HTTPException(status_code=502, detail="AI a returnat un raspuns invalid")
 
 
 # ── creare task din estimare (MEMBER in proiect) ────────────────────
@@ -101,8 +142,12 @@ async def create_task(
         "columnId": column_id,
         "assigneeId": data.assigneeId,
         "storyPoints": story_points,
+        "dueDate": data.dueDate,
         "labelIds": [],
     })
+
+    # Persista subtaskurile confirmate (board_service.create_task nu le accepta).
+    _attach_subtasks(db, task, data.subtasks)
 
     return {"task": board_service.board_task_to_dict(db, task)}
 
@@ -123,7 +168,10 @@ async def plan_sprint(
     if not brief:
         raise HTTPException(status_code=400, detail="Descrierea sprintului nu poate fi goala")
 
-    return ai_service.plan_sprint(brief)
+    try:
+        return ai_service.plan_sprint(brief)
+    except AiResponseError:
+        raise HTTPException(status_code=502, detail="AI a returnat un raspuns invalid")
 
 
 @router.post("/projects/{project_id}/ai/plan/apply")
@@ -158,8 +206,10 @@ async def apply_sprint_plan(
             "columnId": column_id,
             "assigneeId": None,
             "storyPoints": story_points,
+            "dueDate": item.dueDate,
             "labelIds": [],
         })
+        _attach_subtasks(db, task, item.subtasks)
         created.append(board_service.board_task_to_dict(db, task))
 
     return {"created": created, "count": len(created)}

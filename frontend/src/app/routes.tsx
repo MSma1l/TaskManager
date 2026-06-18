@@ -25,6 +25,7 @@ const QuickTasksPage = lazy(() => import('../features/quicktasks/pages/QuickTask
 const PublicQuickTaskPage = lazy(() => import('../features/quicktasks/pages/PublicQuickTaskPage'));
 const VerifyPage = lazy(() => import('../features/verify/pages/VerifyPage'));
 const ReportsPage = lazy(() => import('../features/reports/pages/ReportsPage'));
+const PublicReportPage = lazy(() => import('../features/viewaccount/pages/PublicReportPage'));
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout'));
 const AdminDashboardPage = lazy(() => import('../features/admin/pages/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('../features/admin/pages/AdminUsersPage'));
@@ -62,6 +63,8 @@ export default function AppRoutes() {
         <Route path="/tg-app" element={<TelegramAppPage />} />
         {/* Quick Task public — acces FĂRĂ login */}
         <Route path="/quick" element={<PublicQuickTaskPage />} />
+        {/* View Account — raport public read-only */}
+        <Route path="/view/:token" element={<PublicReportPage />} />
 
         {/* Admin entry point */}
         <Route path="/admin_task_manager" element={<AdminLoginPage />} />

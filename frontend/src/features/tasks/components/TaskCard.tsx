@@ -1,18 +1,27 @@
 import { Task } from '../api/tasks';
+import { useT } from '../../../shared/i18n/I18nProvider';
 import CategoryBadge from '../../../shared/components/ui/CategoryBadge';
 import StatusBadge from '../../../shared/components/ui/StatusBadge';
 
 interface TaskCardProps {
   task: Task;
   onClick: (task: Task) => void;
+  /** Quick action: marcheaza taskul „luat in lucru" (PENDING + nota). */
+  onTakeInWork?: (task: Task) => void;
+  /** Quick action: marcheaza taskul „Finalizat" (DONE). */
+  onComplete?: (task: Task) => void;
 }
 
-export default function TaskCard({ task, onClick }: TaskCardProps) {
+export default function TaskCard({ task, onClick, onTakeInWork, onComplete }: TaskCardProps) {
+  const t = useT();
   const completion = task.completions?.[0];
   const status = completion?.status || 'PENDING';
   const isPending = status === 'PENDING';
   const isDone = status === 'DONE';
   const isNotDone = status === 'NOT_DONE';
+  // „In lucru" = PENDING cu nota setata (vezi completion_service.mark_started).
+  const inProgress = isPending && !!completion?.note;
+  const showQuickActions = isPending && (onTakeInWork || onComplete);
 
   const statusStyles: Record<string, string> = {
     PENDING: 'border-slate-600/50 bg-slate-700/50 hover:bg-slate-700 hover:border-slate-500',
@@ -38,7 +47,14 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
             <h4 className={`text-sm font-semibold truncate ${isDone ? 'line-through text-slate-400' : ''}`}>
               {task.title}
             </h4>
-            <StatusBadge status={status} />
+            {inProgress ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                {t('weekly.inProgress')}
+              </span>
+            ) : (
+              <StatusBadge status={status} />
+            )}
           </div>
           {task.description && (
             <p className="text-xs text-slate-400 mt-1 line-clamp-2">{task.description}</p>
@@ -94,6 +110,31 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
             <p className="text-xs text-blue-400/80 mt-1.5 italic">
               Mutat pe {new Date(completion.movedToDate).toLocaleDateString('ro-RO')}
             </p>
+          )}
+          {inProgress && completion?.note && (
+            <p className="text-xs text-amber-300/80 mt-1.5 italic truncate">
+              {completion.note}
+            </p>
+          )}
+          {showQuickActions && (
+            <div className="flex items-center gap-1.5 mt-2">
+              {!inProgress && onTakeInWork && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onTakeInWork(task); }}
+                  className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 transition-colors"
+                >
+                  {t('weekly.takeInWork')}
+                </button>
+              )}
+              {onComplete && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onComplete(task); }}
+                  className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30 transition-colors"
+                >
+                  {t('weekly.markDone')}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

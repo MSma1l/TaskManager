@@ -17,6 +17,10 @@ interface DraftTask {
   title: string;
   description: string;
   storyPoints: string;
+  /** Subtasks, one per line in the textarea. */
+  subtasks: string;
+  dueDate: string; // yyyy-mm-dd
+  dependencies: string[]; // read-only, informational
 }
 
 let rowSeq = 0;
@@ -26,6 +30,14 @@ const clampSp = (raw: string): number => {
   const n = parseInt(raw, 10);
   if (!Number.isFinite(n)) return 1;
   return Math.min(10, Math.max(1, n));
+};
+
+/** ISO datetime -> yyyy-mm-dd for a <input type="date"> (empty if invalid). */
+const isoToDateInput = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
 };
 
 /** Small pill showing whether the plan came from the AI model or the rule-based fallback. */
@@ -54,6 +66,12 @@ export default function SprintPlannerModal({ projectId, onClose, onCreated }: Sp
   const [drafts, setDrafts] = useState<DraftTask[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  /** Pull a clear message out of an axios-style error (e.g. backend 502 detail). */
+  const errMessage = (e: unknown, fallback: string): string => {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    return typeof detail === 'string' && detail ? detail : fallback;
+  };
+
   const handleGenerate = async () => {
     if (!brief.trim()) {
       setError(t('pm.emptyBriefError'));
@@ -70,11 +88,14 @@ export default function SprintPlannerModal({ projectId, onClose, onCreated }: Sp
           title: task.title,
           description: task.description ?? '',
           storyPoints: String(clampSp(String(task.storyPoints ?? 1))),
+          subtasks: (task.subtasks ?? []).join('\n'),
+          dueDate: isoToDateInput(task.dueDate),
+          dependencies: task.dependencies ?? [],
         })),
       );
       setStep('review');
-    } catch {
-      setError(t('common.error'));
+    } catch (e) {
+      setError(errMessage(e, t('pm.aiInvalid')));
     } finally {
       setLoading(false);
     }
@@ -87,7 +108,10 @@ export default function SprintPlannerModal({ projectId, onClose, onCreated }: Sp
 
   const addBlankRow = () => {
     const id = newRowId();
-    setDrafts((prev) => [...prev, { id, title: '', description: '', storyPoints: '1' }]);
+    setDrafts((prev) => [
+      ...prev,
+      { id, title: '', description: '', storyPoints: '1', subtasks: '', dueDate: '', dependencies: [] },
+    ]);
     setExpanded((prev) => ({ ...prev, [id]: true }));
   };
 
@@ -108,12 +132,17 @@ export default function SprintPlannerModal({ projectId, onClose, onCreated }: Sp
           title: d.title.trim(),
           description: d.description.trim() || undefined,
           storyPoints: clampSp(d.storyPoints),
+          subtasks: d.subtasks
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean),
+          dueDate: d.dueDate ? `${d.dueDate}T17:00:00` : null,
         })),
       );
       onCreated();
       onClose();
-    } catch {
-      setError(t('common.error'));
+    } catch (e) {
+      setError(errMessage(e, t('common.error')));
     } finally {
       setLoading(false);
     }
@@ -216,14 +245,43 @@ export default function SprintPlannerModal({ projectId, onClose, onCreated }: Sp
                         {isOpen ? '▾' : '▸'} {t('pm.taskDescription')}
                       </button>
                       {isOpen && (
-                        <textarea
-                          value={d.description}
-                          onChange={(e) => updateDraft(d.id, { description: e.target.value })}
-                          rows={2}
-                          maxLength={2000}
-                          placeholder={t('pm.taskDescription')}
-                          className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-fg text-sm outline-none focus:border-blue-500 transition-colors resize-none"
-                        />
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={d.description}
+                            onChange={(e) => updateDraft(d.id, { description: e.target.value })}
+                            rows={3}
+                            maxLength={2000}
+                            placeholder={t('pm.taskDescription')}
+                            className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-fg text-sm outline-none focus:border-blue-500 transition-colors resize-none"
+                          />
+                          <label className="text-xs text-muted">{t('pm.subtasks')}</label>
+                          <textarea
+                            value={d.subtasks}
+                            onChange={(e) => updateDraft(d.id, { subtasks: e.target.value })}
+                            rows={3}
+                            placeholder={t('pm.subtasksHint')}
+                            className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-fg text-sm outline-none focus:border-blue-500 transition-colors resize-none"
+                          />
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted">{t('pm.dueDate')}</label>
+                            <input
+                              type="date"
+                              value={d.dueDate}
+                              onChange={(e) => updateDraft(d.id, { dueDate: e.target.value })}
+                              className="px-3 py-1.5 rounded-lg bg-bg border border-border text-fg text-sm outline-none focus:border-blue-500 transition-colors"
+                            />
+                          </div>
+                          {d.dependencies.length > 0 && (
+                            <div>
+                              <label className="text-xs text-muted">{t('pm.dependencies')}</label>
+                              <ul className="list-disc list-inside text-xs text-muted space-y-0.5 mt-0.5">
+                                {d.dependencies.map((dep, i) => (
+                                  <li key={i}>{dep}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   );

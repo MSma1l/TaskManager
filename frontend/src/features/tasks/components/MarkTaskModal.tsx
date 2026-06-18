@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Task } from '../api/tasks';
 import { completionsApi } from '../api/completions';
+import { useT } from '../../../shared/i18n/I18nProvider';
 
 interface MarkTaskModalProps {
   task: Task;
@@ -8,17 +9,23 @@ interface MarkTaskModalProps {
   onDone: () => void;
   onDelete?: (taskId: string) => Promise<void>;
   onEdit?: (task: Task) => void;
+  /** Saptamana afisata (ISO) — pentru a marca starea pe saptamana corecta. */
+  weekStart?: string;
 }
 
-export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit }: MarkTaskModalProps) {
+export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit, weekStart }: MarkTaskModalProps) {
+  const t = useT();
   const completion = task.completions?.[0];
   const currentStatus = completion?.status || 'PENDING';
   const isPending = currentStatus === 'PENDING';
+  // „In lucru" = PENDING cu nota setata.
+  const inProgress = isPending && !!completion?.note;
 
   const [mode, setMode] = useState<'choose' | 'move' | 'notdone' | 'confirmDelete'>('choose');
   const [movedToDate, setMovedToDate] = useState('');
   const [dateError, setDateError] = useState('');
   const [note, setNote] = useState('');
+  const [progressNote, setProgressNote] = useState(completion?.note || '');
   const [reason, setReason] = useState('');
   const [reasonTouched, setReasonTouched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -27,8 +34,19 @@ export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit 
   const handleDone = async () => {
     setLoading(true);
     try {
-      await completionsApi.markDone(task.id);
+      await completionsApi.markDone(task.id, undefined, weekStart);
       setSuccess('Marcat ca facut!');
+      setTimeout(onDone, 600);
+    } catch {
+      setLoading(false);
+    }
+  };
+
+  const handleStart = async () => {
+    setLoading(true);
+    try {
+      await completionsApi.start(task.id, progressNote.trim() || t('weekly.inProgress'), weekStart);
+      setSuccess(t('weekly.statusUpdated'));
       setTimeout(onDone, 600);
     } catch {
       setLoading(false);
@@ -55,7 +73,7 @@ export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit 
     if (!movedToDate || dateError) return;
     setLoading(true);
     try {
-      await completionsApi.moveTask(task.id, movedToDate, note || undefined);
+      await completionsApi.moveTask(task.id, movedToDate, note || undefined, weekStart);
       setSuccess('Task mutat!');
       setTimeout(onDone, 600);
     } catch {
@@ -67,7 +85,7 @@ export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit 
     if (reason.trim().length < 10) return;
     setLoading(true);
     try {
-      await completionsApi.markNotDone(task.id, reason.trim());
+      await completionsApi.markNotDone(task.id, reason.trim(), weekStart);
       setSuccess('Task marcat ca nefacut.');
       setTimeout(onDone, 600);
     } catch {
@@ -187,6 +205,29 @@ export default function MarkTaskModal({ task, onClose, onDone, onDelete, onEdit 
 
             {mode === 'choose' && (
               <div className="flex flex-col gap-3">
+                {/* Mini-frame: progres + nota rapida (TaskCompletion.note) */}
+                <div>
+                  <label className="text-sm text-slate-300 mb-1 block">{t('weekly.note')}</label>
+                  <textarea
+                    value={progressNote}
+                    onChange={(e) => setProgressNote(e.target.value)}
+                    placeholder={t('weekly.notePlaceholder')}
+                    rows={2}
+                    maxLength={500}
+                    className="w-full px-4 py-2.5 rounded-lg bg-slate-700 border border-slate-600 outline-none focus:border-amber-500 transition-colors resize-none"
+                  />
+                </div>
+                <button
+                  onClick={handleStart}
+                  disabled={loading}
+                  className="w-full py-3 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {inProgress ? t('weekly.saveNote') : t('weekly.takeInWork')}
+                </button>
                 <button
                   onClick={handleDone}
                   disabled={loading}

@@ -1,17 +1,20 @@
+import { useDroppable } from '@dnd-kit/core';
 import { Task } from '../api/tasks';
 import { DAYS_RO } from '../../../shared/utils/constants';
 import { formatDateNice, isToday, getDayOfWeek } from '../../../shared/utils/dates';
-import TaskCard from './TaskCard';
+import DraggableTaskCard from './DraggableTaskCard';
 
 interface DayColumnProps {
   date: Date;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onAddClick: (date: Date) => void;
+  onTakeInWork?: (task: Task) => void;
+  onComplete?: (task: Task) => void;
   index: number;
 }
 
-export default function DayColumn({ date, tasks, onTaskClick, onAddClick, index }: DayColumnProps) {
+export default function DayColumn({ date, tasks, onTaskClick, onAddClick, onTakeInWork, onComplete, index }: DayColumnProps) {
   const dayOfWeek = getDayOfWeek(date);
   const today = isToday(date);
   const dayTasks = tasks.filter((t) => t.dayOfWeek === dayOfWeek);
@@ -19,13 +22,16 @@ export default function DayColumn({ date, tasks, onTaskClick, onAddClick, index 
     (t) => t.completions?.[0]?.status === 'DONE'
   ).length;
 
+  const { setNodeRef, isOver } = useDroppable({ id: `day-${dayOfWeek}`, data: { type: 'day', dayOfWeek } });
+
   return (
     <div
+      ref={setNodeRef}
       className={`fade-in-up flex-shrink-0 w-48 sm:w-auto sm:flex-1 rounded-2xl p-4 transition-all duration-300 ${
         today
           ? 'bg-gradient-to-b from-blue-600/20 to-slate-800 border-2 border-blue-500/60 shadow-lg shadow-blue-500/10'
           : 'bg-slate-800/60 border border-slate-700/40 hover:border-slate-600/60 hover:bg-slate-800/80'
-      }`}
+      } ${isOver ? 'ring-2 ring-blue-400/70 bg-slate-800/90' : ''}`}
       style={{ animationDelay: `${index * 50}ms` }}
     >
       {/* Day header */}
@@ -65,7 +71,13 @@ export default function DayColumn({ date, tasks, onTaskClick, onAddClick, index 
       {/* Tasks */}
       <div className="flex flex-col gap-2 flex-1">
         {dayTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+          <DraggableTaskCard
+            key={task.id}
+            task={task}
+            onClick={onTaskClick}
+            onTakeInWork={onTakeInWork}
+            onComplete={onComplete}
+          />
         ))}
         {dayTasks.length === 0 && (
           <div className="py-6 flex items-center justify-center">

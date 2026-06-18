@@ -3,7 +3,7 @@ import { useT } from '../../../shared/i18n/I18nProvider';
 import { useWeek } from '../hooks/useWeek';
 import { useTasks } from '../hooks/useTasks';
 import { Task, CreateTaskData } from '../api/tasks';
-import WeekGrid from '../components/WeekGrid';
+import WeekGrid, { StatusLane } from '../components/WeekGrid';
 import MobileDayView from '../components/MobileDayView';
 import AddTaskModal from '../components/AddTaskModal';
 import MarkTaskModal from '../components/MarkTaskModal';
@@ -16,7 +16,8 @@ type HomeTab = 'personal' | 'assigned';
 export default function WeekPage() {
   const t = useT();
   const { weekDays, weekStartISO, goNext, goPrev, goToday, offset } = useWeek();
-  const { tasks, loading, refetch, createTask, updateTask, deleteTask } = useTasks(weekStartISO);
+  const { tasks, loading, refetch, createTask, updateTask, deleteTask, rescheduleTask, startTask, completeTask } =
+    useTasks(weekStartISO);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState<Date | undefined>();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -63,6 +64,19 @@ export default function WeekPage() {
 
   const handleEditSave = async (taskId: string, data: Partial<CreateTaskData>) => {
     await updateTask(taskId, data);
+  };
+
+  const handleSetStatus = (task: Task, lane: StatusLane) => {
+    if (lane === 'done') {
+      completeTask(task.id, undefined, weekStartISO);
+    } else if (lane === 'inProgress') {
+      // Pastreaza nota existenta daca era deja in lucru; altfel foloseste un marcaj implicit.
+      const note = task.completions?.[0]?.note || t('weekly.inProgressNote');
+      startTask(task.id, note, weekStartISO);
+    } else {
+      // 'todo' → reset la „De facut" (nota goala).
+      startTask(task.id, '', weekStartISO);
+    }
   };
 
   return (
@@ -166,6 +180,8 @@ export default function WeekPage() {
             onAddClick={(date) => handleAddClick(date)}
             onPrevWeek={handlePrev}
             onNextWeek={handleNext}
+            onTakeInWork={(task) => handleSetStatus(task, 'inProgress')}
+            onComplete={(task) => handleSetStatus(task, 'done')}
           />
           {/* Desktop grid */}
           <div className="hidden md:block">
@@ -175,6 +191,8 @@ export default function WeekPage() {
               direction={slideDir}
               onTaskClick={setSelectedTask}
               onAddClick={(date) => handleAddClick(date)}
+              onReschedule={rescheduleTask}
+              onSetStatus={handleSetStatus}
             />
           </div>
         </>
@@ -194,6 +212,7 @@ export default function WeekPage() {
       {selectedTask && (
         <MarkTaskModal
           task={selectedTask}
+          weekStart={weekStartISO}
           onClose={() => setSelectedTask(null)}
           onDone={handleMarkDone}
           onDelete={deleteTask}

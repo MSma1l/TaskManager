@@ -39,3 +39,22 @@ async def missed(
     db: Session = Depends(get_db),
 ):
     return stats_service.get_missed(db, user_id=user.id)
+
+
+@router.get("/me/points")
+async def my_points(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Metrici PM personale (story points colectati, taskuri finalizate, trend)."""
+    return stats_service.get_my_points(db, user_id=user.id)
+
+
+@router.get("/team/points")
+async def team_points(
+    projectId: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Metrici de echipa per proiect (necesita ADMIN+ pe proiect)."""
+    return stats_service.get_team_points(db, user_id=user.id, project_id=projectId)
