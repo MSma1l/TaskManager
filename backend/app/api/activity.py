@@ -22,7 +22,18 @@ async def list_task_activity(
 async def list_project_activity(
     project_id: str,
     limit: int = 50,
-    user: User = Depends(get_current_user),
+    action: str | None = None,
+    user: str | None = None,
+    sort: str | None = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return collaboration_service.list_project_activity(db, user.id, project_id, limit)
+    return collaboration_service.list_project_activity(
+        db,
+        current_user.id,
+        project_id,
+        limit=limit,
+        action=action,
+        user_id_filter=user,
+        sort=sort,
+    )

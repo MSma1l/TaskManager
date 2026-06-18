@@ -1,21 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Project, CreateProjectData, projectsApi } from '../api/projects';
+import { Project, ProjectStatus, CreateProjectData, UpdateProjectData, projectsApi } from '../api/projects';
 
-export function useProjects() {
+export function useProjects(statuses?: ProjectStatus[]) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Serializăm filtrul ca să avem o dependență stabilă pentru useCallback/useEffect.
+  const statusKey = statuses && statuses.length ? statuses.join(',') : '';
 
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await projectsApi.getAll();
+      const filter = statusKey ? (statusKey.split(',') as ProjectStatus[]) : undefined;
+      const data = await projectsApi.getAll(filter);
       setProjects(data);
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusKey]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -36,7 +40,15 @@ export function useProjects() {
 
   const createProject = async (data: CreateProjectData) => {
     const project = await projectsApi.create(data);
-    setProjects((prev) => [project, ...prev]);
+    // Re-fetch în loc de prepend local, ca filtrul curent să rămână corect.
+    fetch();
+    return project;
+  };
+
+  const updateProject = async (id: string, data: UpdateProjectData) => {
+    const project = await projectsApi.update(id, data);
+    // Schimbarea statusului poate scoate proiectul din filtrul curent, deci re-fetch.
+    fetch();
     return project;
   };
 
@@ -45,5 +57,5 @@ export function useProjects() {
     setProjects((prev) => prev.filter((p) => p.id !== id));
   };
 
-  return { projects, loading, refetch: fetch, createProject, deleteProject };
+  return { projects, loading, refetch: fetch, createProject, updateProject, deleteProject };
 }

@@ -7,16 +7,14 @@ from app.models.task import Task
 from app.services import membership_service
 
 
-def get_all_projects(db: Session, user_id: str):
+def get_all_projects(db: Session, user_id: str, statuses: list[str] | None = None):
     ids = membership_service.get_accessible_project_ids(db, user_id)
     if not ids:
         return []
-    return (
-        db.query(Project)
-        .filter(Project.is_active == True, Project.id.in_(ids))
-        .order_by(Project.created_at.desc())
-        .all()
-    )
+    query = db.query(Project).filter(Project.is_active == True, Project.id.in_(ids))
+    if statuses:
+        query = query.filter(Project.status.in_(statuses))
+    return query.order_by(Project.created_at.desc()).all()
 
 
 def get_project(db: Session, user_id: str, project_id: str):
@@ -111,6 +109,9 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
         project.is_active = data["isActive"]
     if "key" in data and data["key"]:
         project.key = data["key"].strip().upper()[:10]
+    if "status" in data and data["status"] is not None:
+        if data["status"] in ("ACTIVE", "ON_HOLD", "ARCHIVED"):
+            project.status = data["status"]
 
     project.updated_at = datetime.utcnow()
     db.commit()

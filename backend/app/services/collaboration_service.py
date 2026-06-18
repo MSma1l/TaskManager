@@ -20,11 +20,24 @@ from app.models.project_member import ProjectMember
 from app.models.task_comment import TaskComment
 from app.models.task_activity import TaskActivity
 from app.models.task_watcher import TaskWatcher
+from app.models.board_column import BoardColumn
 from app.services import membership_service
 
 
 MENTION_RE = re.compile(r"@(\w+)")
 SNIPPET_MAX = 120
+
+# Filtrarea pe "Tip" din feed: unele tipuri logice grupeaza mai multe `action`-uri.
+# "STATUS_CHANGE" = orice tranzitie de stadiu (mutare manuala sau workflow).
+_ACTION_GROUPS = {
+    "STATUS_CHANGE": ("MOVED", "PLANNED", "STARTED", "DONE", "APPROVED"),
+}
+
+# Ordinea prioritatilor pentru sortarea descrescatoare (cea mai mare prima).
+_PRIORITY_RANK = {"URGENT": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+# Optiunile valide de sortare pentru feed-ul de proiect.
+_VALID_SORTS = {"recent", "person", "date", "status", "priority"}
 
 
 # ── helpers interne ──────────────────────────────────────────────────
@@ -202,25 +215,88 @@ def list_task_activity(db: Session, user_id: str, task_id: str) -> list[dict]:
     return _activity_list_to_dict(db, rows)
 
 
-def list_project_activity(db: Session, user_id: str, project_id: str, limit: int = 50) -> list[dict]:
+def list_project_activity(
+    db: Session,
+    user_id: str,
+    project_id: str,
+    limit: int = 50,
+    action: str | None = None,
+    user_id_filter: str | None = None,
+    sort: str | None = None,
+) -> list[dict]:
+    """Feed de activitate al unui proiect, cu filtrare + sortare optionala.
+
+    - `action`: filtru pe Tip. Poate fi un `action` concret (ex: "CREATED",
+      "COMMENTED") sau un grup logic din `_ACTION_GROUPS` (ex: "STATUS_CHANGE").
+    - `user_id_filter`: filtru pe Persoana (actorul).
+    - `sort`: 'recent' (default, cele mai noi), 'date' (cronologic asc),
+      'person', 'status' sau 'priority'.
+
+    Rezultatele sunt imbogatite cu titlul/prioritatea/statusul task-ului (pentru
+    afisare + sortare). Sortarile non-default se aplica in Python peste setul deja
+    limitat (listele sunt mici), pastrand ordinea recenta ca tiebreaker stabil.
+    """
     membership_service.require_membership(db, project_id, user_id, min_role="VIEWER")
     limit = max(1, min(int(limit or 50), 200))
-    rows = (
-        db.query(TaskActivity)
-        .filter(TaskActivity.project_id == project_id)
-        .order_by(TaskActivity.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    return _activity_list_to_dict(db, rows)
+    sort = sort if sort in _VALID_SORTS else "recent"
+
+    q = db.query(TaskActivity).filter(TaskActivity.project_id == project_id)
+
+    if action:
+        group = _ACTION_GROUPS.get(action)
+        if group:
+            q = q.filter(TaskActivity.action.in_(group))
+        else:
+            q = q.filter(TaskActivity.action == action)
+
+    if user_id_filter:
+        q = q.filter(TaskActivity.user_id == user_id_filter)
+
+    rows = q.order_by(TaskActivity.created_at.desc()).limit(limit).all()
+
+    result = _activity_list_to_dict(db, rows, enrich=True)
+    return _sort_activity(result, sort)
 
 
-def _activity_list_to_dict(db: Session, rows: list[TaskActivity]) -> list[dict]:
+def _sort_activity(items: list[dict], sort: str) -> list[dict]:
+    """Sortare in-place (stabila) a feed-ului deja ordonat recent-first.
+
+    Pentru sortarile pe persoana/status/prioritate, ordinea recenta a setului de
+    intrare ramane ca tiebreaker datorita sortarii stabile din Python.
+    """
+    if sort == "date":
+        items.sort(key=lambda x: x.get("createdAt") or "")
+    elif sort == "person":
+        items.sort(key=lambda x: (x.get("username") or "￿").lower())
+    elif sort == "priority":
+        items.sort(key=lambda x: -_PRIORITY_RANK.get(x.get("taskPriority"), 0))
+    elif sort == "status":
+        items.sort(key=lambda x: x.get("_statusPos", 9999))
+    # Curata cheile-ajutor interne folosite doar pentru sortare.
+    for it in items:
+        it.pop("_statusPos", None)
+    return items
+
+
+def _activity_list_to_dict(db: Session, rows: list[TaskActivity], enrich: bool = False) -> list[dict]:
     users = _user_map(db, [r.user_id for r in rows])
+
+    task_map: dict[str, Task] = {}
+    column_map: dict[str, BoardColumn] = {}
+    if enrich:
+        task_ids = {r.task_id for r in rows if r.task_id}
+        if task_ids:
+            tasks = db.query(Task).filter(Task.id.in_(task_ids)).all()
+            task_map = {t.id: t for t in tasks}
+            col_ids = {t.board_column_id for t in tasks if t.board_column_id}
+            if col_ids:
+                cols = db.query(BoardColumn).filter(BoardColumn.id.in_(col_ids)).all()
+                column_map = {c.id: c for c in cols}
+
     result = []
     for r in rows:
         u = users.get(r.user_id)
-        result.append({
+        item = {
             "id": r.id,
             "action": r.action,
             "meta": r.meta,
@@ -228,7 +304,18 @@ def _activity_list_to_dict(db: Session, rows: list[TaskActivity]) -> list[dict]:
             "userId": r.user_id,
             "username": u.username if u else None,
             "createdAt": r.created_at.isoformat() if r.created_at else None,
-        })
+        }
+        if enrich:
+            task = task_map.get(r.task_id)
+            col = column_map.get(task.board_column_id) if task and task.board_column_id else None
+            item["taskTitle"] = task.title if task else None
+            item["taskPriority"] = task.priority if task else None
+            item["taskStatus"] = (col.column_type or col.name) if col else None
+            item["taskStatusName"] = col.name if col else None
+            # cheie interna pentru sortarea pe status (pozitia coloanei); o
+            # eliminam in _sort_activity ca sa nu ajunga in raspuns.
+            item["_statusPos"] = col.position if col is not None else 9999
+        result.append(item)
     return result
 
 

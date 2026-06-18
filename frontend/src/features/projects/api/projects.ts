@@ -2,6 +2,8 @@ import client from '../../../shared/api/client';
 import { Task } from '../../tasks/api/tasks';
 import { ProjectRole } from './members';
 
+export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'ARCHIVED';
+
 export interface Project {
   id: string;
   name: string;
@@ -10,6 +12,7 @@ export interface Project {
   color: string;
   key: string | null;
   isActive: boolean;
+  status: ProjectStatus;
   taskCount: number;
   /** Caller's role on this project (Phase 1 membership). */
   role?: ProjectRole;
@@ -38,10 +41,16 @@ export interface UpdateProjectData {
   color?: string;
   key?: string;
   isActive?: boolean;
+  status?: ProjectStatus;
 }
 
 export const projectsApi = {
-  getAll: () => client.get<Project[]>('/projects').then((r) => r.data),
+  getAll: (statuses?: ProjectStatus[]) =>
+    client
+      .get<Project[]>('/projects', {
+        params: statuses && statuses.length ? { status: statuses.join(',') } : undefined,
+      })
+      .then((r) => r.data),
   getOne: (id: string) => client.get<ProjectWithTasks>(`/projects/${id}`).then((r) => r.data),
   create: (data: CreateProjectData) => client.post<Project>('/projects', data).then((r) => r.data),
   update: (id: string, data: UpdateProjectData) => client.put<Project>(`/projects/${id}`, data).then((r) => r.data),

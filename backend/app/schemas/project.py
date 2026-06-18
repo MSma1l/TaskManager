@@ -17,3 +17,4 @@ class ProjectUpdate(BaseModel):
     color: Optional[str] = None
     isActive: Optional[bool] = None
     key: Optional[str] = None
+    status: Optional[str] = None

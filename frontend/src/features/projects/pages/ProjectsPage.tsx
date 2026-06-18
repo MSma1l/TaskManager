@@ -3,26 +3,57 @@ import { useNavigate } from 'react-router-dom';
 import { useProjects } from '../hooks/useProjects';
 import AddProjectModal from '../components/AddProjectModal';
 import { useT } from '../../../shared/i18n/I18nProvider';
+import { ProjectStatus } from '../api/projects';
+
+type StatusFilter = 'ACTIVE' | 'ON_HOLD' | 'ARCHIVED' | 'ALL';
+
+const FILTER_TO_STATUSES: Record<StatusFilter, ProjectStatus[] | undefined> = {
+  ACTIVE: ['ACTIVE'],
+  ON_HOLD: ['ON_HOLD'],
+  ARCHIVED: ['ARCHIVED'],
+  ALL: undefined,
+};
+
+const STATUS_META: Record<ProjectStatus, { icon: string; classes: string; key: string }> = {
+  ACTIVE: { icon: '🟢', classes: 'bg-green-500/15 text-green-400', key: 'projectStatus.active' },
+  ON_HOLD: { icon: '🟡', classes: 'bg-yellow-500/15 text-yellow-400', key: 'projectStatus.onHold' },
+  ARCHIVED: { icon: '🔒', classes: 'bg-slate-500/15 text-muted', key: 'projectStatus.archived' },
+};
 
 export default function ProjectsPage() {
   const t = useT();
-  const { projects, loading, createProject } = useProjects();
+  const [filter, setFilter] = useState<StatusFilter>('ACTIVE');
+  const { projects, loading, createProject, updateProject } = useProjects(FILTER_TO_STATUSES[filter]);
   const [showAdd, setShowAdd] = useState(false);
   const navigate = useNavigate();
+
+  const canEditStatus = (role?: string) => role === 'OWNER' || role === 'ADMIN';
 
   return (
     <div className="px-4 pt-5 max-w-[1600px] mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('projects.title')}</h1>
-          <p className="text-sm text-slate-400 mt-0.5">{projects.length} {t('projects.activeCount')}</p>
+          <p className="text-sm text-muted mt-0.5">{projects.length} {t('projects.activeCount')}</p>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
-        >
-          {t('projects.addProject')}
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as StatusFilter)}
+            className="px-3 py-2 rounded-xl bg-input border border-border text-fg text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors"
+          >
+            <option value="ACTIVE">{t('projectStatus.filterActive')}</option>
+            <option value="ON_HOLD">{t('projectStatus.filterOnHold')}</option>
+            <option value="ARCHIVED">{t('projectStatus.filterArchived')}</option>
+            <option value="ALL">{t('projectStatus.filterAll')}</option>
+          </select>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-semibold transition-all duration-200 shadow-lg shadow-green-600/20"
+          >
+            {t('projects.addProject')}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -31,21 +62,24 @@ export default function ProjectsPage() {
         </div>
       ) : projects.length === 0 ? (
         <div className="text-center py-20">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800 flex items-center justify-center">
-            <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-surface flex items-center justify-center">
+            <svg className="w-8 h-8 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </div>
-          <p className="text-slate-400 mb-2">{t('projects.noProjects')}</p>
-          <p className="text-sm text-slate-500">{t('projects.noProjectsHint')}</p>
+          <p className="text-muted mb-2">{t('projects.noProjects')}</p>
+          <p className="text-sm text-muted">{t('projects.noProjectsHint')}</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
+          {projects.map((project) => {
+            const meta = STATUS_META[project.status] ?? STATUS_META.ACTIVE;
+            const dimmed = project.status === 'ARCHIVED';
+            return (
             <div
               key={project.id}
               onClick={() => navigate(`/projects/${project.id}`)}
-              className="p-5 rounded-2xl bg-slate-800/60 border border-slate-700/40 hover:border-slate-600/60 hover:bg-slate-800/80 cursor-pointer transition-all duration-200 group"
+              className={`p-5 rounded-2xl bg-slate-800/60 border border-slate-700/40 hover:border-slate-600/60 hover:bg-slate-800/80 cursor-pointer transition-all duration-200 group ${dimmed ? 'opacity-60 grayscale-[0.4]' : ''}`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -66,7 +100,7 @@ export default function ProjectsPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="text-slate-400 hover:text-white transition-colors"
+                    className="text-muted hover:text-fg transition-colors"
                     title="GitHub"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -76,14 +110,34 @@ export default function ProjectsPage() {
                 )}
               </div>
               {project.description && (
-                <p className="text-sm text-slate-400 mb-3 line-clamp-2">{project.description}</p>
+                <p className="text-sm text-muted mb-3 line-clamp-2">{project.description}</p>
               )}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">
+                {canEditStatus(project.role) ? (
+                  <select
+                    value={project.status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      updateProject(project.id, { status: e.target.value as ProjectStatus });
+                    }}
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${meta.classes}`}
+                    title={t('projectStatus.change')}
+                  >
+                    <option value="ACTIVE">{`${STATUS_META.ACTIVE.icon} ${t(STATUS_META.ACTIVE.key)}`}</option>
+                    <option value="ON_HOLD">{`${STATUS_META.ON_HOLD.icon} ${t(STATUS_META.ON_HOLD.key)}`}</option>
+                    <option value="ARCHIVED">{`${STATUS_META.ARCHIVED.icon} ${t(STATUS_META.ARCHIVED.key)}`}</option>
+                  </select>
+                ) : (
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${meta.classes}`}>
+                    {meta.icon} {t(meta.key)}
+                  </span>
+                )}
+                <span className="text-xs text-muted bg-slate-700/60 px-2.5 py-1 rounded-full">
                   {project.taskCount} {t('projects.taskCount')}
                 </span>
                 {typeof project.memberCount === 'number' && (
-                  <span className="text-xs text-slate-500 bg-slate-700/60 px-2.5 py-1 rounded-full">
+                  <span className="text-xs text-muted bg-slate-700/60 px-2.5 py-1 rounded-full">
                     {project.memberCount} {t('members.memberCount')}
                   </span>
                 )}
@@ -94,7 +148,8 @@ export default function ProjectsPage() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -8,7 +8,7 @@ from app.models.project_member import ProjectMember
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.user import User
-from app.services import board_service, membership_service
+from app.services import board_service, membership_service, notification_service
 
 
 # ── helpers interne ─────────────────────────────────────────────────
@@ -253,20 +253,155 @@ def start_sprint(db: Session, user_id: str, project_id: str, sprint_id: str) -> 
     return sprint_to_dict(db, sprint)
 
 
+def _build_report(db: Session, sprint: Sprint, tasks: list[Task], done_ids: set) -> dict:
+    """Construieste snapshot-ul raportului de sprint (doar taskurile sprintului).
+
+    Forma JSON stocata in `sprint.report`:
+    {
+      "totalTasks": int,                # nr taskuri planificate in sprint
+      "completedTasks": int,            # taskuri intr-o coloana "terminat"
+      "completionPct": int,             # 0..100, procent taskuri terminate
+      "totalPoints": int,               # suma story_points planificate
+      "completedPoints": int,           # suma story_points terminate
+      "perMember": [
+        {
+          "userId": str,
+          "username": str | None,
+          "tasksDone": int,             # taskuri terminate alocate userului
+          "storyPointsDone": int,       # puncte terminate alocate userului
+          "tasksPending": int,          # taskuri neterminate alocate userului
+        }, ...
+      ],
+      "burndown": [                     # serie ideal-vs-actual (2 puncte: start/end)
+        {"label": "start", "ideal": totalPoints, "actual": totalPoints},
+        {"label": "end",   "ideal": 0,           "actual": totalPoints - completedPoints},
+      ],
+      "generatedAt": ISO str,
+    }
+    """
+    total_tasks = len(tasks)
+    completed_tasks = sum(1 for t in tasks if t.board_column_id in done_ids)
+    completion_pct = round(completed_tasks / total_tasks * 100) if total_tasks else 0
+
+    total_points = sum(t.story_points or 0 for t in tasks)
+    completed_points = sum(
+        (t.story_points or 0) for t in tasks if t.board_column_id in done_ids
+    )
+
+    # Per-membru: agregare pe assignee.
+    members = membership_service.list_members(db, sprint.project_id)
+    ids = [m.user_id for m in members]
+    rows = db.query(User).filter(User.id.in_(ids)).all() if ids else []
+    users = {u.id: u for u in rows}
+
+    agg: dict[str, dict] = {}
+    for t in tasks:
+        if not t.assignee_id:
+            continue
+        a = agg.setdefault(
+            t.assignee_id, {"tasksDone": 0, "storyPointsDone": 0, "tasksPending": 0}
+        )
+        if t.board_column_id in done_ids:
+            a["tasksDone"] += 1
+            a["storyPointsDone"] += t.story_points or 0
+        else:
+            a["tasksPending"] += 1
+
+    per_member = []
+    for m in members:
+        a = agg.get(m.user_id, {"tasksDone": 0, "storyPointsDone": 0, "tasksPending": 0})
+        u = users.get(m.user_id)
+        per_member.append({
+            "userId": m.user_id,
+            "username": u.username if u else None,
+            "tasksDone": a["tasksDone"],
+            "storyPointsDone": a["storyPointsDone"],
+            "tasksPending": a["tasksPending"],
+        })
+
+    burndown = [
+        {"label": "start", "ideal": total_points, "actual": total_points},
+        {"label": "end", "ideal": 0, "actual": total_points - completed_points},
+    ]
+
+    return {
+        "totalTasks": total_tasks,
+        "completedTasks": completed_tasks,
+        "completionPct": completion_pct,
+        "totalPoints": total_points,
+        "completedPoints": completed_points,
+        "perMember": per_member,
+        "burndown": burndown,
+        "generatedAt": datetime.utcnow().isoformat(),
+    }
+
+
 def complete_sprint(db: Session, user_id: str, project_id: str, sprint_id: str) -> dict:
     membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
     sprint = _get_sprint(db, project_id, sprint_id)
     sprint.status = "COMPLETED"
 
-    # Taskurile neterminate (coloana NU e "terminat") revin in backlog.
     done_ids = board_service.done_column_ids(db, project_id)
-    for t in _sprint_tasks(db, sprint_id):
+    tasks = _sprint_tasks(db, sprint_id)
+
+    # 1. Genereaza raportul DIN taskurile sprintului INAINTE de a dezlega
+    #    taskurile neterminate (altfel pierdem legatura sprint↔task).
+    report = _build_report(db, sprint, tasks, done_ids)
+    sprint.report = report
+    sprint.closed_at = datetime.utcnow()
+
+    # 2. Taskurile neterminate (coloana NU e "terminat") revin in backlog.
+    for t in tasks:
         if t.board_column_id not in done_ids:
             t.sprint_id = None
 
     db.commit()
     db.refresh(sprint)
+
+    # 3. Notifica toti membrii proiectului (in-app, non-fatal).
+    project = db.query(Project).filter(Project.id == project_id).first()
+    pname = project.name if project else "proiect"
+    for m in membership_service.list_members(db, project_id):
+        notification_service.create_safe(
+            db,
+            user_id=m.user_id,
+            type="SPRINT_CLOSED",
+            title=f"Sprintul „{sprint.name}” a fost inchis",
+            body=f"{report['completedTasks']}/{report['totalTasks']} taskuri terminate "
+                 f"({report['completionPct']}%) in {pname}.",
+            link="/reports",
+            meta={
+                "projectId": project_id,
+                "sprintId": sprint.id,
+                "completionPct": report["completionPct"],
+            },
+            commit=True,
+        )
+
     return sprint_to_dict(db, sprint)
+
+
+def list_reports(db: Session, user_id: str, project_id: str) -> list[dict]:
+    """Rapoartele sprinturilor inchise (status COMPLETED), cel mai recent primul."""
+    membership_service.require_membership(db, project_id, user_id, min_role="VIEWER")
+    sprints = (
+        db.query(Sprint)
+        .filter(Sprint.project_id == project_id, Sprint.status == "COMPLETED")
+        .order_by(Sprint.closed_at.desc().nullslast(), Sprint.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "sprintId": s.id,
+            "name": s.name,
+            "goal": s.goal,
+            "startDate": s.start_date.isoformat() if s.start_date else None,
+            "endDate": s.end_date.isoformat() if s.end_date else None,
+            "closedAt": s.closed_at.isoformat() if s.closed_at else None,
+            "report": s.report,
+        }
+        for s in sprints
+    ]
 
 
 # ── taskuri in sprint ───────────────────────────────────────────────

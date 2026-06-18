@@ -105,3 +105,12 @@ async def list_backlog(
     db: Session = Depends(get_db),
 ):
     return sprint_service.list_backlog(db, user.id, project_id)
+
+
+@backlog_router.get("/reports")
+async def list_reports(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return sprint_service.list_reports(db, user.id, project_id)

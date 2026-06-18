@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { useSprints } from '../hooks/useSprints';
 import { Sprint, SprintStatus } from '../api/sprints';
@@ -33,6 +34,7 @@ function fmtDate(iso: string): string {
 
 export default function SprintsPanel({ projectId, myRole }: SprintsPanelProps) {
   const t = useT();
+  const navigate = useNavigate();
   const { sprints, loading, create, remove, start, complete, addTask } = useSprints(projectId);
 
   const canManage = myRole === 'OWNER' || myRole === 'ADMIN' || myRole === undefined;
@@ -40,6 +42,21 @@ export default function SprintsPanel({ projectId, myRole }: SprintsPanelProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [addToSprint, setAddToSprint] = useState<Sprint | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmComplete, setConfirmComplete] = useState<Sprint | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [reportReady, setReportReady] = useState(false);
+
+  const handleComplete = async () => {
+    if (!confirmComplete) return;
+    setCompleting(true);
+    try {
+      await complete(confirmComplete.id);
+      setConfirmComplete(null);
+      setReportReady(true);
+    } finally {
+      setCompleting(false);
+    }
+  };
 
   return (
     <div>
@@ -103,7 +120,7 @@ export default function SprintsPanel({ projectId, myRole }: SprintsPanelProps) {
                     )}
                     {s.status === 'ACTIVE' && (
                       <button
-                        onClick={() => complete(s.id)}
+                        onClick={() => setConfirmComplete(s)}
                         className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30 transition-colors"
                       >
                         {t('pm.completeSprint')}
@@ -177,6 +194,52 @@ export default function SprintsPanel({ projectId, myRole }: SprintsPanelProps) {
           onClose={() => setAddToSprint(null)}
           onAdd={(taskId) => addTask(addToSprint.id, taskId)}
         />
+      )}
+
+      {/* Confirmare inchidere sprint (genereaza raportul + notifica echipa). */}
+      {confirmComplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-surface border border-border p-5 shadow-2xl">
+            <h3 className="text-base font-bold text-fg mb-2">{t('sprint.confirmCloseTitle')}</h3>
+            <p className="text-sm text-muted mb-5">{t('sprint.confirmClose')}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmComplete(null)}
+                disabled={completing}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-muted hover:text-fg transition-colors disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleComplete}
+                disabled={completing}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {completing ? t('common.saving') : t('pm.completeSprint')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast: raportul a fost generat — link spre pagina de rapoarte. */}
+      {reportReady && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl bg-elevated border border-border px-4 py-3 shadow-2xl">
+          <span className="text-sm text-fg">{t('sprint.reportReady')}</span>
+          <button
+            onClick={() => { setReportReady(false); navigate('/reports'); }}
+            className="text-sm font-semibold text-blue-400 hover:text-blue-300"
+          >
+            {t('report.viewReport')}
+          </button>
+          <button
+            onClick={() => setReportReady(false)}
+            className="text-muted hover:text-fg"
+            aria-label={t('common.close')}
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );

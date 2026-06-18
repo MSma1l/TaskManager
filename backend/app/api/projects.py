@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -18,6 +19,7 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
         "color": project.color,
         "key": project.key,
         "isActive": project.is_active,
+        "status": project.status,
         "taskCount": task_count,
         "role": role,
         "memberCount": member_count,
@@ -28,10 +30,14 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
 
 @router.get("")
 async def get_projects(
+    status: Optional[str] = Query(None, description="Comma-separated statuses (ACTIVE,ON_HOLD,ARCHIVED) to filter by"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    projects = project_service.get_all_projects(db, user.id)
+    statuses = None
+    if status:
+        statuses = [s.strip().upper() for s in status.split(",") if s.strip()]
+    projects = project_service.get_all_projects(db, user.id, statuses=statuses)
     result = []
     for p in projects:
         count = project_service.get_project_task_count(db, user.id, p.id)
