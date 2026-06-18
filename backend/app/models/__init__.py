@@ -17,6 +17,8 @@ from app.models.calendar import CalendarEvent, EventCategory, CalendarReminderLo
 from app.models.calendar_attendee import CalendarEventAttendee
 from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
+from app.models.quick_task import QuickTask
+from app.models.report_share import ReportShare
 from app.models.qr_session import QRSession
 from app.models.notification import Notification
 from app.models.friendship import Friendship
@@ -51,6 +53,8 @@ __all__ = [
     "User",
     "LoginCode",
     "AccessRequest",
+    "QuickTask",
+    "ReportShare",
     "QRSession",
     "Notification",
     "Friendship",

@@ -17,6 +17,8 @@ class Project(Base):
     # Cheia proiectului (ex: "IA") folosita pentru numerotarea task-urilor: IA-1, IA-2...
     key = Column(String(10), nullable=True)
     task_counter = Column(Integer, nullable=False, default=0, server_default="0")
+    # Status proiect: ACTIVE (In Dezvoltare) | ON_HOLD (Asteptare Detalii) | ARCHIVED (Finalizat)
+    status = Column(String(20), nullable=False, default="ACTIVE", server_default="ACTIVE")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

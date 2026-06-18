@@ -20,6 +20,7 @@ class ColumnType(str, enum.Enum):
     BACKLOG = "BACKLOG"
     PLANNED = "PLANNED"
     IN_PROGRESS = "IN_PROGRESS"
+    VERIFY = "VERIFY"  # In Asteptare Verificare (raportat finalizat, asteapta admin)
     DONE = "DONE"
     APPROVED = "APPROVED"
     CUSTOM = "CUSTOM"

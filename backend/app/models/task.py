@@ -36,6 +36,13 @@ class Task(Base):
     story_points = Column(Integer, nullable=True)  # estimare efort 1-10
     sprint_id = Column(String, ForeignKey("sprints.id"), nullable=True, index=True)
 
+    # ── Ciclu de aprobare (Quick Tasks / verificare) ────────────────
+    # NULL | PENDING_REVIEW (raportat finalizat, asteapta admin) |
+    # NEEDS_FIX (intors la corectare) | APPROVED | REJECTED
+    approval_status = Column(String(20), nullable=True, index=True)
+    # Sursa task-ului: NULL = normal | "QUICK" = creat dintr-un Quick Task public
+    origin = Column(String(20), nullable=True)
+
     # ── Subtaskuri / checklist (Faza 4) ─────────────────────────────
     # Lista de {"id": cuid, "title": str, "done": bool}, ordonata.
     subtasks = Column(JSON, nullable=True)

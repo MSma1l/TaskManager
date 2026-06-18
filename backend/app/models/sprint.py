@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON
 from app.core.database import Base
 from app.models.base import generate_cuid
 
@@ -16,3 +16,6 @@ class Sprint(Base):
     # PLANNED | ACTIVE | COMPLETED
     status = Column(String(20), nullable=False, default="PLANNED", server_default="PLANNED")
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Raport auto-generat la inchidere (snapshot JSON: totaluri, per-user, burndown)
+    closed_at = Column(DateTime, nullable=True)
+    report = Column(JSON, nullable=True)
