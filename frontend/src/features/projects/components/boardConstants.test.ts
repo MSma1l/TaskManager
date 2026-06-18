@@ -43,7 +43,7 @@ describe('actionKey', () => {
     const cases: Record<TransitionAction, string> = {
       plan: 'board.plan',
       start: 'board.takeInWork',
-      done: 'board.markDone',
+      done: 'board.reportDone',
       approve: 'board.approve',
     };
     (Object.keys(cases) as TransitionAction[]).forEach((a) => {
