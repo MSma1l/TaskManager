@@ -50,6 +50,7 @@ export const COLUMN_TYPES: ColumnType[] = [
   'BACKLOG',
   'PLANNED',
   'IN_PROGRESS',
+  'VERIFY',
   'DONE',
   'APPROVED',
   'CUSTOM',
@@ -61,6 +62,7 @@ export function columnTypeKey(ct: ColumnType): string {
     case 'BACKLOG': return 'board.ctBacklog';
     case 'PLANNED': return 'board.ctPlanned';
     case 'IN_PROGRESS': return 'board.ctInProgress';
+    case 'VERIFY': return 'board.ctVerify';
     case 'DONE': return 'board.ctDone';
     case 'APPROVED': return 'board.ctApproved';
     case 'CUSTOM': return 'board.ctCustom';
@@ -72,7 +74,7 @@ export function actionKey(a: TransitionAction): string {
   switch (a) {
     case 'plan': return 'board.plan';
     case 'start': return 'board.takeInWork';
-    case 'done': return 'board.markDone';
+    case 'done': return 'board.reportDone';
     case 'approve': return 'board.approve';
   }
 }
@@ -80,12 +82,16 @@ export function actionKey(a: TransitionAction): string {
 /**
  * The workflow action contextually available from a given column type.
  * Returns null when no transition button should be shown.
+ *
+ * `done` = "Raportează ca Finalizat" (mută în VERIFY, status PENDING_REVIEW);
+ * `approve` (din VERIFY/DONE) e validarea adminului.
  */
 export function nextAction(ct: ColumnType | null): TransitionAction | null {
   switch (ct) {
     case 'BACKLOG': return 'plan';
     case 'PLANNED': return 'start';
     case 'IN_PROGRESS': return 'done';
+    case 'VERIFY': return 'approve';
     case 'DONE': return 'approve';
     default: return null;
   }

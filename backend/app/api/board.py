@@ -63,6 +63,7 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "dueDate": task.due_date.isoformat() if task.due_date else None,
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
+        "approvalStatus": task.approval_status,
         "sprintId": task.sprint_id,
         "dayOfWeek": task.day_of_week,
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,

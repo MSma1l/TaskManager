@@ -249,6 +249,7 @@ def board_task_to_dict(
         "dueDate": task.due_date.isoformat() if task.due_date else None,
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
+        "approvalStatus": task.approval_status,
         "sprintId": task.sprint_id,
         "dayOfWeek": task.day_of_week,
         "scheduledDate": task.scheduled_date.isoformat() if task.scheduled_date else None,
@@ -535,6 +536,11 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
         if target_column.column_type == "APPROVED":
             raise HTTPException(status_code=403, detail="Doar team lead-ul poate aproba (muta in coloana aprobat)")
 
+    # Feature A: nu poti finaliza un task (mutare in VERIFY sau intr-o coloana
+    # "terminat") fara story points setate.
+    if target_column.column_type == "VERIFY" or is_done_column_obj(target_column):
+        _require_story_points(task)
+
     source_column_id = task.board_column_id
 
     # Lista task-urilor din coloana tinta, excluzand task-ul mutat.
@@ -692,20 +698,24 @@ def transition_task(
     if action not in ACTION_TARGET:
         raise HTTPException(status_code=400, detail="Actiune necunoscuta")
 
+    # Ciclu de aprobare: "done" inseamna "Raporteaza ca Finalizat" (-> VERIFY,
+    # PENDING_REVIEW); "approve" e validarea adminului (-> APPROVED).
+    if action == "done":
+        return report_done(db, user_id, project_id, task_id)
+    if action == "approve":
+        return approve_task(db, user_id, task_id)
+
     rank = membership_service.ROLE_RANK.get(member.role, -1)
     is_lead = rank >= membership_service.ROLE_RANK["ADMIN"]
     is_member = rank >= membership_service.ROLE_RANK["MEMBER"]
     is_assignee = task.assignee_id == user_id
 
-    if action == "approve":
-        if not is_lead:
-            raise HTTPException(status_code=403, detail="Doar team lead-ul poate aproba")
-    else:  # plan / start / done
-        # Un VIEWER nu poate face tranzitii, chiar daca e cumva responsabil.
-        if not is_member:
-            raise HTTPException(status_code=403, detail="Un vizualizator (VIEWER) nu poate modifica sarcini")
-        if not (is_assignee or is_lead):
-            raise HTTPException(status_code=403, detail="Doar responsabilul sau team lead-ul poate face aceasta tranzitie")
+    # Doar plan / start ajung aici (done / approve sunt delegate mai sus).
+    # Un VIEWER nu poate face tranzitii, chiar daca e cumva responsabil.
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Un vizualizator (VIEWER) nu poate modifica sarcini")
+    if not (is_assignee or is_lead):
+        raise HTTPException(status_code=403, detail="Doar responsabilul sau team lead-ul poate face aceasta tranzitie")
 
     target_column = _find_target_column(db, project_id, ACTION_TARGET[action], task.board_column_id)
 
@@ -735,6 +745,294 @@ def transition_task(
     db.commit()
     db.refresh(task)
     return _get_board_task(db, project_id, task.id)
+
+
+# ── ciclu de aprobare (raportare -> verificare -> aprobare) ─────────
+
+def _require_story_points(task: Task) -> None:
+    """Feature A: un task nu poate fi finalizat fara story points (> 0)."""
+    if not task.story_points or task.story_points <= 0:
+        raise HTTPException(status_code=400, detail="Story points obligatorii inainte de finalizare")
+
+
+def _get_active_task(db: Session, task_id: str) -> Task:
+    """Incarca un task de board activ dupa id (fara a sti proiectul dinainte)."""
+    task = (
+        db.query(Task)
+        .filter(
+            Task.id == task_id,
+            Task.is_active == True,
+            Task.board_column_id.isnot(None),
+        )
+        .options(joinedload(Task.labels))
+        .first()
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task inexistent pe board")
+    return task
+
+
+def _find_verify_column(db: Session, project_id: str, current_column_id: str) -> BoardColumn:
+    """Coloana de verificare (VERIFY) sau, daca lipseste, coloana DONE."""
+    target = (
+        db.query(BoardColumn)
+        .filter(
+            BoardColumn.project_id == project_id,
+            BoardColumn.column_type == "VERIFY",
+        )
+        .order_by(BoardColumn.position.asc())
+        .first()
+    )
+    if target is not None:
+        return target
+    return _find_target_column(db, project_id, "DONE", current_column_id)
+
+
+def _find_approved_column(db: Session, project_id: str, current_column_id: str) -> BoardColumn:
+    """Coloana APPROVED sau, daca lipseste, coloana DONE."""
+    target = (
+        db.query(BoardColumn)
+        .filter(
+            BoardColumn.project_id == project_id,
+            BoardColumn.column_type == "APPROVED",
+        )
+        .order_by(BoardColumn.position.asc())
+        .first()
+    )
+    if target is not None:
+        return target
+    return _find_target_column(db, project_id, "DONE", current_column_id)
+
+
+def _move_to_column(db: Session, task: Task, target_column: BoardColumn) -> None:
+    """Muta task-ul in coloana tinta (la coada) si recompacteaza sursa."""
+    source_column_id = task.board_column_id
+    if target_column.id != source_column_id:
+        task.board_column_id = target_column.id
+        task.board_order = _max_order(db, target_column.id) + 1
+        db.flush()
+        _reindex_column(db, source_column_id)
+
+
+def _notify_project_leads(
+    db: Session, project_id: str, *, exclude_user_id: str | None,
+    type: str, title: str, body: str | None = None, link: str | None = None, meta: dict | None = None,
+) -> None:
+    """Notifica toti ADMIN/OWNER ai proiectului (non-fatal, ride pe tranzactie)."""
+    try:
+        from app.models.project_member import ProjectMember
+        from app.services import notification_service
+        leads = (
+            db.query(ProjectMember)
+            .filter(
+                ProjectMember.project_id == project_id,
+                ProjectMember.role.in_(["ADMIN", "OWNER"]),
+            )
+            .all()
+        )
+        for m in leads:
+            if m.user_id == exclude_user_id:
+                continue
+            notification_service.create_safe(
+                db, user_id=m.user_id, type=type, title=title, body=body,
+                link=link, meta=meta, commit=False,
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"[notification] notify leads error: {e}")
+
+
+def _notify_user(
+    db: Session, user_id: str | None, *,
+    type: str, title: str, body: str | None = None, link: str | None = None, meta: dict | None = None,
+) -> None:
+    if not user_id:
+        return
+    try:
+        from app.services import notification_service
+        notification_service.create_safe(
+            db, user_id=user_id, type=type, title=title, body=body,
+            link=link, meta=meta, commit=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"[notification] notify user error: {e}")
+
+
+def report_done(db: Session, user_id: str, project_id: str, task_id: str) -> Task:
+    """"Raporteaza ca Finalizat": responsabilul (sau leadul) trimite task-ul la
+    verificare. Cere story points (Feature A). Muta in VERIFY (fallback DONE) si
+    seteaza approval_status=PENDING_REVIEW; notifica liderii proiectului."""
+    member = membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    task = _get_board_task(db, project_id, task_id)
+
+    rank = membership_service.ROLE_RANK.get(member.role, -1)
+    is_lead = rank >= membership_service.ROLE_RANK["ADMIN"]
+    if not (task.assignee_id == user_id or is_lead):
+        raise HTTPException(status_code=403, detail="Doar responsabilul sau team lead-ul poate raporta finalizarea")
+
+    _require_story_points(task)
+
+    target_column = _find_verify_column(db, project_id, task.board_column_id)
+    _move_to_column(db, task, target_column)
+    task.approval_status = "PENDING_REVIEW"
+    task.updated_at = datetime.utcnow()
+
+    _log(db, task, user_id, "DONE")
+    _notify_project_leads(
+        db, project_id, exclude_user_id=user_id, type="TASK_PENDING_REVIEW",
+        title=f"Task de verificat: {task.title}",
+        link="/verify",
+        meta={"taskId": task.id, "projectId": project_id, "actorId": user_id},
+    )
+
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def approve_task(db: Session, user_id: str, task_id: str) -> Task:
+    """Admin: aproba un task raportat. Muta in APPROVED (fallback DONE),
+    approval_status=APPROVED, notifica responsabilul."""
+    task = _get_active_task(db, task_id)
+    project_id = task.project_id
+    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
+
+    target_column = _find_approved_column(db, project_id, task.board_column_id)
+    _move_to_column(db, task, target_column)
+    task.approval_status = "APPROVED"
+    task.updated_at = datetime.utcnow()
+
+    _log(db, task, user_id, "APPROVED")
+    _notify_user(
+        db, task.assignee_id, type="TASK_APPROVED",
+        title="Task-ul tau a fost aprobat",
+        body=task.title,
+        link=f"/projects/{project_id}/board",
+        meta={"taskId": task.id, "projectId": project_id, "actorId": user_id},
+    )
+
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def return_task(db: Session, user_id: str, task_id: str, reason: str | None = None) -> Task:
+    """Admin: intoarce task-ul la corectare. Muta in IN_PROGRESS,
+    approval_status=NEEDS_FIX, notifica responsabilul cu motivul."""
+    task = _get_active_task(db, task_id)
+    project_id = task.project_id
+    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
+
+    target_column = _find_target_column(db, project_id, "IN_PROGRESS", task.board_column_id)
+    _move_to_column(db, task, target_column)
+    task.approval_status = "NEEDS_FIX"
+    task.updated_at = datetime.utcnow()
+
+    _log(db, task, user_id, "RETURNED", {"reason": reason} if reason else None)
+    _notify_user(
+        db, task.assignee_id, type="TASK_RETURNED",
+        title="Task intors la corectare",
+        body=reason or task.title,
+        link=f"/projects/{project_id}/board",
+        meta={"taskId": task.id, "projectId": project_id, "actorId": user_id, "reason": reason},
+    )
+
+    db.commit()
+    db.refresh(task)
+    return _get_board_task(db, project_id, task.id)
+
+
+def reject_task(db: Session, user_id: str, task_id: str, reason: str | None = None) -> dict:
+    """Admin: respinge task-ul. Soft-delete (is_active=False),
+    approval_status=REJECTED, notifica responsabilul cu motivul."""
+    task = _get_active_task(db, task_id)
+    project_id = task.project_id
+    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
+
+    source_column_id = task.board_column_id
+    assignee_id = task.assignee_id
+    title = task.title
+    task.approval_status = "REJECTED"
+    task.is_active = False
+    task.updated_at = datetime.utcnow()
+    db.flush()
+    _reindex_column(db, source_column_id)
+
+    _log(db, task, user_id, "REJECTED", {"reason": reason} if reason else None)
+    _notify_user(
+        db, assignee_id, type="TASK_REJECTED",
+        title="Task respins",
+        body=reason or title,
+        link=f"/projects/{project_id}/board",
+        meta={"taskId": task.id, "projectId": project_id, "actorId": user_id, "reason": reason},
+    )
+
+    db.commit()
+    return {"id": task_id, "rejected": True}
+
+
+def list_pending_verification(db: Session, user_id: str) -> list[dict]:
+    """Task-urile in asteptare de verificare (PENDING_REVIEW) din proiectele in
+    care userul e ADMIN/OWNER. Folosit de inbox-ul de verificare."""
+    from app.models.project_member import ProjectMember
+
+    lead_project_ids = [
+        pid for (pid,) in (
+            db.query(ProjectMember.project_id)
+            .filter(
+                ProjectMember.user_id == user_id,
+                ProjectMember.role.in_(["ADMIN", "OWNER"]),
+            )
+            .all()
+        )
+    ]
+    if not lead_project_ids:
+        return []
+
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.project_id.in_(lead_project_ids),
+            Task.is_active == True,
+            Task.board_column_id.isnot(None),
+            Task.approval_status == "PENDING_REVIEW",
+        )
+        .options(joinedload(Task.labels))
+        .order_by(Task.updated_at.desc())
+        .all()
+    )
+    if not tasks:
+        return []
+
+    # Rezolva assignee + proiect + numarul de comentarii intr-un minim de query-uri.
+    assignee_ids = {t.assignee_id for t in tasks if t.assignee_id}
+    users = {}
+    if assignee_ids:
+        rows = db.query(User).filter(User.id.in_(assignee_ids)).all()
+        users = {u.id: u for u in rows}
+
+    project_ids = {t.project_id for t in tasks if t.project_id}
+    projects = {}
+    if project_ids:
+        rows = db.query(Project).filter(Project.id.in_(project_ids)).all()
+        projects = {p.id: p for p in rows}
+
+    counts = comment_counts(db, [t.id for t in tasks])
+
+    result: list[dict] = []
+    for t in tasks:
+        project = projects.get(t.project_id)
+        d = board_task_to_dict(
+            db, t, counts.get(t.id, 0),
+            users=users,
+            project_key=project.key if project else None,
+        )
+        d["project"] = (
+            {"id": project.id, "name": project.name, "color": project.color, "key": project.key}
+            if project else None
+        )
+        d["projectId"] = t.project_id
+        result.append(d)
+    return result
 
 
 # ── etichete (labels) ───────────────────────────────────────────────

@@ -729,6 +729,19 @@ def send_daily_digest():
         db.close()
 
 
+def notify_quick_tasks():
+    """La fiecare minut — notifica adminii/owner-ii despre quick task-uri noi.
+    Sesiune proprie, totul wrap-uit ca o eroare sa nu strice loop-ul."""
+    db = SessionLocal()
+    try:
+        from app.services import quick_task_service
+        quick_task_service.notify_admins_new_quick_tasks(db)
+    except Exception as e:
+        print(f"Quick task notify error: {e}")
+    finally:
+        db.close()
+
+
 def cleanup_sessions():
     """Expire telegram sessions older than 10 minutes."""
     db = SessionLocal()
@@ -757,6 +770,8 @@ def start_scheduler():
     scheduler.add_job(weekly_report, 'cron', day_of_week='sun', hour=20, minute=0, id='weekly_report')
     # Daily HH:00 (UTC, HH = DAILY_DIGEST_HOUR) - daily digest ("Agenda ta de azi")
     scheduler.add_job(send_daily_digest, 'cron', hour=settings.DAILY_DIGEST_HOUR, minute=0, id='daily_digest')
+    # Every minute - notifica adminii despre quick task-uri noi
+    scheduler.add_job(notify_quick_tasks, 'cron', minute='*', id='notify_quick_tasks')
     # Every minute - cleanup expired sessions
     scheduler.add_job(cleanup_sessions, 'cron', minute='*', id='cleanup_sessions')
 

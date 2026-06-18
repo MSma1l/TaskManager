@@ -421,6 +421,7 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
           onClose={() => setDetailTaskId(null)}
           onEdit={(tk) => { setDetailTaskId(null); setEditTask(tk); }}
           onWorkflowAction={handleWorkflowAction}
+          onUpdate={canManage ? updateTask : undefined}
           onAssign={canApprove ? assignTask : undefined}
           onAddSubtask={canManage ? addSubtask : undefined}
           onToggleSubtask={canManage ? (taskId, sid, done) => updateSubtask(taskId, sid, { done }) : undefined}

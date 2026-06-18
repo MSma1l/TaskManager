@@ -7,7 +7,8 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
-from app.services import task_service
+from app.schemas.board import VerifyReason
+from app.services import task_service, board_service
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -153,6 +154,46 @@ async def get_assigned_tasks(
             ),
         })
     return result
+
+
+# ── Ciclu de verificare / aprobare (admin) ──────────────────────────
+
+@router.get("/pending-verification")
+async def pending_verification(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Task-urile in asteptare de verificare din proiectele in care userul e ADMIN/OWNER."""
+    return board_service.list_pending_verification(db, user.id)
+
+
+@router.post("/{task_id}/approve")
+async def approve_task(
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return board_service.approve_task(db, user.id, task_id)
+
+
+@router.post("/{task_id}/return")
+async def return_task(
+    task_id: str,
+    data: VerifyReason,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return board_service.return_task(db, user.id, task_id, data.reason)
+
+
+@router.post("/{task_id}/reject")
+async def reject_task(
+    task_id: str,
+    data: VerifyReason,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return board_service.reject_task(db, user.id, task_id, data.reason)
 
 
 @router.post("")

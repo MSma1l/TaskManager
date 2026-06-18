@@ -58,11 +58,19 @@ export function BoardCardBody({
       }`}
     >
       {/* Key + Labels + Story points */}
-      {(task.taskKey || task.labels.length > 0 || task.storyPoints != null) && (
+      {(task.taskKey ||
+        task.labels.length > 0 ||
+        task.storyPoints != null ||
+        task.approvalStatus === 'NEEDS_FIX') && (
         <div className="flex flex-wrap items-center gap-1 mb-2">
           {task.taskKey && (
             <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-400">
               {task.taskKey}
+            </span>
+          )}
+          {task.approvalStatus === 'NEEDS_FIX' && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-tight bg-amber-500/15 text-amber-400">
+              {t('verify.needsFix')}
             </span>
           )}
           {task.storyPoints != null && (

@@ -71,3 +71,8 @@ class SubtaskUpdate(BaseModel):
 
 class SubtaskReorder(BaseModel):
     order: list[str]
+
+
+class VerifyReason(BaseModel):
+    """Motivul (optional) pentru intoarcere la corectare / respingere task."""
+    reason: Optional[str] = None

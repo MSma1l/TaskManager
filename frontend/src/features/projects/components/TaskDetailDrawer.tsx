@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { useI18n } from '../../../shared/i18n/I18nProvider';
 import { relativeTime } from '../../../shared/utils/dates';
-import { BoardTask, TransitionAction, ColumnType } from '../api/board';
+import { BoardTask, TransitionAction, ColumnType, UpdateBoardTaskData } from '../api/board';
 import SubtaskChecklist from './SubtaskChecklist';
 import { ProjectMember } from '../api/members';
 import { TaskActivity } from '../api/activity';
@@ -25,6 +25,8 @@ interface TaskDetailDrawerProps {
   onClose: () => void;
   onEdit: (task: BoardTask) => void;
   onWorkflowAction: (task: BoardTask, action: TransitionAction) => void;
+  /** Actualizează câmpuri ale task-ului (ex: story points inline). */
+  onUpdate?: (taskId: string, data: UpdateBoardTaskData) => Promise<unknown> | void;
   /** Schimbă responsabilul direct din drawer (orice membru poate). */
   onAssign?: (taskId: string, assigneeId: string | null) => Promise<unknown> | void;
   /** Subtaskuri (checklist) — disponibile doar pentru membri care pot edita. */
@@ -45,6 +47,7 @@ export default function TaskDetailDrawer({
   onClose,
   onEdit,
   onWorkflowAction,
+  onUpdate,
   onAssign,
   onAddSubtask,
   onToggleSubtask,
@@ -53,6 +56,7 @@ export default function TaskDetailDrawer({
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('comments');
   const [assigning, setAssigning] = useState(false);
+  const [savingSp, setSavingSp] = useState(false);
 
   const { comments, add, edit, remove } = useComments(task.id);
   const { activity } = useTaskActivity(task.id);
@@ -86,6 +90,16 @@ export default function TaskDetailDrawer({
               {task.taskKey && (
                 <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-400">
                   {task.taskKey}
+                </span>
+              )}
+              {task.approvalStatus === 'NEEDS_FIX' && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-tight bg-amber-500/15 text-amber-400">
+                  {t('verify.needsFix')}
+                </span>
+              )}
+              {task.approvalStatus === 'PENDING_REVIEW' && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-tight bg-blue-500/15 text-blue-300">
+                  {t('verify.pendingReview')}
                 </span>
               )}
               {task.storyPoints != null && (
@@ -194,6 +208,31 @@ export default function TaskDetailDrawer({
                 <span className="text-fg">{t(priorityKey(task.priority))}</span>
               </div>
 
+              {/* Story points — editabil inline (membri care pot edita) */}
+              <div className="flex items-center gap-2">
+                <span className="text-muted w-24 flex-shrink-0">{t('pm.storyPoints')}</span>
+                {onUpdate ? (
+                  <StoryPointsEditor
+                    value={task.storyPoints}
+                    disabled={savingSp}
+                    onChange={async (v) => {
+                      if (v === (task.storyPoints ?? null)) return;
+                      setSavingSp(true);
+                      try {
+                        await onUpdate(task.id, { storyPoints: v ?? undefined });
+                      } finally {
+                        setSavingSp(false);
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="text-fg">{task.storyPoints ?? '—'}</span>
+                )}
+              </div>
+              {onUpdate && (task.storyPoints == null || task.storyPoints <= 0) && (
+                <p className="text-xs text-amber-400/90 -mt-1">{t('pm.storyPointsRequired')}</p>
+              )}
+
               {/* Due date */}
               {task.dueDate && (
                 <div className="flex items-center gap-2">
@@ -298,6 +337,55 @@ export default function TaskDetailDrawer({
       </div>
 
       <style>{`@keyframes slidein { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+    </div>
+  );
+}
+
+// ── Story points inline editor (stepper) ─────────────────────────────────────
+
+function StoryPointsEditor({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number | null;
+  disabled?: boolean;
+  onChange: (v: number | null) => void;
+}) {
+  const current = value ?? 0;
+  const commit = (v: number) => {
+    const clamped = Math.max(0, Math.min(99, Number.isFinite(v) ? v : 0));
+    onChange(clamped === 0 ? null : clamped);
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={disabled || current <= 0}
+        onClick={() => commit(current - 1)}
+        aria-label="−"
+        className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface border border-border text-fg hover:bg-elevated disabled:opacity-40 transition-colors"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        min={0}
+        max={99}
+        value={current}
+        disabled={disabled}
+        onChange={(e) => commit(parseInt(e.target.value, 10))}
+        className="w-14 text-center px-2 py-1 rounded-lg bg-input border border-border text-sm text-fg outline-none focus:border-blue-500"
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => commit(current + 1)}
+        aria-label="+"
+        className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface border border-border text-fg hover:bg-elevated disabled:opacity-40 transition-colors"
+      >
+        +
+      </button>
     </div>
   );
 }

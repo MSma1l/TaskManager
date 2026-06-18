@@ -6,11 +6,19 @@ export type ColumnType =
   | 'BACKLOG'
   | 'PLANNED'
   | 'IN_PROGRESS'
+  | 'VERIFY'
   | 'DONE'
   | 'APPROVED'
   | 'CUSTOM';
 
 export type TransitionAction = 'plan' | 'start' | 'done' | 'approve';
+
+/** Stadiul ciclului de aprobare (null = nu a fost raportat inca). */
+export type ApprovalStatus =
+  | 'PENDING_REVIEW'
+  | 'NEEDS_FIX'
+  | 'APPROVED'
+  | 'REJECTED';
 
 export interface Label {
   id: string;
@@ -47,6 +55,7 @@ export interface BoardTask {
   dayOfWeek: number | null;
   scheduledDate: string | null;
   storyPoints: number | null;
+  approvalStatus: ApprovalStatus | null;
   sprintId: string | null;
   subtasks: Subtask[];
 }
