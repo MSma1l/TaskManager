@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import BottomNav from './BottomNav';
+import Sidebar from './Sidebar';
 import { useNotifications } from '../../hooks/useNotifications';
 import Tour from '../tour/Tour';
 import { authApi, MeResponse } from '../../../features/auth/api/auth';
@@ -36,18 +37,22 @@ export default function AppLayout() {
 
   return (
     <div
-      className="min-h-screen bg-bg text-fg"
+      className="min-h-screen bg-bg text-fg md:pl-60"
       style={{
-        // Reserve enough space for the BottomNav + iPhone home indicator
+        // Reserve enough space for the BottomNav (mobile) + iPhone home indicator.
+        // Pe desktop bara de jos e ascunsa, dar pastram safe-area-ul.
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
       }}
     >
+      <Sidebar />
       <NotificationBell />
       <CommandPalette />
       <QuickAddFab />
       <Outlet />
-      <BottomNav />
+      <div className="md:hidden">
+        <BottomNav />
+      </div>
       <Tour />
       {needsSetup && me && <ForcedSetupModal me={me} onDone={handleSetupDone} />}
     </div>

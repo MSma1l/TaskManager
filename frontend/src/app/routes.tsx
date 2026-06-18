@@ -21,6 +21,10 @@ const ProjectDetailPage = lazy(() => import('../features/projects/pages/ProjectD
 const NotebookPage = lazy(() => import('../features/notebook/pages/NotebookPage'));
 const CalendarPage = lazy(() => import('../features/calendar/pages/CalendarPage'));
 const ProfilePage = lazy(() => import('../features/profile/pages/ProfilePage'));
+const QuickTasksPage = lazy(() => import('../features/quicktasks/pages/QuickTasksPage'));
+const PublicQuickTaskPage = lazy(() => import('../features/quicktasks/pages/PublicQuickTaskPage'));
+const VerifyPage = lazy(() => import('../features/verify/pages/VerifyPage'));
+const ReportsPage = lazy(() => import('../features/reports/pages/ReportsPage'));
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout'));
 const AdminDashboardPage = lazy(() => import('../features/admin/pages/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('../features/admin/pages/AdminUsersPage'));
@@ -56,6 +60,8 @@ export default function AppRoutes() {
         <Route path="/request-access" element={<RequestAccessPage />} />
         <Route path="/qr-confirm/:id" element={<QRConfirmPage />} />
         <Route path="/tg-app" element={<TelegramAppPage />} />
+        {/* Quick Task public — acces FĂRĂ login */}
+        <Route path="/quick" element={<PublicQuickTaskPage />} />
 
         {/* Admin entry point */}
         <Route path="/admin_task_manager" element={<AdminLoginPage />} />
@@ -92,6 +98,9 @@ export default function AppRoutes() {
           <Route path="notebook" element={<NotebookPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="quick-tasks" element={<QuickTasksPage />} />
+          <Route path="verify" element={<VerifyPage />} />
+          <Route path="reports" element={<ReportsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
