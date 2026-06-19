@@ -17,6 +17,8 @@ export interface AssignedTask {
   columnId: string;
   columnName: string;
   columnType: ColumnType | null;
+  /** "QUICK" dacă task-ul vine dintr-un task rapid asignat. */
+  origin: string | null;
   project: {
     id: string;
     name: string;

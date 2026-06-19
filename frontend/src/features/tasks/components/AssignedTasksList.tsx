@@ -25,6 +25,12 @@ function formatEstimate(min: number): string {
   return `${m}m`;
 }
 
+/** Un task asignat e "Nou / Trebuie început" cât timp nu a fost luat în lucru
+ *  (e încă în Backlog / Planificate). */
+function isNewAssigned(task: AssignedTask): boolean {
+  return task.columnType === 'BACKLOG' || task.columnType === 'PLANNED';
+}
+
 export default function AssignedTasksList() {
   const t = useT();
   const navigate = useNavigate();
@@ -52,15 +58,24 @@ export default function AssignedTasksList() {
     );
   }
 
+  // Task-urile noi (ne-începute) le aducem primele, ca să sară în ochi.
+  const ordered = [...tasks].sort(
+    (a, b) => Number(isNewAssigned(b)) - Number(isNewAssigned(a)),
+  );
+
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {tasks.map((task) => (
+        {ordered.map((task) => {
+          const isNew = isNewAssigned(task);
+          return (
           <div
             key={task.id}
-            className="p-4 rounded-2xl bg-surface border border-border hover:border-blue-500/40 transition-colors flex flex-col gap-2"
+            className={`p-4 rounded-2xl bg-surface border transition-colors flex flex-col gap-2 ${
+              isNew ? 'border-amber-500/50 ring-1 ring-amber-500/20' : 'border-border hover:border-blue-500/40'
+            }`}
           >
-            {/* Project + key */}
+            {/* Project + key + badge "Nou" */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
                 <span
@@ -74,10 +89,23 @@ export default function AssignedTasksList() {
                   {task.taskKey}
                 </span>
               )}
+              {isNew && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 uppercase tracking-wide">
+                  {t('board.newAssigned')}
+                </span>
+              )}
+              {task.origin === 'QUICK' && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-400">
+                  {t('board.fromQuick')}
+                </span>
+              )}
             </div>
 
             {/* Title */}
             <p className="text-sm font-medium text-fg leading-snug break-words">{task.title}</p>
+            {isNew && (
+              <p className="text-[11px] text-amber-400/90">{t('board.toStart')}</p>
+            )}
 
             {/* Status + schedule */}
             <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted">
@@ -118,7 +146,8 @@ export default function AssignedTasksList() {
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {planning && (

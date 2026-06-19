@@ -21,6 +21,7 @@ function task(id: string, columnId: string): BoardTask {
     scheduledDate: null,
     storyPoints: null,
     sprintId: null,
+    approvalStatus: null,
     subtasks: [],
   };
 }

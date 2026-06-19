@@ -142,6 +142,7 @@ async def get_assigned_tasks(
             "columnId": t.board_column_id,
             "columnName": column.name if column else None,
             "columnType": column.column_type if column else None,
+            "origin": t.origin,  # "QUICK" = venit dintr-un task rapid
             "project": (
                 {
                     "id": project.id,

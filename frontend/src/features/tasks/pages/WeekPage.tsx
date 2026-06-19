@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { useWeek } from '../hooks/useWeek';
 import { useTasks } from '../hooks/useTasks';
@@ -23,7 +24,11 @@ export default function WeekPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [slideDir, setSlideDir] = useState<'left' | 'right' | 'none'>('none');
-  const [tab, setTab] = useState<HomeTab>('personal');
+  // Deschide direct tab-ul "Repartizate" când vii dintr-o notificare (/?tab=assigned).
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<HomeTab>(
+    searchParams.get('tab') === 'assigned' ? 'assigned' : 'personal',
+  );
 
   const weekLabel = formatWeekRange(weekDays[0], weekDays[6]);
 

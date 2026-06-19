@@ -160,7 +160,9 @@ def assign(
         type="QUICK_ASSIGNED",
         title=f"Task nou atribuit: {qt.title}",
         body=f"{emoji} Prioritate: {label} · de la {qt.requester_name} · proiect {pname}",
-        link=f"/projects/{project_id}",
+        # Trimite userul direct in tab-ul "Repartizate" (Weekly View) unde
+        # task-ul nou ii apare marcat "Nou / Trebuie inceput".
+        link="/?tab=assigned",
         meta={
             "quickTaskId": qt.id,
             "taskId": task.id,
