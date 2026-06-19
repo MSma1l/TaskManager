@@ -278,3 +278,36 @@ def test_api_inbox_assign_and_dismiss(db, TestingSessionLocal, make_user, make_p
     dismissed = client.post(f"/api/quick-tasks/{oid}/dismiss")
     assert dismissed.status_code == 200
     assert dismissed.json()["status"] == "DISMISSED"
+
+
+# ── count_new (badge sidebar) ────────────────────────────────────────
+
+def test_count_new_zero_for_non_admin(db, make_user):
+    """Un user fara rol de admin/owner pe vreun proiect vede 0 (badge ascuns)."""
+    plain = make_user()
+    quick_task_service.create_public(db, {"requesterName": "A", "title": "a"})
+    assert quick_task_service.count_new(db, plain.id) == 0
+
+
+def test_count_new_counts_new_for_admin(db, make_user, make_project):
+    """Owner-ul unui proiect (admin/owner) vede numarul de quick task-uri NEW."""
+    owner = make_user()
+    make_project(owner)  # ii da owner-ului o calitate de OWNER
+    quick_task_service.create_public(db, {"requesterName": "A", "title": "a"})
+    quick_task_service.create_public(db, {"requesterName": "B", "title": "b"})
+    assert quick_task_service.count_new(db, owner.id) == 2
+
+
+def test_count_new_excludes_assigned_and_dismissed(db, make_user, make_project, add_member):
+    owner = make_user()
+    assignee = make_user()
+    project = make_project(owner)
+    add_member(project, assignee, role="MEMBER")
+
+    keep = quick_task_service.create_public(db, {"requesterName": "A", "title": "a"})
+    gone = quick_task_service.create_public(db, {"requesterName": "B", "title": "b"})
+    quick_task_service.assign(db, owner.id, keep["id"], project.id, assignee.id)
+    quick_task_service.dismiss(db, owner.id, gone["id"])
+
+    # Ambele au iesit din starea NEW -> count 0.
+    assert quick_task_service.count_new(db, owner.id) == 0

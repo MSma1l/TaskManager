@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useT } from '../../i18n/I18nProvider';
+import { useQuickTaskCount } from '../../../features/quicktasks/hooks/useQuickTaskCount';
 
 interface NavItem {
   to: string;
@@ -95,6 +96,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function Sidebar() {
   const t = useT();
+  const quickCount = useQuickTaskCount();
   return (
     <aside
       className="hidden md:flex fixed top-0 left-0 bottom-0 z-40 w-60 flex-col border-r border-border bg-surface/80 backdrop-blur-md"
@@ -109,12 +111,20 @@ export default function Sidebar() {
             <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/70">
               {t(section.titleKey)}
             </p>
-            {section.items.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
-                <span className="flex-shrink-0">{item.icon}</span>
-                <span>{t(item.labelKey)}</span>
-              </NavLink>
-            ))}
+            {section.items.map((item) => {
+              const badge = item.to === '/quick-tasks' ? quickCount : 0;
+              return (
+                <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
+                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="flex-1">{t(item.labelKey)}</span>
+                  {badge > 0 && (
+                    <span className="flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold leading-none">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         ))}
       </nav>

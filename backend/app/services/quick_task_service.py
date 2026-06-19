@@ -95,6 +95,21 @@ def list_quick_tasks(db: Session, user_id: str, status: str | None = "NEW") -> l
     return [_to_dict(qt) for qt in rows]
 
 
+def count_new(db: Session, user_id: str) -> int:
+    """Numarul de quick task-uri NEW (pentru badge-ul din sidebar).
+
+    Doar adminii/owner-ii (cei care vad inbox-ul) primesc un numar > 0;
+    pentru restul intoarce 0, ca badge-ul sa nu apara degeaba.
+    """
+    if user_id not in _admin_user_ids(db):
+        return 0
+    return (
+        db.query(QuickTask)
+        .filter(QuickTask.is_active == True, QuickTask.status == "NEW")  # noqa: E712
+        .count()
+    )
+
+
 def assign(
     db: Session,
     user_id: str,

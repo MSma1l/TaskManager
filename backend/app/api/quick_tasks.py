@@ -32,6 +32,15 @@ async def list_quick_tasks(
     return quick_task_service.list_quick_tasks(db, user.id, status=status)
 
 
+@router.get("/count")
+async def count_new_quick_tasks(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Badge sidebar: cate quick task-uri NEW sunt (0 pentru ne-admini)."""
+    return {"count": quick_task_service.count_new(db, user.id)}
+
+
 @router.post("/{quick_task_id}/assign")
 async def assign_quick_task(
     quick_task_id: str,

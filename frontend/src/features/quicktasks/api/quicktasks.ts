@@ -43,4 +43,6 @@ export const quickTasksApi = {
       .post(`/quick-tasks/${id}/assign`, { projectId, assigneeId })
       .then((r) => r.data),
   dismiss: (id: string) => client.post(`/quick-tasks/${id}/dismiss`).then((r) => r.data),
+  /** Numarul de quick task-uri NEW (badge sidebar; 0 pentru ne-admini). */
+  count: () => client.get<{ count: number }>('/quick-tasks/count').then((r) => r.data.count),
 };
