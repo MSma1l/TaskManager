@@ -6,7 +6,7 @@
 import pytest
 from fastapi import HTTPException
 
-from app.services import board_service
+from app.services import board_service, sprint_service
 from app.models.board_column import BoardColumn
 
 
@@ -70,11 +70,17 @@ def test_member_sees_only_own_tasks(db, make_user, make_project, add_member):
     add_member(project, m2, role="MEMBER")
     col = _cols(db, project.id)[0]
     t1 = board_service.create_task(db, owner.id, project.id, {"title": "for-m1", "columnId": col.id})
-    board_service.create_task(db, owner.id, project.id, {"title": "for-m2", "columnId": col.id})
+    t2 = board_service.create_task(db, owner.id, project.id, {"title": "for-m2", "columnId": col.id})
+
+    # Mută taskurile dintr-un backlog comun (vizibil tuturor) într-un sprint, unde
+    # se aplică vizibilitatea pe rol: un MEMBER vede DOAR taskul atribuit lui.
+    sprint = sprint_service.create_sprint(db, owner.id, project.id, {"name": "S1"})
+    sprint_service.add_task_to_sprint(db, owner.id, project.id, sprint["id"], t1.id)
+    sprint_service.add_task_to_sprint(db, owner.id, project.id, sprint["id"], t2.id)
     board_service.assign_task(db, owner.id, project.id, t1.id, m1.id)
 
     board_m1 = board_service.get_board(db, m1.id, project.id)
-    assert _visible_count(board_m1) == 1  # doar taskul lui m1
+    assert _visible_count(board_m1) == 1  # doar taskul lui m1 (sprint, non-backlog)
 
 
 def test_admin_and_viewer_see_all_tasks(db, make_user, make_project, add_member):

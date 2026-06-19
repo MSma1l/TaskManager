@@ -1,6 +1,6 @@
 from datetime import datetime
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.base import generate_cuid
@@ -285,8 +285,13 @@ def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None 
 
     # Vizibilitate pe rol: un MEMBER simplu vede DOAR taskurile atribuite lui.
     # ADMIN/OWNER (gestionari) și VIEWER (read-only) văd toate taskurile.
+    # Excepție (spec §2.2): backlog-ul (taskurile fără sprint) e spațiu comun de
+    # planificare — TOȚI participanții îl văd în view-ul Board, indiferent de rol.
+    # Deci pentru un MEMBER nu ascundem taskurile din backlog (sprint_id NULL).
     if member.role == "MEMBER":
-        query = query.filter(Task.assignee_id == user_id)
+        query = query.filter(
+            or_(Task.assignee_id == user_id, Task.sprint_id.is_(None))
+        )
 
     # Scoping optional dupa sprint:
     #   "backlog" -> taskuri fara sprint; <id> -> taskuri din sprintul respectiv;
