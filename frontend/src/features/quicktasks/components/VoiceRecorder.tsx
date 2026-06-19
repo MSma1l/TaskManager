@@ -120,7 +120,13 @@ export default function VoiceRecorder({ disabled, onAudio, onTranscript }: Props
           : 'border-border bg-elevated text-fg hover:opacity-90'
       }`}
     >
-      <span className={`h-2.5 w-2.5 rounded-full ${recording ? 'bg-red-500 animate-pulse' : 'bg-red-500/60'}`} />
+      {recording ? (
+        <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+      ) : (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 7v3m-4 0h8M12 1a3 3 0 00-3 3v7a3 3 0 006 0V4a3 3 0 00-3-3z" />
+        </svg>
+      )}
       {recording ? t('quick.stop') : t('quick.recordVoice')}
     </button>
   );

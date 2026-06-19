@@ -137,7 +137,8 @@ export default function PublicQuickTaskPage() {
             )}
 
             <label className="block mb-4">
-              <span className="block text-sm font-medium mb-1.5">{t('quick.nameLabel')}</span>
+              <span className="block text-sm font-medium mb-0.5">{t('quick.nameLabel')}</span>
+              <span className="block text-xs text-muted mb-1.5">{t('quick.nameHint')}</span>
               <input
                 type="text"
                 value={requesterName}
@@ -149,7 +150,8 @@ export default function PublicQuickTaskPage() {
             </label>
 
             <label className="block mb-4">
-              <span className="block text-sm font-medium mb-1.5">{t('quick.titleLabel')}</span>
+              <span className="block text-sm font-medium mb-0.5">{t('quick.titleLabel')}</span>
+              <span className="block text-xs text-muted mb-1.5">{t('quick.titleHint')}</span>
               <input
                 type="text"
                 value={title}
@@ -160,21 +162,23 @@ export default function PublicQuickTaskPage() {
               />
             </label>
 
-            <label className="block mb-4">
-              <span className="block text-sm font-medium mb-1.5">{t('quick.descriptionLabel')}</span>
+            <div className="mb-6">
+              <span className="block text-sm font-medium mb-0.5">{t('quick.descriptionLabel')}</span>
+              <span className="block text-xs text-muted mb-1.5">{t('quick.descriptionHint')}</span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t('quick.descriptionPlaceholder')}
                 rows={4}
-                className="w-full rounded-lg bg-input border border-border px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
+                className="w-full rounded-t-lg bg-input border border-border border-b-0 px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
               />
-            </label>
-
-            <div className="mb-6">
-              <span className="block text-sm font-medium mb-1.5">{t('quick.attachmentsLabel')}</span>
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Bara de atașamente lipită sub descriere: o captură/imagine sau o
+                  notă vocală merg direct la descriere, pentru comoditate. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-b-lg border border-border bg-elevated px-2 py-2">
                 <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-elevated text-fg px-3 py-2 text-sm font-medium hover:opacity-90 transition cursor-pointer">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
                   {t('quick.attachImage')}
                   <input
                     type="file"
@@ -228,7 +232,8 @@ export default function PublicQuickTaskPage() {
             </div>
 
             <fieldset className="mb-6">
-              <legend className="block text-sm font-medium mb-1.5">{t('quick.priorityLabel')}</legend>
+              <legend className="block text-sm font-medium mb-0.5">{t('quick.priorityLabel')}</legend>
+              <p className="text-xs text-muted mb-1.5">{t('quick.priorityHint')}</p>
               <div className="grid grid-cols-3 gap-2">
                 {PRIORITIES.map((p) => {
                   const active = priority === p.value;
