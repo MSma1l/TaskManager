@@ -18,11 +18,13 @@ export default defineConfig({
         'src/shared/utils/dates.ts',
         'src/features/projects/components/mention.ts',
         'src/features/projects/components/boardConstants.ts',
+        'src/features/qa/components/qaConstants.ts',
         'src/features/projects/hooks/applyOptimisticMove.ts',
         // API clients
         'src/features/projects/api/activity.ts',
         'src/features/projects/api/projects.ts',
         'src/features/quicktasks/api/quicktasks.ts',
+        'src/features/qa/api/bugReports.ts',
         'src/features/reports/api/reports.ts',
         'src/features/stats/api/metrics.ts',
         'src/features/verify/api/verify.ts',

@@ -19,6 +19,7 @@ from app.models.user import User, LoginCode
 from app.models.access_request import AccessRequest
 from app.models.quick_task import QuickTask
 from app.models.report_share import ReportShare
+from app.models.bug_report import BugReport, BugReportAttachment, BugReportComment
 from app.models.qr_session import QRSession
 from app.models.notification import Notification
 from app.models.friendship import Friendship
@@ -55,6 +56,9 @@ __all__ = [
     "AccessRequest",
     "QuickTask",
     "ReportShare",
+    "BugReport",
+    "BugReportAttachment",
+    "BugReportComment",
     "QRSession",
     "Notification",
     "Friendship",

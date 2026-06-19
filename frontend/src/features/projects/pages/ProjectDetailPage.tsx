@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { ProjectWithTasks, projectsApi, UpdateProjectData } from '../api/projects';
 import MembersBar from '../components/MembersBar';
@@ -7,17 +7,23 @@ import BoardPage from './BoardPage';
 import SprintsPanel from '../components/SprintsPanel';
 import PerformancePanel from '../components/PerformancePanel';
 import ActivityPanel from '../components/ActivityPanel';
+import QaPanel from '../../qa/components/QaPanel';
 
 // Board e tab-ul DEFAULT la deschiderea unui proiect. Tab-urile "Lista" si
 // "Backlog" au fost eliminate — Board-ul afiseaza direct toate task-urile
-// (inclusiv backlog) pentru toti participantii.
-type ProjectTab = 'board' | 'sprints' | 'performance' | 'activity';
+// (inclusiv backlog) pentru toti participantii. Tab-ul "qa" e deep-linkabil
+// via /projects/:id/qa (folosit de notificarile de bug report).
+type ProjectTab = 'board' | 'sprints' | 'performance' | 'activity' | 'qa';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const t = useT();
-  const [tab, setTab] = useState<ProjectTab>('board');
+  const initialTab: ProjectTab = location.pathname.endsWith('/qa')
+    ? 'qa'
+    : 'board';
+  const [tab, setTab] = useState<ProjectTab>(initialTab);
   const [project, setProject] = useState<ProjectWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
@@ -86,6 +92,7 @@ export default function ProjectDetailPage() {
   const TABS: { key: ProjectTab; label: string }[] = [
     { key: 'board', label: t('board.board') },
     { key: 'sprints', label: t('pm.sprints') },
+    { key: 'qa', label: t('qa.tab') },
     { key: 'performance', label: t('pm.performance') },
     { key: 'activity', label: t('collab.activityFeed') },
   ];
@@ -166,6 +173,8 @@ export default function ProjectDetailPage() {
         projectId && <BoardPage projectId={projectId} myRole={project.role} />
       ) : tab === 'sprints' ? (
         projectId && <SprintsPanel projectId={projectId} myRole={project.role} />
+      ) : tab === 'qa' ? (
+        projectId && <QaPanel projectId={projectId} myRole={project.role} />
       ) : tab === 'performance' ? (
         projectId && <PerformancePanel projectId={projectId} />
       ) : (
