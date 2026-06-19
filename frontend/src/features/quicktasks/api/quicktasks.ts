@@ -4,6 +4,16 @@ import client from '../../../shared/api/client';
 export type QuickTaskPriority = 'URGENT' | 'NORMAL' | 'LATER';
 export type QuickTaskStatus = 'NEW' | 'ASSIGNED' | 'DISMISSED';
 
+/**
+ * Atașament trimis odată cu un quick task public. `data` e un data-URL base64
+ * (ex: `data:image/png;base64,...` sau `data:audio/webm;base64,...`).
+ */
+export interface QuickTaskAttachment {
+  type: 'image' | 'audio';
+  data: string;
+  caption?: string | null;
+}
+
 export interface QuickTask {
   id: string;
   requesterName: string;
@@ -17,6 +27,7 @@ export interface QuickTask {
   processedByUserId: string | null;
   processedAt: string | null;
   createdAt: string | null;
+  attachments?: QuickTaskAttachment[];
 }
 
 export interface QuickTaskCreate {
@@ -24,6 +35,7 @@ export interface QuickTaskCreate {
   title: string;
   description?: string;
   priority: QuickTaskPriority;
+  attachments?: QuickTaskAttachment[];
 }
 
 /**

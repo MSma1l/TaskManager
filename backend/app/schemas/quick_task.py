@@ -1,6 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 from pydantic import BaseModel
+
+
+class QuickTaskAttachment(BaseModel):
+    """Screenshot sau mesaj vocal, ca data URL base64."""
+    type: str  # "image" | "audio"
+    data: str  # data:...;base64,...
+    caption: Optional[str] = None
 
 
 class QuickTaskCreate(BaseModel):
@@ -10,6 +17,8 @@ class QuickTaskCreate(BaseModel):
     description: Optional[str] = None
     # URGENT | NORMAL | LATER — default NORMAL daca lipseste / invalid.
     priority: str = "NORMAL"
+    # Screenshot-uri + mesaje vocale (optional).
+    attachments: Optional[List[QuickTaskAttachment]] = None
 
 
 class QuickTaskAssign(BaseModel):
@@ -31,3 +40,4 @@ class QuickTaskOut(BaseModel):
     processedByUserId: Optional[str] = None
     processedAt: Optional[datetime] = None
     createdAt: Optional[datetime] = None
+    attachments: Optional[List[Any]] = None

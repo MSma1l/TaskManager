@@ -19,6 +19,7 @@ export default defineConfig({
         'src/features/projects/components/mention.ts',
         'src/features/projects/components/boardConstants.ts',
         'src/features/qa/components/qaConstants.ts',
+        'src/features/quicktasks/components/attachments.ts',
         'src/features/projects/hooks/applyOptimisticMove.ts',
         // API clients
         'src/features/projects/api/activity.ts',
@@ -34,8 +35,6 @@ export default defineConfig({
         'src/features/quicktasks/hooks/useQuickTasks.ts',
         // components / pages
         'src/features/projects/components/PerformancePanel.tsx',
-        'src/features/quicktasks/pages/PublicQuickTaskPage.tsx',
-        'src/features/quicktasks/pages/QuickTasksPage.tsx',
         'src/features/stats/components/PersonalStatsCard.tsx',
         'src/features/stats/components/TeamStatsCard.tsx',
         'src/features/verify/pages/VerifyPage.tsx',

@@ -311,3 +311,41 @@ def test_count_new_excludes_assigned_and_dismissed(db, make_user, make_project, 
 
     # Ambele au iesit din starea NEW -> count 0.
     assert quick_task_service.count_new(db, owner.id) == 0
+
+
+# ── attachments (screenshot-uri + voice) ─────────────────────────────
+
+def test_create_public_with_attachments_kept(db):
+    out = quick_task_service.create_public(db, {
+        "requesterName": "Ana", "title": "bug vizual",
+        "attachments": [
+            {"type": "image", "data": "data:image/png;base64,AAAA", "caption": "shot"},
+            {"type": "audio", "data": "data:audio/webm;base64,BBBB"},
+        ],
+    })
+    qt = db.query(QuickTask).filter(QuickTask.id == out["id"]).first()
+    assert qt.attachments is not None
+    assert len(qt.attachments) == 2
+    assert qt.attachments[0]["type"] == "image"
+    assert qt.attachments[1]["type"] == "audio"
+
+
+def test_create_public_filters_invalid_attachments(db):
+    out = quick_task_service.create_public(db, {
+        "requesterName": "Ana", "title": "t",
+        "attachments": [
+            {"type": "image", "data": "not-a-data-url"},   # data invalid -> skip
+            {"type": "video", "data": "data:video/mp4;base64,CC"},  # tip invalid -> skip
+            "garbage",                                       # non-dict -> skip
+            {"type": "image", "data": "data:image/png;base64,OK"},  # valid
+        ],
+    })
+    qt = db.query(QuickTask).filter(QuickTask.id == out["id"]).first()
+    assert len(qt.attachments) == 1
+    assert qt.attachments[0]["data"].endswith("OK")
+
+
+def test_create_public_no_attachments_is_none(db):
+    out = quick_task_service.create_public(db, {"requesterName": "Ana", "title": "t"})
+    qt = db.query(QuickTask).filter(QuickTask.id == out["id"]).first()
+    assert qt.attachments is None

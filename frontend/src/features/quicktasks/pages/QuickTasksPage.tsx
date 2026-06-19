@@ -83,6 +83,7 @@ function QuickTaskCard({ quickTask, projects, onAssign, onDismiss }: CardProps) 
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   useEffect(() => {
     setAssigneeId('');
@@ -138,6 +139,58 @@ function QuickTaskCard({ quickTask, projects, onAssign, onDismiss }: CardProps) 
 
       {quickTask.description && (
         <p className="text-sm text-muted whitespace-pre-wrap mb-4">{quickTask.description}</p>
+      )}
+
+      {quickTask.attachments && quickTask.attachments.length > 0 && (
+        <div className="mb-4 space-y-3">
+          {(() => {
+            const images = quickTask.attachments!.filter((a) => a.type === 'image');
+            const audios = quickTask.attachments!.filter((a) => a.type === 'audio');
+            return (
+              <>
+                {images.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {images.map((att, i) => (
+                      <button
+                        key={`img-${i}`}
+                        type="button"
+                        onClick={() => setLightbox(att.data)}
+                        className="rounded-lg border border-border overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      >
+                        <img
+                          src={att.data}
+                          alt={att.caption || t('quick.attachImage')}
+                          className="h-20 w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {audios.map((att, i) => (
+                  <div key={`aud-${i}`} className="rounded-lg border border-border bg-elevated p-2">
+                    <p className="text-xs text-muted mb-1">{t('quick.voiceNote')}</p>
+                    <audio controls src={att.data} className="w-full" />
+                  </div>
+                ))}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <img
+            src={lightbox}
+            alt={t('quick.attachImage')}
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+          />
+        </div>
       )}
 
       {error && <p className="text-xs text-red-500 mb-2">{error}</p>}

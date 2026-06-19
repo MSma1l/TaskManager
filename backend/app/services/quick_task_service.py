@@ -46,7 +46,39 @@ def _to_dict(qt: QuickTask) -> dict:
         "processedByUserId": qt.processed_by_user_id,
         "processedAt": qt.processed_at.isoformat() if qt.processed_at else None,
         "createdAt": qt.created_at.isoformat() if qt.created_at else None,
+        "attachments": qt.attachments or [],
     }
+
+
+# Atasamente acceptate de pe formularul public (screenshot-uri + voice).
+_MAX_ATTACHMENTS = 10
+
+
+def _clean_attachments(raw) -> list | None:
+    """Valideaza si normalizeaza atasamentele venite din formularul public.
+
+    Accepta o lista de {"type": "image"|"audio", "data": data-URL, "caption"?}.
+    Ignora orice intrare invalida; intoarce None daca nu ramane nimic.
+    """
+    if not isinstance(raw, list):
+        return None
+    out = []
+    for item in raw[:_MAX_ATTACHMENTS]:
+        if not isinstance(item, dict):
+            continue
+        atype = str(item.get("type") or "").lower()
+        data = item.get("data")
+        if atype not in {"image", "audio"}:
+            continue
+        if not isinstance(data, str) or not data.startswith("data:"):
+            continue
+        caption = item.get("caption")
+        out.append({
+            "type": atype,
+            "data": data,
+            "caption": (str(caption)[:300] if caption else None),
+        })
+    return out or None
 
 
 # ── Public (fara auth) ────────────────────────────────────────────────────────
@@ -70,6 +102,7 @@ def create_public(db: Session, data: dict) -> dict:
         description=(data.get("description") or "").strip() or None,
         priority=priority,
         status="NEW",
+        attachments=_clean_attachments(data.get("attachments")),
     )
     db.add(qt)
     db.commit()

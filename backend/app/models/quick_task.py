@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey, JSON
 from app.core.database import Base
 from app.models.base import generate_cuid
 
@@ -23,6 +23,10 @@ class QuickTask(Base):
     priority = Column(String(20), nullable=False, default="NORMAL")
     # NEW | ASSIGNED | DISMISSED
     status = Column(String(20), nullable=False, default="NEW", index=True)
+
+    # Atașamente (screenshot-uri + mesaje vocale) ca data URL base64, ca nb_sketches:
+    # listă de {"type": "image"|"audio", "data": "data:...;base64,...", "caption": str|None}
+    attachments = Column(JSON, nullable=True)
 
     # Completate la asignare de către admin.
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
