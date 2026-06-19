@@ -1,5 +1,5 @@
 import { ChangeEvent, ClipboardEvent, FormEvent, useState } from 'react';
-import { useT } from '../../../shared/i18n/I18nProvider';
+import { useI18n } from '../../../shared/i18n/I18nProvider';
 import { QuickTaskAttachment, QuickTaskPriority, quickTasksApi } from '../api/quicktasks';
 import {
   canAddAttachment,
@@ -23,7 +23,7 @@ const PRIORITIES: { value: QuickTaskPriority; labelKey: string; dot: string }[] 
  * (înregistrare audio + transcript live în Descriere).
  */
 export default function PublicQuickTaskPage() {
-  const t = useT();
+  const { t, lang, setLang } = useI18n();
   const [requesterName, setRequesterName] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -106,6 +106,24 @@ export default function PublicQuickTaskPage() {
   return (
     <div className="min-h-screen bg-bg text-fg flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-lg">
+        {/* Selector limbă pentru vizitatorul anonim (RO / RU) */}
+        <div className="flex justify-end mb-3">
+          <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
+            {(['ro', 'ru'] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLang(l, { syncRemote: false })}
+                aria-pressed={lang === l}
+                className={`px-3 py-1.5 transition ${
+                  lang === l ? 'bg-blue-600 text-white' : 'bg-elevated text-muted hover:text-fg'
+                }`}
+              >
+                {l === 'ro' ? 'RO' : 'RU'}
+              </button>
+            ))}
+          </div>
+        </div>
         {done ? (
           <div className="bg-surface border border-border rounded-2xl p-8 text-center shadow-sm">
             <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-green-500/15 text-green-500 flex items-center justify-center text-3xl">
