@@ -44,6 +44,7 @@ export interface BoardTask {
   description: string | null;
   priority: BoardPriority;
   assignee: BoardAssignee | null;
+  assignees: BoardAssignee[];
   labels: Label[];
   boardColumnId: string;
   boardOrder: number;
@@ -94,6 +95,7 @@ export interface CreateBoardTaskData {
   description?: string;
   columnId: string;
   assigneeId?: string;
+  assigneeIds?: string[];
   priority?: BoardPriority;
   labelIds?: string[];
   dueDate?: string;
@@ -159,9 +161,9 @@ export const boardApi = {
     client
       .post(`/projects/${projectId}/board/tasks/${taskId}/move`, { toColumnId, toIndex })
       .then((r) => r.data),
-  assignTask: (projectId: string, taskId: string, assigneeId: string | null) =>
+  assignTask: (projectId: string, taskId: string, assigneeIds: string[]) =>
     client
-      .put<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/assign`, { assigneeId })
+      .put<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/assign`, { assigneeIds })
       .then((r) => r.data),
   transition: (projectId: string, taskId: string, data: TransitionData) =>
     client

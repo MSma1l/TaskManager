@@ -29,8 +29,11 @@ client.interceptors.response.use(
         // Notify the app — useAuth listens and shows a "session expired" modal
         window.dispatchEvent(new CustomEvent('auth:expired', { detail: { username: lastUsername } }));
 
-        const onLoginPage = window.location.pathname.startsWith('/login')
-          || window.location.pathname.startsWith('/admin_task_manager');
+        // Only the EXACT login routes count as "already on a login page".
+        // Deeper admin paths (ex: /admin_task_manager/dashboard) sunt pagini reale,
+        // nu login — deci trebuie redirecționate.
+        const pathname = window.location.pathname;
+        const onLoginPage = pathname === '/login' || pathname === '/admin_task_manager';
         if (!onLoginPage) {
           window.location.href = wasAdmin ? '/admin_task_manager' : '/login';
         }

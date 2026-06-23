@@ -1,6 +1,6 @@
 import { ChangeEvent, ClipboardEvent, FormEvent, useState } from 'react';
 import { useI18n } from '../../../shared/i18n/I18nProvider';
-import { QuickTaskAttachment, QuickTaskPriority, quickTasksApi } from '../api/quicktasks';
+import { QuickTaskAttachment, quickTasksApi } from '../api/quicktasks';
 import {
   canAddAttachment,
   fileToImageAttachment,
@@ -10,24 +10,18 @@ import {
 import ScreenshotInput from '../components/ScreenshotInput';
 import VoiceRecorder from '../components/VoiceRecorder';
 
-const PRIORITIES: { value: QuickTaskPriority; labelKey: string; dot: string }[] = [
-  { value: 'URGENT', labelKey: 'quick.priorityUrgent', dot: 'bg-red-500' },
-  { value: 'NORMAL', labelKey: 'quick.priorityNormal', dot: 'bg-amber-500' },
-  { value: 'LATER', labelKey: 'quick.priorityLater', dot: 'bg-slate-400' },
-];
-
 /**
  * Formular public de creare task rapid (FARA login).
- * Nume+Prenume, Titlu, Descriere, Prioritate. Statusul e implicit "Nou".
+ * Nume+Prenume, un singur câmp Mesaj și un toggle "Urgent". Statusul e implicit "Nou".
  * În plus: atașamente imagine (fișier / paste / captură ecran) și notă vocală
- * (înregistrare audio + transcript live în Descriere).
+ * (înregistrare audio + transcript live în câmpul Mesaj).
+ * Se poate trimite cu nume + (mesaj SAU cel puțin un atașament).
  */
 export default function PublicQuickTaskPage() {
   const { t, lang, setLang } = useI18n();
   const [requesterName, setRequesterName] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<QuickTaskPriority>('NORMAL');
+  const [message, setMessage] = useState('');
+  const [urgent, setUrgent] = useState(false);
   const [attachments, setAttachments] = useState<QuickTaskAttachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +36,7 @@ export default function PublicQuickTaskPage() {
   };
 
   const appendTranscript = (text: string) => {
-    setDescription((prev) => (prev ? `${prev.replace(/\s+$/, '')} ${text}` : text));
+    setMessage((prev) => (prev ? `${prev.replace(/\s+$/, '')} ${text}` : text));
   };
 
   const handleImageFiles = async (files: File[]) => {
@@ -70,7 +64,7 @@ export default function PublicQuickTaskPage() {
     e.preventDefault();
     if (submitting) return;
     setError(null);
-    if (!requesterName.trim() || !title.trim()) {
+    if (!requesterName.trim() || (!message.trim() && attachments.length === 0)) {
       setError(t('quick.errorRequired'));
       return;
     }
@@ -78,9 +72,8 @@ export default function PublicQuickTaskPage() {
     try {
       await quickTasksApi.submitPublic({
         requesterName: requesterName.trim(),
-        title: title.trim(),
-        description: description.trim() || undefined,
-        priority,
+        ...(message.trim() ? { title: message.trim() } : {}),
+        priority: urgent ? 'URGENT' : 'NORMAL',
         ...(attachments.length ? { attachments } : {}),
       });
       setDone(true);
@@ -93,9 +86,8 @@ export default function PublicQuickTaskPage() {
 
   const resetForm = () => {
     setRequesterName('');
-    setTitle('');
-    setDescription('');
-    setPriority('NORMAL');
+    setMessage('');
+    setUrgent(false);
     setAttachments([]);
     setDone(false);
     setError(null);
@@ -167,26 +159,13 @@ export default function PublicQuickTaskPage() {
               />
             </label>
 
-            <label className="block mb-4">
+            <div className="mb-6">
               <span className="block text-sm font-medium mb-0.5">{t('quick.titleLabel')}</span>
               <span className="block text-xs text-muted mb-1.5">{t('quick.titleHint')}</span>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t('quick.titlePlaceholder')}
-                className="w-full rounded-lg bg-input border border-border px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                maxLength={300}
-              />
-            </label>
-
-            <div className="mb-6">
-              <span className="block text-sm font-medium mb-0.5">{t('quick.descriptionLabel')}</span>
-              <span className="block text-xs text-muted mb-1.5">{t('quick.descriptionHint')}</span>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t('quick.descriptionPlaceholder')}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder={t('quick.titlePlaceholder')}
                 rows={4}
                 className="w-full rounded-t-lg bg-input border border-border border-b-0 px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
               />
@@ -249,30 +228,18 @@ export default function PublicQuickTaskPage() {
               )}
             </div>
 
-            <fieldset className="mb-6">
-              <legend className="block text-sm font-medium mb-0.5">{t('quick.priorityLabel')}</legend>
-              <p className="text-xs text-muted mb-1.5">{t('quick.priorityHint')}</p>
-              <div className="grid grid-cols-3 gap-2">
-                {PRIORITIES.map((p) => {
-                  const active = priority === p.value;
-                  return (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setPriority(p.value)}
-                      className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                        active
-                          ? 'border-blue-500 bg-blue-500/10 text-fg'
-                          : 'border-border bg-elevated text-muted hover:text-fg'
-                      }`}
-                    >
-                      <span className={`h-2.5 w-2.5 rounded-full ${p.dot}`} />
-                      {t(p.labelKey)}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
+            <label className="mb-6 flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={urgent}
+                onChange={(e) => setUrgent(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-red-600 focus:ring-2 focus:ring-red-500/50"
+              />
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                {t('quick.urgentLabel')}
+              </span>
+            </label>
 
             <button
               type="submit"

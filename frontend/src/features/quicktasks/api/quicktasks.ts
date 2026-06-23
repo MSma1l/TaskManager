@@ -32,9 +32,9 @@ export interface QuickTask {
 
 export interface QuickTaskCreate {
   requesterName: string;
-  title: string;
-  description?: string;
-  priority: QuickTaskPriority;
+  // Mesajul (un singur câmp). Opțional dacă se trimite voce / imagine.
+  title?: string;
+  priority: 'URGENT' | 'NORMAL';
   attachments?: QuickTaskAttachment[];
 }
 

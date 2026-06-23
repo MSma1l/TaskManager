@@ -37,6 +37,33 @@ function clearSession() {
   // Keep username + role so we can pre-fill the re-login screen
 }
 
+// Aceeași logică de "pagină de login" ca interceptorul axios (client.ts):
+// DOAR rutele exacte /login și /admin_task_manager sunt pagini de login.
+function onLoginPage(): boolean {
+  const pathname = window.location.pathname;
+  return pathname === '/login' || pathname === '/admin_task_manager';
+}
+
+// Verificare proactivă: dacă tokenul a expirat (tokenExpiresAt în trecut),
+// curățăm sesiunea și redirecționăm către login-ul corect (admin vs user),
+// fără să mai așteptăm un apel API care să dea 401.
+function enforceTokenExpiry(): boolean {
+  const exp = localStorage.getItem('tokenExpiresAt');
+  if (!exp) return false;
+  const expMs = parseInt(exp, 10);
+  if (Number.isNaN(expMs) || expMs > Date.now()) return false;
+
+  const wasAdmin = localStorage.getItem('userRole') === 'ADMIN';
+  clearSession();
+  window.dispatchEvent(new CustomEvent('auth:expired'));
+  if (!onLoginPage()) {
+    window.location.href = wasAdmin ? '/admin_task_manager' : '/login';
+  }
+  return true;
+}
+
+const EXPIRY_CHECK_INTERVAL_MS = 30_000;
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>(readState);
 
@@ -48,6 +75,15 @@ export function useAuth() {
       window.removeEventListener('auth:expired', refresh);
       window.removeEventListener('storage', refresh);
     };
+  }, []);
+
+  // Expiry proactiv: la montare + la fiecare 30s. Dacă tokenul a expirat,
+  // enforceTokenExpiry curăță sesiunea și redirecționează — userul nu mai
+  // rămâne blocat pe o pagină cu token mort până la următorul apel API.
+  useEffect(() => {
+    if (enforceTokenExpiry()) return;
+    const id = window.setInterval(enforceTokenExpiry, EXPIRY_CHECK_INTERVAL_MS);
+    return () => window.clearInterval(id);
   }, []);
 
   const verifyCode = useCallback(async (challengeId: string, code: string): Promise<boolean> => {

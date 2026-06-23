@@ -9,6 +9,7 @@ function task(id: string, columnId: string): BoardTask {
     description: null,
     priority: 'MEDIUM',
     assignee: null,
+    assignees: [],
     labels: [],
     boardColumnId: columnId,
     boardOrder: 0,

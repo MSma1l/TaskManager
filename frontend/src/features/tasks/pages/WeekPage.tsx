@@ -9,7 +9,7 @@ import MobileDayView from '../components/MobileDayView';
 import AddTaskModal from '../components/AddTaskModal';
 import MarkTaskModal from '../components/MarkTaskModal';
 import EditTaskModal from '../components/EditTaskModal';
-import AssignedTasksList from '../components/AssignedTasksList';
+import AssignedBoard from '../components/AssignedBoard';
 import { formatWeekRange } from '../../../shared/utils/dates';
 
 type HomeTab = 'personal' | 'assigned';
@@ -135,7 +135,7 @@ export default function WeekPage() {
       </div>
 
       {tab === 'assigned' ? (
-        <AssignedTasksList />
+        <AssignedBoard />
       ) : (
       <>
       {/* Week navigation */}

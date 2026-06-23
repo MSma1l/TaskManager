@@ -22,8 +22,8 @@ export default function ManualBacklogTaskModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<BoardPriority>('MEDIUM');
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
-  const [storyPoints, setStoryPoints] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [storyPoints, setStoryPoints] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -40,7 +40,7 @@ export default function ManualBacklogTaskModal({
         title: title.trim(),
         description: description.trim() || undefined,
         columnId,
-        assigneeId: assigneeId || undefined,
+        assigneeIds,
         priority,
         storyPoints: Number.isFinite(sp) && sp >= 0 ? sp : undefined,
       });
@@ -123,8 +123,8 @@ export default function ManualBacklogTaskModal({
           </div>
 
           <div>
-            <label className="text-sm text-fg mb-1.5 block">{t('board.assignee')}</label>
-            <AssigneePicker members={members} value={assigneeId} onChange={setAssigneeId} />
+            <label className="text-sm text-fg mb-1.5 block">{t('board.assignees')}</label>
+            <AssigneePicker members={members} value={assigneeIds} onChange={setAssigneeIds} />
           </div>
 
           <div className="flex gap-3 mt-1">

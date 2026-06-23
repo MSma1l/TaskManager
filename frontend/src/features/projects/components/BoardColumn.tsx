@@ -109,7 +109,7 @@ export default function BoardColumn({
                 onClick={onCardClick}
                 workflow={{
                   columnType: column.columnType,
-                  isAssignee: !!myUserId && task.assignee?.userId === myUserId,
+                  isAssignee: !!myUserId && task.assignees.some((a) => a.userId === myUserId),
                   canApprove,
                   onAction: onWorkflowAction,
                 }}

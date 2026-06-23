@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useT } from '../../../shared/i18n/I18nProvider';
-import { BoardTask, ColumnType, TransitionAction } from '../api/board';
+import { BoardAssignee, BoardTask, ColumnType, TransitionAction } from '../api/board';
 import { PRIORITY_DOT, avatarTint, nextAction, actionKey } from './boardConstants';
 
 interface WorkflowCtx {
@@ -31,9 +31,6 @@ export function BoardCardBody({
   workflow?: WorkflowCtx;
 }) {
   const t = useT();
-  const initials = task.assignee
-    ? (task.assignee.fullName || task.assignee.username).charAt(0).toUpperCase()
-    : null;
 
   // Decide whether to render a workflow button on this card.
   let action: TransitionAction | null = null;
@@ -148,17 +145,8 @@ export function BoardCardBody({
           )}
         </div>
 
-        {/* Assignee */}
-        {initials && (
-          <div
-            title={task.assignee?.fullName || task.assignee?.username || ''}
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0 ${avatarTint(
-              task.assignee?.userId || '',
-            )}`}
-          >
-            {initials}
-          </div>
-        )}
+        {/* Assignees (stivuiti, cu overflow +N) */}
+        <AssigneeStack assignees={task.assignees} />
       </div>
 
       {/* Workflow action */}
@@ -175,6 +163,39 @@ export function BoardCardBody({
         >
           {t(actionKey(action))}
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Avatare suprapuse pentru responsabili, cu badge "+N" la depasire. */
+export function AssigneeStack({
+  assignees,
+  max = 3,
+}: {
+  assignees: BoardAssignee[];
+  max?: number;
+}) {
+  if (!assignees || assignees.length === 0) return null;
+  const shown = assignees.slice(0, max);
+  const extra = assignees.length - shown.length;
+  return (
+    <div className="flex items-center flex-shrink-0">
+      {shown.map((a, i) => (
+        <div
+          key={a.userId}
+          title={a.fullName || a.username || ''}
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ring-2 ring-surface ${avatarTint(
+            a.userId,
+          )} ${i > 0 ? '-ml-2' : ''}`}
+        >
+          {(a.fullName || a.username || '?').charAt(0).toUpperCase()}
+        </div>
+      ))}
+      {extra > 0 && (
+        <div className="w-6 h-6 -ml-2 rounded-full flex items-center justify-center text-[10px] font-semibold ring-2 ring-surface bg-surface border border-border text-muted">
+          +{extra}
+        </div>
       )}
     </div>
   );

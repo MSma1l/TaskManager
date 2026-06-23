@@ -4,7 +4,7 @@ import { useBacklog } from '../hooks/useBacklog';
 import { useMembers } from '../hooks/useMembers';
 import { boardApi, BoardTask, BoardColumn, CreateBoardTaskData } from '../api/board';
 import { ProjectRole } from '../api/members';
-import { avatarTint } from './boardConstants';
+import { AssigneeStack } from './BoardCard';
 import AiTaskWizard from './AiTaskWizard';
 import SprintPlannerModal from './SprintPlannerModal';
 import ManualBacklogTaskModal from './ManualBacklogTaskModal';
@@ -130,9 +130,6 @@ export default function BacklogPanel({ projectId, myRole }: BacklogPanelProps) {
 }
 
 function BacklogRow({ task }: { task: BoardTask }) {
-  const initials = task.assignee
-    ? (task.assignee.fullName || task.assignee.username).charAt(0).toUpperCase()
-    : null;
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
       {task.taskKey && (
@@ -146,16 +143,7 @@ function BacklogRow({ task }: { task: BoardTask }) {
           {task.storyPoints}
         </span>
       )}
-      {initials && (
-        <div
-          title={task.assignee?.fullName || task.assignee?.username || ''}
-          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0 ${avatarTint(
-            task.assignee?.userId || '',
-          )}`}
-        >
-          {initials}
-        </div>
-      )}
+      <AssigneeStack assignees={task.assignees} />
     </div>
   );
 }

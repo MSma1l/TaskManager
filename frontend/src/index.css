@@ -24,6 +24,21 @@
   --color-border: 203 213 225;   /* slate-300 — stronger so cards have a clear edge */
 }
 
+/* ── Layout vars ───────────────────────────────────────────────────────── */
+/* Spatiu rezervat in partea de sus a continutului ca primele iteme/headere
+   sa nu fie acoperite de clopotelul de notificari (fixed top-right). Pe mobil
+   bara de sus nu exista, deci avem nevoie de aceasta marja; pe desktop (>=md)
+   sidebar-ul lasa loc, deci o resetam la 0. */
+:root {
+  --app-bell-clearance: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --app-bell-clearance: 0px;
+  }
+}
+
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
 * {

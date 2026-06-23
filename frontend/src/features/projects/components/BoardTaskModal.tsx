@@ -23,7 +23,7 @@ interface BoardTaskModalProps {
   onClose: () => void;
   onCreate?: (data: CreateBoardTaskData) => Promise<unknown>;
   onUpdate?: (taskId: string, data: UpdateBoardTaskData) => Promise<unknown>;
-  onAssign?: (taskId: string, assigneeId: string | null) => Promise<unknown>;
+  onAssign?: (taskId: string, userIds: string[]) => Promise<unknown>;
   onDelete?: (taskId: string) => Promise<unknown>;
   onCreateLabel?: (data: CreateLabelData) => Promise<Label>;
 }
@@ -46,7 +46,9 @@ export default function BoardTaskModal({
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [priority, setPriority] = useState<BoardPriority>(task?.priority || 'MEDIUM');
-  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assignee?.userId || null);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    task?.assignees.map((a) => a.userId) || [],
+  );
   const [labelIds, setLabelIds] = useState<string[]>(task?.labels.map((l) => l.id) || []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -72,16 +74,20 @@ export default function BoardTaskModal({
             labelIds,
           });
         }
-        // Assignment goes through a dedicated endpoint.
-        if (onAssign && (task.assignee?.userId || null) !== assigneeId) {
-          await onAssign(task.id, assigneeId);
+        // Assignment goes through a dedicated endpoint. Compara seturile.
+        const prevIds = task.assignees.map((a) => a.userId);
+        const changed =
+          prevIds.length !== assigneeIds.length ||
+          prevIds.some((id) => !assigneeIds.includes(id));
+        if (onAssign && changed) {
+          await onAssign(task.id, assigneeIds);
         }
       } else if (onCreate && columnId) {
         await onCreate({
           title: title.trim(),
           description: description.trim() || undefined,
           columnId,
-          assigneeId: assigneeId || undefined,
+          assigneeIds,
           priority,
           labelIds,
         });
@@ -165,8 +171,8 @@ export default function BoardTaskModal({
           </div>
 
           <div>
-            <label className="text-sm text-fg mb-1.5 block">{t('board.assignee')}</label>
-            <AssigneePicker members={members} value={assigneeId} onChange={setAssigneeId} />
+            <label className="text-sm text-fg mb-1.5 block">{t('board.assignees')}</label>
+            <AssigneePicker members={members} value={assigneeIds} onChange={setAssigneeIds} />
           </div>
 
           <div>

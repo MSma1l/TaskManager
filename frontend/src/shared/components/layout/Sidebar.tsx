@@ -66,22 +66,37 @@ const I = {
  */
 const SECTIONS: NavSection[] = [
   {
-    titleKey: 'nav.sectionWork',
+    titleKey: 'nav.groupActivity',
     items: [
       { to: '/', end: true, labelKey: 'nav.weekly', icon: I.calendar },
       { to: '/today', labelKey: 'nav.task', icon: I.check },
+    ],
+  },
+  {
+    titleKey: 'nav.groupProjects',
+    items: [
       { to: '/projects', labelKey: 'nav.projects', icon: I.folder },
       { to: '/quick-tasks', labelKey: 'nav.quickTasks', icon: I.bolt },
       { to: '/verify', labelKey: 'nav.verify', icon: I.inbox },
+    ],
+  },
+  {
+    titleKey: 'nav.groupPlanning',
+    items: [
       { to: '/calendar', labelKey: 'nav.calendar', icon: I.calendar },
       { to: '/notebook', labelKey: 'nav.notebook', icon: I.book },
     ],
   },
   {
-    titleKey: 'nav.sectionStats',
+    titleKey: 'nav.groupAnalytics',
     items: [
       { to: '/stats', labelKey: 'nav.dashboard', icon: I.chart },
       { to: '/reports', labelKey: 'nav.reports', icon: I.chart },
+    ],
+  },
+  {
+    titleKey: 'nav.groupAccount',
+    items: [
       { to: '/profile', labelKey: 'nav.profile', icon: I.user },
     ],
   },

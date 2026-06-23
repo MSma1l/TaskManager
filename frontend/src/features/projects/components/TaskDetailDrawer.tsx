@@ -27,8 +27,8 @@ interface TaskDetailDrawerProps {
   onWorkflowAction: (task: BoardTask, action: TransitionAction) => void;
   /** Actualizează câmpuri ale task-ului (ex: story points inline). */
   onUpdate?: (taskId: string, data: UpdateBoardTaskData) => Promise<unknown> | void;
-  /** Schimbă responsabilul direct din drawer (orice membru poate). */
-  onAssign?: (taskId: string, assigneeId: string | null) => Promise<unknown> | void;
+  /** Schimbă responsabilii direct din drawer (orice membru poate). */
+  onAssign?: (taskId: string, userIds: string[]) => Promise<unknown> | void;
   /** Subtaskuri (checklist) — disponibile doar pentru membri care pot edita. */
   onAddSubtask?: (taskId: string, title: string) => Promise<unknown> | void;
   onToggleSubtask?: (taskId: string, subtaskId: string, done: boolean) => Promise<unknown> | void;
@@ -64,7 +64,7 @@ export default function TaskDetailDrawer({
 
   // ── Workflow action for the drawer footer (mirror BoardCard logic). ──────────
   const candidate = nextAction(columnType);
-  const isAssignee = !!myUserId && task.assignee?.userId === myUserId;
+  const isAssignee = !!myUserId && task.assignees.some((a) => a.userId === myUserId);
   let action: TransitionAction | null = null;
   if (candidate === 'approve') {
     if (canApprove) action = 'approve';
@@ -72,9 +72,7 @@ export default function TaskDetailDrawer({
     if (isAssignee || canApprove) action = candidate;
   }
 
-  const assigneeInitials = task.assignee
-    ? (task.assignee.fullName || task.assignee.username).charAt(0).toUpperCase()
-    : null;
+  const assigneeIds = task.assignees.map((a) => a.userId);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -162,34 +160,37 @@ export default function TaskDetailDrawer({
             <div className="flex flex-col gap-2.5 text-sm">
               {/* Assignee — editabil: orice membru poate schimba responsabilul */}
               <div className="flex items-start gap-2">
-                <span className="text-muted w-24 flex-shrink-0 pt-1.5">{t('board.assignee')}</span>
+                <span className="text-muted w-24 flex-shrink-0 pt-1.5">{t('board.assignees')}</span>
                 {onAssign ? (
                   <div className="flex-1 min-w-0">
                     <AssigneePicker
                       members={members}
-                      value={task.assignee?.userId ?? null}
+                      value={assigneeIds}
                       disabled={assigning}
-                      onChange={async (uid) => {
-                        if (uid === (task.assignee?.userId ?? null)) return;
+                      onChange={async (ids) => {
                         setAssigning(true);
                         try {
-                          await onAssign(task.id, uid);
+                          await onAssign(task.id, ids);
                         } finally {
                           setAssigning(false);
                         }
                       }}
                     />
                   </div>
-                ) : task.assignee ? (
-                  <span className="flex items-center gap-2 text-fg pt-1">
-                    <span
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                        task.assignee.userId,
-                      )}`}
-                    >
-                      {assigneeInitials}
-                    </span>
-                    {task.assignee.fullName || task.assignee.username}
+                ) : task.assignees.length > 0 ? (
+                  <span className="flex flex-wrap items-center gap-2 text-fg pt-1">
+                    {task.assignees.map((a) => (
+                      <span key={a.userId} className="flex items-center gap-1.5">
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
+                            a.userId,
+                          )}`}
+                        >
+                          {(a.fullName || a.username).charAt(0).toUpperCase()}
+                        </span>
+                        {a.fullName || a.username}
+                      </span>
+                    ))}
                   </span>
                 ) : (
                   <span className="text-muted pt-1">{t('board.unassigned')}</span>

@@ -87,8 +87,8 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     await fetchBoard(false);
   };
 
-  const assignTask = async (taskId: string, assigneeId: string | null) => {
-    const task = await boardApi.assignTask(projectId, taskId, assigneeId);
+  const assignTask = async (taskId: string, assigneeIds: string[]) => {
+    const task = await boardApi.assignTask(projectId, taskId, assigneeIds);
     await fetchBoard(false);
     return task;
   };

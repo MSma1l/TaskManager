@@ -41,7 +41,11 @@ export default function AppLayout() {
       style={{
         // Reserve enough space for the BottomNav (mobile) + iPhone home indicator.
         // Pe desktop bara de jos e ascunsa, dar pastram safe-area-ul.
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        // Pe mobil adaugam ~3.5rem in plus ca headerele/primele iteme sa nu fie
+        // acoperite de clopotelul de notificari (fixed top-right, z-40). Pe
+        // desktop sidebar-ul lasa loc, deci nu mai e nevoie de spatiu extra.
+        paddingTop:
+          'calc(env(safe-area-inset-top, 0px) + var(--app-bell-clearance, 0px))',
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
       }}
     >

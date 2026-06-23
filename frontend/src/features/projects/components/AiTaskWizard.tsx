@@ -51,7 +51,7 @@ export default function AiTaskWizard({ projectId, members, onClose, onCreated }:
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 
   // Preview (editable) state
   const [source, setSource] = useState<AiSource>('');
@@ -119,7 +119,7 @@ export default function AiTaskWizard({ projectId, members, onClose, onCreated }:
         storyPoints: clampSp(storyPoints),
         subtasks: subtasks.map((s) => s.trim()).filter(Boolean),
         dueDate: dueDate ? `${dueDate}T17:00:00` : null,
-        assigneeId: assigneeId || undefined,
+        assigneeId: assigneeIds[0] || undefined,
       });
       onCreated();
       onClose();
@@ -177,7 +177,7 @@ export default function AiTaskWizard({ projectId, members, onClose, onCreated }:
             </div>
             <div>
               <label className="text-sm text-fg mb-1.5 block">{t('board.assignee')}</label>
-              <AssigneePicker members={members} value={assigneeId} onChange={setAssigneeId} />
+              <AssigneePicker members={members} value={assigneeIds} onChange={setAssigneeIds} />
             </div>
             <div className="flex gap-3 mt-1">
               <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-surface hover:bg-bg border border-border text-fg font-semibold transition-colors">

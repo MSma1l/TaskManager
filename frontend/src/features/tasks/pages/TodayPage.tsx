@@ -4,6 +4,7 @@ import { useT } from '../../../shared/i18n/I18nProvider';
 import { tasksApi, Task } from '../api/tasks';
 import { assignedApi, AssignedTask } from '../api/assigned';
 import { calendarApi, CalendarEvent } from '../../calendar/api/calendar';
+import OfficeBoard from '../components/OfficeBoard';
 
 function todayISO(): string {
   const d = new Date();
@@ -87,6 +88,9 @@ export default function TodayPage() {
           ))}
         </Section>
       )}
+
+      {/* Board-ul de birou (își aduce singur datele). */}
+      <OfficeBoard />
     </div>
   );
 }

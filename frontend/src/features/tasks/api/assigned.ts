@@ -1,5 +1,27 @@
 import client from '../../../shared/api/client';
-import { BoardPriority, ColumnType, TransitionData } from '../../projects/api/board';
+import { BoardPriority, BoardTask, ColumnType, TransitionData } from '../../projects/api/board';
+
+/** Zonele logice ale board-ului „Repartizate" (agregat peste proiecte). */
+export type AssignedZone = 'BACKLOG' | 'PLANNED' | 'IN_PROGRESS' | 'DONE' | 'APPROVED';
+
+/** Un task repartizat — `BoardTask` îmbogățit cu proiectul + coloana sursă. */
+export type AssignedBoardTask = BoardTask & {
+  projectId: string;
+  projectName: string;
+  columnName: string;
+};
+
+export interface AssignedZoneGroup {
+  zone: AssignedZone;
+  label: string;
+  tasks: AssignedBoardTask[];
+}
+
+export interface AssignedBoardResponse {
+  zones: AssignedZoneGroup[];
+  projects: { id: string; name: string }[];
+  archived: AssignedBoardTask[];
+}
 
 /** A board task assigned to the current user, surfaced on the home page. */
 export interface AssignedTask {
@@ -29,6 +51,13 @@ export interface AssignedTask {
 
 export const assignedApi = {
   getAssigned: () => client.get<AssignedTask[]>('/tasks/assigned').then((r) => r.data),
+  /** Board-ul „Repartizate" pe zone, opțional filtrat după proiect. */
+  getBoard: (projectId?: string) =>
+    client
+      .get<AssignedBoardResponse>('/assigned/board', {
+        params: projectId ? { projectId } : undefined,
+      })
+      .then((r) => r.data),
   /** Plan / schedule an assigned task (same transition endpoint as the board). */
   transition: (projectId: string, taskId: string, data: TransitionData) =>
     client
