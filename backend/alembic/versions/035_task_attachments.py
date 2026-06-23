@@ -5,16 +5,16 @@ ca quick_tasks.attachments. Preluata pe Task la asignarea unui quick task.
 
 Idempotent: add_column protejat de guard pe inspector.
 
-Revision ID: 033
-Revises: 032
+Revision ID: 035
+Revises: 034
 Create Date: 2026-06-23 12:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "033"
-down_revision = "032"
+revision = "035"
+down_revision = "034"
 branch_labels = None
 depends_on = None
 
