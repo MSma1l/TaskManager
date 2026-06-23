@@ -32,6 +32,7 @@ export default function ProjectDetailPage() {
   const [editGithub, setEditGithub] = useState('');
   const [editColor, setEditColor] = useState('');
   const [editKey, setEditKey] = useState('');
+  const [editShowOnToday, setEditShowOnToday] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchProject = useCallback(async () => {
@@ -49,6 +50,9 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { fetchProject(); }, [fetchProject]);
 
+  // Doar OWNER/ADMIN pot administra setarile proiectului (ex: "Apare pe Astazi").
+  const canManage = project?.role === 'OWNER' || project?.role === 'ADMIN';
+
   const handleSaveEdit = async () => {
     if (!projectId || !editName.trim()) return;
     const data: UpdateProjectData = {
@@ -58,6 +62,7 @@ export default function ProjectDetailPage() {
       color: editColor,
       key: editKey.trim() || undefined,
     };
+    if (canManage) data.showOnToday = editShowOnToday;
     await projectsApi.update(projectId, data);
     setShowEdit(false);
     fetchProject();
@@ -76,6 +81,7 @@ export default function ProjectDetailPage() {
     setEditGithub(project.githubUrl || '');
     setEditColor(project.color);
     setEditKey(project.key || '');
+    setEditShowOnToday(project.showOnToday);
     setShowEdit(true);
   };
 
@@ -238,6 +244,21 @@ export default function ProjectDetailPage() {
                   ))}
                 </div>
               </div>
+
+              {canManage && (
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editShowOnToday}
+                    onChange={(e) => setEditShowOnToday(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-border accent-blue-600 cursor-pointer"
+                  />
+                  <span>
+                    <span className="text-sm text-fg/80 block">{t('projects.showOnToday')}</span>
+                    <span className="text-xs text-muted block">{t('projects.showOnTodayHint')}</span>
+                  </span>
+                </label>
+              )}
 
               {projectId && (
                 <div className="border-t border-border pt-3">

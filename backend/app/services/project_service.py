@@ -112,6 +112,8 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
     if "status" in data and data["status"] is not None:
         if data["status"] in ("ACTIVE", "ON_HOLD", "ARCHIVED"):
             project.status = data["status"]
+    if "showOnToday" in data and data["showOnToday"] is not None:
+        project.show_on_today = data["showOnToday"]
 
     project.updated_at = datetime.utcnow()
     db.commit()

@@ -18,3 +18,4 @@ class ProjectUpdate(BaseModel):
     isActive: Optional[bool] = None
     key: Optional[str] = None
     status: Optional[str] = None
+    showOnToday: Optional[bool] = None

@@ -13,6 +13,8 @@ export interface Project {
   key: string | null;
   isActive: boolean;
   status: ProjectStatus;
+  /** Admin/owner flag: my tasks from this project feed the shared Today board. */
+  showOnToday: boolean;
   taskCount: number;
   /** Caller's role on this project (Phase 1 membership). */
   role?: ProjectRole;
@@ -42,6 +44,7 @@ export interface UpdateProjectData {
   key?: string;
   isActive?: boolean;
   status?: ProjectStatus;
+  showOnToday?: boolean;
 }
 
 export const projectsApi = {

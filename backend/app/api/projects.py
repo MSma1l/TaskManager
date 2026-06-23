@@ -20,6 +20,7 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
         "key": project.key,
         "isActive": project.is_active,
         "status": project.status,
+        "showOnToday": project.show_on_today,
         "taskCount": task_count,
         "role": role,
         "memberCount": member_count,

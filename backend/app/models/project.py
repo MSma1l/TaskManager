@@ -22,6 +22,9 @@ class Project(Base):
     # Cheie de sistem pentru proiecte speciale (ex: "OFFICE" = proiectul "Birou").
     # NULL pentru proiectele obisnuite ale userilor.
     system_key = Column(String(20), nullable=True, index=True)
+    # Daca True, taskurile proiectului apar pe board-ul comun "Astazi" (Today).
+    # Adminul/owner-ul proiectului controleaza acest flag.
+    show_on_today = Column(Boolean, nullable=False, server_default="false")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
