@@ -13,6 +13,7 @@ import { useComments } from '../hooks/useComments';
 import { useTaskActivity } from '../hooks/useTaskActivity';
 import { useWatchers } from '../hooks/useWatchers';
 import AssigneePicker from './AssigneePicker';
+import TaskAttachments from '../../../shared/components/TaskAttachments';
 
 interface TaskDetailDrawerProps {
   task: BoardTask;
@@ -156,6 +157,8 @@ export default function TaskDetailDrawer({
                 {task.description}
               </p>
             )}
+
+            <TaskAttachments attachments={task.attachments ?? []} />
 
             <div className="flex flex-col gap-2.5 text-sm">
               {/* Assignee — editabil: orice membru poate schimba responsabilul */}

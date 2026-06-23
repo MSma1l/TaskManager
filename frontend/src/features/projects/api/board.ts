@@ -1,4 +1,5 @@
 import client from '../../../shared/api/client';
+import { Attachment } from '../../../shared/api/attachment';
 
 export type BoardPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
@@ -59,6 +60,8 @@ export interface BoardTask {
   approvalStatus: ApprovalStatus | null;
   sprintId: string | null;
   subtasks: Subtask[];
+  /** Imagini / note vocale atașate (data-URL base64). Poate fi `[]`. */
+  attachments?: Attachment[];
 }
 
 export interface BoardColumn {

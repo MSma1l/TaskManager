@@ -1,5 +1,6 @@
 import client from '../../../shared/api/client';
 import { BoardPriority, BoardTask, ColumnType, TransitionData } from '../../projects/api/board';
+import { Attachment } from '../../../shared/api/attachment';
 
 /** Zonele logice ale board-ului „Repartizate" (agregat peste proiecte). */
 export type AssignedZone = 'BACKLOG' | 'PLANNED' | 'IN_PROGRESS' | 'DONE' | 'APPROVED';
@@ -47,6 +48,8 @@ export interface AssignedTask {
     color: string;
     key: string | null;
   };
+  /** Imagini / note vocale atașate (data-URL base64). Poate fi `[]`. */
+  attachments?: Attachment[];
 }
 
 export const assignedApi = {

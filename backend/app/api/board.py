@@ -84,6 +84,7 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "reminderTime": task.reminder_time,
         "commentCount": comment_counts.get(task.id, 0),
         "subtasks": list(task.subtasks or []),
+        "attachments": list(task.attachments or []),
     }
 
 

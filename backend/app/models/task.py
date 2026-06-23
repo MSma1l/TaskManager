@@ -47,6 +47,12 @@ class Task(Base):
     # Lista de {"id": cuid, "title": str, "done": bool}, ordonata.
     subtasks = Column(JSON, nullable=True)
 
+    # ── Atasamente (preluate din Quick Task la asignare) ─────────────
+    # Screenshot-uri + mesaje vocale ca data URL base64, aceeasi forma ca la
+    # quick_tasks.attachments: lista de
+    # {"type": "image"|"audio", "data": "data:...;base64,...", "caption": str|None}
+    attachments = Column(JSON, nullable=True)
+
     # ── Arhivare (Verificat) ────────────────────────────────────────
     # Setat cand taskul (intr-un proiect non-Birou) intra intr-o coloana
     # de tip APPROVED (Verificat). Sters cand iese din ea. Folosit de view-ul

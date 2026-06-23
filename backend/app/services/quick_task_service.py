@@ -236,6 +236,9 @@ def assign(
     # create_task nu cunoaste assignee / origin / story points -> le setam dupa creare.
     task.assignee_id = assignee_id
     task.origin = "QUICK"
+    # Preluam atasamentele (screenshot-uri + voce) din quick task pe Task, ca sa
+    # ramana vizibile in drawer-ul de board. Le re-normalizam prin acelasi filtru.
+    task.attachments = _clean_attachments(qt.attachments)
     # Populeaza si lista multi-assignee (task_assignees) ca array-ul `assignees`
     # din contractul de board sa fie populat pentru noul responsabil.
     assignee_user = db.query(User).filter(User.id == assignee_id).first()

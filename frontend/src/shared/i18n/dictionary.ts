@@ -460,6 +460,14 @@ const ro = {
     descriptionHint: 'Detalii utile: ce, unde, de ce. Opțional.',
     priorityHint: 'Cât de repede trebuie rezolvat.',
   },
+  attachments: {
+    heading: 'Atașamente',
+    image: 'Imagine',
+    voiceNote: 'Notă vocală',
+    zoomIn: 'Mărește',
+    zoomOut: 'Micșorează',
+    zoomReset: 'Mărime normală',
+  },
   projectStatus: {
     active: 'În Dezvoltare',
     onHold: 'În Așteptare Detalii',
@@ -1179,6 +1187,14 @@ const ru = {
     titleHint: 'Коротко напишите, что нужно сделать — или отправьте только голосовую заметку / изображение.',
     descriptionHint: 'Полезные детали: что, где, почему. Необязательно.',
     priorityHint: 'Насколько срочно нужно решить.',
+  },
+  attachments: {
+    heading: 'Вложения',
+    image: 'Изображение',
+    voiceNote: 'Голосовая заметка',
+    zoomIn: 'Увеличить',
+    zoomOut: 'Уменьшить',
+    zoomReset: 'Исходный размер',
   },
   projectStatus: {
     active: 'В разработке',

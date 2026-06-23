@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { tasksApi, Task } from '../api/tasks';
-import { assignedApi, AssignedTask } from '../api/assigned';
 import { calendarApi, CalendarEvent } from '../../calendar/api/calendar';
 import OfficeBoard from '../components/OfficeBoard';
 
@@ -13,14 +12,12 @@ function todayISO(): string {
 
 /**
  * Pagina „Astăzi" (focus): adună într-un singur loc ce ai de făcut azi —
- * taskurile personale de azi, taskurile de proiect atribuite ție, și
- * evenimentele de calendar de azi.
+ * taskurile personale de azi și evenimentele de calendar de azi.
  */
 export default function TodayPage() {
   const t = useT();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [assigned, setAssigned] = useState<AssignedTask[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -29,11 +26,9 @@ export default function TodayPage() {
     const dow = new Date().getDay() === 0 ? 7 : new Date().getDay(); // 1=Mon..7=Sun
     Promise.allSettled([
       tasksApi.getWeek(),
-      assignedApi.getAssigned(),
       calendarApi.getEvents(iso, iso),
-    ]).then(([wk, asg, ev]) => {
+    ]).then(([wk, ev]) => {
       if (wk.status === 'fulfilled') setTasks(wk.value.filter((x) => x.dayOfWeek === dow));
-      if (asg.status === 'fulfilled') setAssigned(asg.value);
       if (ev.status === 'fulfilled') setEvents(ev.value);
       setLoading(false);
     });
@@ -41,7 +36,7 @@ export default function TodayPage() {
 
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   const isDone = (x: Task) => x.completions?.[0]?.status === 'DONE';
-  const empty = !loading && tasks.length === 0 && assigned.length === 0 && events.length === 0;
+  const empty = !loading && tasks.length === 0 && events.length === 0;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
@@ -74,17 +69,6 @@ export default function TodayPage() {
               title={x.title}
               strike={isDone(x)}
               right={x.reminderTime || undefined} />
-          ))}
-        </Section>
-      )}
-
-      {assigned.length > 0 && (
-        <Section title={t('today.assigned')}>
-          {assigned.map((x) => (
-            <Row key={x.id} onClick={() => navigate(`/projects/${x.project.id}/board`)}
-              left={<Dot color={x.project.color || '#3b82f6'} />}
-              title={x.title}
-              right={x.taskKey || x.columnName} />
           ))}
         </Section>
       )}

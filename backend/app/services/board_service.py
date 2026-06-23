@@ -292,6 +292,7 @@ def board_task_to_dict(
         "reminderTime": task.reminder_time,
         "commentCount": comment_count if comment_count is not None else _comment_count(db, task.id),
         "subtasks": list(task.subtasks or []),
+        "attachments": list(task.attachments or []),
     }
 
 
