@@ -130,10 +130,11 @@ async def create_task(
         if membership_service.get_member(db, project_id, data.assigneeId) is None:
             raise HTTPException(status_code=400, detail="Responsabilul trebuie sa fie membru al proiectului")
 
+    # Default 1 daca nu vine nicio estimare; _clamp_points pastreaza limitele 1..10.
     story_points = (
         ai_service._clamp_points(data.storyPoints)
         if data.storyPoints is not None
-        else None
+        else 1
     )
 
     task = board_service.create_task(db, user.id, project_id, {
@@ -198,7 +199,7 @@ async def apply_sprint_plan(
         story_points = (
             ai_service._clamp_points(item.storyPoints)
             if item.storyPoints is not None
-            else None
+            else 1
         )
         task = board_service.create_task(db, user.id, project_id, {
             "title": item.title,

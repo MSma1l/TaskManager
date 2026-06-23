@@ -10,6 +10,7 @@ from app.models.completion import TaskCompletion
 from app.models.task_comment import TaskComment
 from app.models.task_activity import TaskActivity
 from app.models.task_watcher import TaskWatcher
+from app.models.task_assignee import TaskAssignee
 from app.models.reminder import ReminderLog
 from app.models.session import TelegramSession
 from app.models.notebook import NotebookTopic, NotebookNote, NotebookNoteHistory, NotebookSketch
@@ -41,6 +42,7 @@ __all__ = [
     "TaskComment",
     "TaskActivity",
     "TaskWatcher",
+    "TaskAssignee",
     "ReminderLog",
     "TelegramSession",
     "NotebookTopic",

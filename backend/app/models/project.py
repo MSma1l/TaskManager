@@ -19,6 +19,9 @@ class Project(Base):
     task_counter = Column(Integer, nullable=False, default=0, server_default="0")
     # Status proiect: ACTIVE (In Dezvoltare) | ON_HOLD (Asteptare Detalii) | ARCHIVED (Finalizat)
     status = Column(String(20), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    # Cheie de sistem pentru proiecte speciale (ex: "OFFICE" = proiectul "Birou").
+    # NULL pentru proiectele obisnuite ale userilor.
+    system_key = Column(String(20), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

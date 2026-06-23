@@ -49,6 +49,27 @@ def done_column_ids(db: Session, project_id: str) -> set[str]:
 
 # ── helpers interne ─────────────────────────────────────────────────
 
+def _is_office_project(db: Session, project_id: str | None) -> bool:
+    """True daca proiectul e Birou (system_key='OFFICE'). Taskurile lui nu se arhiveaza."""
+    if not project_id:
+        return False
+    row = db.query(Project.system_key).filter(Project.id == project_id).first()
+    return bool(row) and row[0] == "OFFICE"
+
+
+def _apply_archive_state(db: Session, task: Task, target_column: BoardColumn) -> None:
+    """Seteaza/sterge `archived_at` cand un task (non-Birou) intra/iese dintr-o
+    coloana de tip APPROVED (Verificat). Taskurile de Birou nu se arhiveaza niciodata."""
+    if _is_office_project(db, task.project_id):
+        return
+    if target_column.column_type == "APPROVED":
+        if task.archived_at is None:
+            task.archived_at = datetime.utcnow()
+    else:
+        if task.archived_at is not None:
+            task.archived_at = None
+
+
 def _parse_dt(value):
     """Parseaza un string ISO in datetime (sau lasa datetime/None neschimbat)."""
     if value is None or isinstance(value, datetime):
@@ -105,7 +126,7 @@ def _get_board_task(db: Session, project_id: str, task_id: str) -> Task:
             Task.is_active == True,
             Task.board_column_id.isnot(None),
         )
-        .options(joinedload(Task.labels))
+        .options(joinedload(Task.labels), joinedload(Task.assignees))
         .first()
     )
     if task is None:
@@ -215,16 +236,30 @@ def board_task_to_dict(
     pasa `users` (map id->User), `project_key` si `comment_count` deja incarcate,
     ca sa evite query-uri per-task (N+1). Daca lipsesc, se rezolva lazy.
     """
-    assignee = None
-    if task.assignee_id:
-        u = users.get(task.assignee_id) if users is not None else (
-            db.query(User).filter(User.id == task.assignee_id).first()
+    def _resolve(uid: str) -> dict:
+        u = users.get(uid) if users is not None else (
+            db.query(User).filter(User.id == uid).first()
         )
-        assignee = {
-            "userId": task.assignee_id,
+        return {
+            "userId": uid,
             "username": u.username if u else None,
             "fullName": u.full_name if u else None,
         }
+
+    # Lista completa de responsabili (din relatia many-to-many).
+    assignee_ids = [a.id for a in (task.assignees or [])]
+    # `assignee_id` (primary) e tinut in fruntea listei pentru afisare consistenta.
+    if task.assignee_id and task.assignee_id in assignee_ids:
+        assignee_ids = [task.assignee_id] + [aid for aid in assignee_ids if aid != task.assignee_id]
+    assignees = [_resolve(uid) for uid in assignee_ids]
+
+    # Backward compat: `assignee` ramane responsabilul primar.
+    assignee = None
+    if task.assignee_id:
+        assignee = next(
+            (a for a in assignees if a["userId"] == task.assignee_id),
+            _resolve(task.assignee_id),
+        )
 
     if project_key is None and task.project_id:
         row = db.query(Project.key).filter(Project.id == task.project_id).first()
@@ -241,6 +276,7 @@ def board_task_to_dict(
         "description": task.description,
         "priority": task.priority,
         "assignee": assignee,
+        "assignees": assignees,
         "labels": [_label_to_dict(l) for l in (task.labels or [])],
         "boardColumnId": task.board_column_id,
         "boardOrder": task.board_order,
@@ -303,13 +339,18 @@ def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None 
 
     tasks = (
         query
-        .options(joinedload(Task.labels))
+        .options(joinedload(Task.labels), joinedload(Task.assignees))
         .order_by(Task.board_order.asc())
         .all()
     )
 
-    # Rezolva utilizatorii (assignee) intr-un singur query.
-    assignee_ids = {t.assignee_id for t in tasks if t.assignee_id}
+    # Rezolva utilizatorii (toti responsabilii) intr-un singur query.
+    assignee_ids: set[str] = set()
+    for t in tasks:
+        if t.assignee_id:
+            assignee_ids.add(t.assignee_id)
+        for a in (t.assignees or []):
+            assignee_ids.add(a.id)
     users = {}
     if assignee_ids:
         rows = db.query(User).filter(User.id.in_(assignee_ids)).all()
@@ -451,12 +492,24 @@ def create_task(db: Session, user_id: str, project_id: str, data: dict) -> Task:
     project = _get_project(db, project_id)
     column = _get_column(db, project_id, data["columnId"])
 
-    assignee_id = data.get("assigneeId")
-    if assignee_id is not None:
-        _validate_assignee(db, project_id, assignee_id)
+    # Responsabili: prefera lista `assigneeIds`; fallback la `assigneeId` singular
+    # (compat cu formularele care inca trimit un singur responsabil).
+    assignee_ids: list[str] = []
+    for aid in (data.get("assigneeIds") or []):
+        if aid and aid not in assignee_ids:
+            assignee_ids.append(aid)
+    if not assignee_ids and data.get("assigneeId"):
+        assignee_ids = [data["assigneeId"]]
+    for aid in assignee_ids:
+        _validate_assignee(db, project_id, aid)
 
     # Numar secvential per proiect (cheia afisata: KEY-<task_number>).
     project.task_counter = (project.task_counter or 0) + 1
+
+    # Story points: default 1 daca lipseste (None/unset). Un 0 explicit ramane 0.
+    story_points = data.get("storyPoints")
+    if story_points is None:
+        story_points = 1
 
     task = Task(
         user_id=user_id,
@@ -468,15 +521,18 @@ def create_task(db: Session, user_id: str, project_id: str, data: dict) -> Task:
         project_id=project_id,
         board_column_id=column.id,
         board_order=_max_order(db, column.id) + 1,
-        assignee_id=assignee_id,
+        assignee_id=assignee_ids[0] if assignee_ids else None,
         task_number=project.task_counter,
         due_date=_parse_dt(data.get("dueDate")),
         estimated_minutes=data.get("estimateMinutes"),
-        story_points=data.get("storyPoints"),
+        story_points=story_points,
         is_active=True,
     )
     db.add(task)
     db.flush()
+
+    if assignee_ids:
+        _set_assignees(db, task, assignee_ids)
 
     _set_labels(db, task, project_id, data.get("labelIds") or [])
 
@@ -567,6 +623,10 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
     for i, t in enumerate(target_tasks):
         t.board_order = i
 
+    # Arhivare: intrarea intr-o coloana Verificat (APPROVED) arhiveaza taskul
+    # (doar pentru proiectele non-Birou); iesirea il dezarhiveaza.
+    _apply_archive_state(db, task, target_column)
+
     db.flush()
 
     # Daca s-a mutat intre coloane, recompacteaza si coloana sursa.
@@ -578,38 +638,59 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
     db.commit()
 
 
-def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assignee_id: str | None) -> Task:
-    # Doar OWNER/ADMIN pot atribui sau schimba responsabilul.
+def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assignee_ids: list[str]) -> Task:
+    # Doar OWNER/ADMIN pot atribui sau schimba responsabilii.
     membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
     task = _get_board_task(db, project_id, task_id)
 
-    if assignee_id is not None:
-        _validate_assignee(db, project_id, assignee_id)
+    # Normalizeaza: pastreaza ordinea, fara duplicate, fara valori goale.
+    new_ids: list[str] = []
+    for aid in (assignee_ids or []):
+        if aid and aid not in new_ids:
+            new_ids.append(aid)
+    for aid in new_ids:
+        _validate_assignee(db, project_id, aid)
 
-    prev_assignee = task.assignee_id
-    task.assignee_id = assignee_id
+    prev_ids = {a.id for a in (task.assignees or [])}
+    _set_assignees(db, task, new_ids)
     task.updated_at = datetime.utcnow()
 
-    _log(db, task, user_id, "ASSIGNED", {"assigneeId": assignee_id})
+    _log(db, task, user_id, "ASSIGNED", {"assigneeIds": new_ids})
 
-    # Notifica noul responsabil (non-fatal): doar la schimbare reala si nu pe
-    # auto-atribuire. Rides existing transaction (commit=False).
-    if assignee_id and assignee_id != user_id and assignee_id != prev_assignee:
-        try:
-            from app.services import notification_service
-            notification_service.create_safe(
-                db, user_id=assignee_id, type="TASK_ASSIGNED",
-                title=f"Ti s-a atribuit taskul {task.title}",
-                link=f"/projects/{project_id}/board",
-                meta={"taskId": task.id, "projectId": project_id, "actorId": user_id},
-                commit=False,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"[notification] assign_task notify error: {e}")
+    # Notifica responsabilii NOI (non-fatal): doar pe cei adaugati acum, nu pe
+    # cei deja prezenti si nu pe actor (auto-atribuire). Rides commit=False.
+    for aid in new_ids:
+        if aid != user_id and aid not in prev_ids:
+            try:
+                from app.services import notification_service
+                notification_service.create_safe(
+                    db, user_id=aid, type="TASK_ASSIGNED",
+                    title=f"Ti s-a atribuit taskul {task.title}",
+                    link=f"/projects/{project_id}/board",
+                    meta={"taskId": task.id, "projectId": project_id, "actorId": user_id},
+                    commit=False,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[notification] assign_task notify error: {e}")
 
     db.commit()
     db.refresh(task)
     return _get_board_task(db, project_id, task.id)
+
+
+def _set_assignees(db: Session, task: Task, assignee_ids: list[str]) -> None:
+    """Inlocuieste responsabilii task-ului cu lista data (deja validata + unica).
+
+    Sincronizeaza `assignee_id` (primary) = primul din lista (sau None daca goala).
+    Foloseste relatia ORM `task.assignees` ca SA sa scrie randurile in task_assignees.
+    """
+    users = []
+    for aid in assignee_ids:
+        u = db.query(User).filter(User.id == aid).first()
+        if u:
+            users.append(u)
+    task.assignees = users
+    task.assignee_id = users[0].id if users else None
 
 
 def _validate_assignee(db: Session, project_id: str, assignee_id: str) -> None:
@@ -769,7 +850,7 @@ def _get_active_task(db: Session, task_id: str) -> Task:
             Task.is_active == True,
             Task.board_column_id.isnot(None),
         )
-        .options(joinedload(Task.labels))
+        .options(joinedload(Task.labels), joinedload(Task.assignees))
         .first()
     )
     if task is None:
@@ -812,6 +893,8 @@ def _find_approved_column(db: Session, project_id: str, current_column_id: str) 
 def _move_to_column(db: Session, task: Task, target_column: BoardColumn) -> None:
     """Muta task-ul in coloana tinta (la coada) si recompacteaza sursa."""
     source_column_id = task.board_column_id
+    # Arhivare: aliniaza `archived_at` la tipul coloanei tinta (non-Birou).
+    _apply_archive_state(db, task, target_column)
     if target_column.id != source_column_id:
         task.board_column_id = target_column.id
         task.board_order = _max_order(db, target_column.id) + 1
@@ -1001,7 +1084,7 @@ def list_pending_verification(db: Session, user_id: str) -> list[dict]:
             Task.board_column_id.isnot(None),
             Task.approval_status == "PENDING_REVIEW",
         )
-        .options(joinedload(Task.labels))
+        .options(joinedload(Task.labels), joinedload(Task.assignees))
         .order_by(Task.updated_at.desc())
         .all()
     )

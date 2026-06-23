@@ -13,7 +13,8 @@ class QuickTaskAttachment(BaseModel):
 class QuickTaskCreate(BaseModel):
     """Payload-ul formularului PUBLIC (fara login)."""
     requesterName: str
-    title: str
+    # Optional: submisiile doar cu voce / imagine nu au text.
+    title: Optional[str] = None
     description: Optional[str] = None
     # URGENT | NORMAL | LATER — default NORMAL daca lipseste / invalid.
     priority: str = "NORMAL"
@@ -22,8 +23,11 @@ class QuickTaskCreate(BaseModel):
 
 
 class QuickTaskAssign(BaseModel):
-    """Admin-ul preia un quick task si il distribuie la proiect + persoana."""
-    projectId: str
+    """Admin-ul preia un quick task si il distribuie la o persoana.
+
+    `projectId` e OPTIONAL: cand lipseste, taskul intra in proiectul Birou (OFFICE).
+    """
+    projectId: Optional[str] = None
     assigneeId: str
 
 

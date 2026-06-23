@@ -21,6 +21,7 @@ class BoardTaskCreate(BaseModel):
     description: Optional[str] = None
     columnId: str
     assigneeId: Optional[str] = None
+    assigneeIds: list[str] = []
     priority: Optional[str] = "MEDIUM"
     labelIds: list[str] = []
     dueDate: Optional[str] = None
@@ -52,7 +53,7 @@ class MoveTask(BaseModel):
 
 
 class AssignTask(BaseModel):
-    assigneeId: Optional[str] = None
+    assigneeIds: list[str] = []
 
 
 class LabelCreate(BaseModel):

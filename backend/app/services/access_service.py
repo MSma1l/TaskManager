@@ -124,6 +124,10 @@ def approve_access_request(
     db.add(new_user)
     db.flush()  # obține id-ul
 
+    # Adaugă noul user ca membru al proiectului Birou (non-fatal).
+    from app.services import office_service
+    office_service.ensure_office_membership(db, new_user.id)
+
     r.status = "APPROVED"
     r.processed_by_user_id = actor_id
     r.processed_at = datetime.utcnow()

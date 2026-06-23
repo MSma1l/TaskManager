@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.models.category import Category
 from app.models.user import User
+from app.models.project_member import ProjectMember
+from app.services import office_service
 
 # Parola checked-in din repo — dacă admin-ul e creat cu ea, îl forțăm să o
 # schimbe la primul login (must_change_password) și avertizăm în consolă.
@@ -109,13 +111,49 @@ def seed_admin(db):
     return admin
 
 
+def seed_office(db, admin):
+    """Asigura proiectul de sistem "Birou" (system_key='OFFICE'), detinut de admin,
+    cu cele 4 coloane, si adauga TOTI userii activi ca membri (MEMBER). Idempotent."""
+    owner_id = admin.id if admin else None
+    if not owner_id:
+        print("[office] niciun admin -> sar peste seed-ul proiectului Birou")
+        return
+
+    project = office_service.ensure_office_project(db, owner_id)
+    db.flush()
+
+    # Adauga fiecare user activ ca membru (MEMBER) daca nu e deja membru.
+    existing_member_ids = {
+        uid for (uid,) in (
+            db.query(ProjectMember.user_id)
+            .filter(ProjectMember.project_id == project.id)
+            .all()
+        )
+    }
+    users = db.query(User).filter(User.is_active == True).all()  # noqa: E712
+    added = 0
+    for u in users:
+        if u.id in existing_member_ids:
+            continue
+        db.add(ProjectMember(
+            project_id=project.id,
+            user_id=u.id,
+            role="MEMBER",
+        ))
+        existing_member_ids.add(u.id)
+        added += 1
+    print(f"[office] proiectul Birou OK (id={project.id}); membri noi adaugati: {added}")
+
+
 def seed():
     db = SessionLocal()
     try:
         seed_categories(db)
-        seed_admin(db)
+        admin = seed_admin(db)
+        db.flush()
+        seed_office(db, admin)
         db.commit()
-        print("Seed completed: categories + admin")
+        print("Seed completed: categories + admin + birou")
     except Exception as e:
         db.rollback()
         print(f"Seed error: {e}")

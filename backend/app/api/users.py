@@ -81,6 +81,12 @@ async def create_user(data: UserCreate, _: User = Depends(require_admin), db: Se
         pin_hash=hash_secret(pin) if pin else None,
     )
     db.add(user)
+    db.flush()  # obtine id-ul inainte de a-l adauga in Birou
+
+    # Adauga noul user ca membru al proiectului Birou (non-fatal).
+    from app.services import office_service
+    office_service.ensure_office_membership(db, user.id)
+
     db.commit()
     db.refresh(user)
     return _user_to_dict(user)

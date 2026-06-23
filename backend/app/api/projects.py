@@ -98,6 +98,20 @@ async def update_project(
     return project_to_dict(project)
 
 
+@router.post("/{project_id}/finalize")
+async def finalize_project(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Finalizeaza proiectul (status ARCHIVED) si sterge permanent taskurile
+    arhivate (Verificate). Necesita OWNER/ADMIN pe proiect."""
+    project = project_service.finalize_project(db, user.id, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project_to_dict(project)
+
+
 @router.delete("/{project_id}")
 async def delete_project(
     project_id: str,

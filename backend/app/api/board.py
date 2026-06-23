@@ -36,14 +36,27 @@ def label_to_dict(label):
 def board_task_to_dict(task, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None):
     users = users or {}
     comment_counts = comment_counts or {}
-    assignee = None
-    if task.assignee_id:
-        u = users.get(task.assignee_id)
-        assignee = {
-            "userId": task.assignee_id,
+
+    def _resolve(uid: str) -> dict:
+        u = users.get(uid)
+        return {
+            "userId": uid,
             "username": u.username if u else None,
             "fullName": u.full_name if u else None,
         }
+
+    # Lista de responsabili (many-to-many), cu primarul (assignee_id) in frunte.
+    assignee_ids = [a.id for a in (task.assignees or [])]
+    if task.assignee_id and task.assignee_id in assignee_ids:
+        assignee_ids = [task.assignee_id] + [aid for aid in assignee_ids if aid != task.assignee_id]
+    assignees = [_resolve(uid) for uid in assignee_ids]
+
+    assignee = None
+    if task.assignee_id:
+        assignee = next(
+            (a for a in assignees if a["userId"] == task.assignee_id),
+            _resolve(task.assignee_id),
+        )
     task_key = (
         f"{project_key}-{task.task_number}"
         if project_key and task.task_number is not None
@@ -55,6 +68,7 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "description": task.description,
         "priority": task.priority,
         "assignee": assignee,
+        "assignees": assignees,
         "labels": [label_to_dict(l) for l in (task.labels or [])],
         "boardColumnId": task.board_column_id,
         "boardOrder": task.board_order,
@@ -151,10 +165,12 @@ async def delete_column(
 def _task_with_assignee(db: Session, task, project_id: str | None = None):
     """Construieste maparea user pentru un singur task (assignee) + cheia proiectului."""
     users = {}
+    assignee_ids = {a.id for a in (task.assignees or [])}
     if task.assignee_id:
-        u = db.query(User).filter(User.id == task.assignee_id).first()
-        if u:
-            users[u.id] = u
+        assignee_ids.add(task.assignee_id)
+    if assignee_ids:
+        rows = db.query(User).filter(User.id.in_(assignee_ids)).all()
+        users = {u.id: u for u in rows}
     project_key = None
     pid = project_id or task.project_id
     if pid:
@@ -220,7 +236,7 @@ async def assign_task(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    task = board_service.assign_task(db, user.id, project_id, task_id, data.assigneeId)
+    task = board_service.assign_task(db, user.id, project_id, task_id, data.assigneeIds)
     return _task_with_assignee(db, task, project_id)
 
 

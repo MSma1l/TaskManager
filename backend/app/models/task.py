@@ -47,7 +47,14 @@ class Task(Base):
     # Lista de {"id": cuid, "title": str, "done": bool}, ordonata.
     subtasks = Column(JSON, nullable=True)
 
+    # ── Arhivare (Verificat) ────────────────────────────────────────
+    # Setat cand taskul (intr-un proiect non-Birou) intra intr-o coloana
+    # de tip APPROVED (Verificat). Sters cand iese din ea. Folosit de view-ul
+    # "Repartizate" pentru sectiunea de arhiva si de finalize (hard delete).
+    archived_at = Column(DateTime, nullable=True)
+
     category = relationship("Category", back_populates="tasks")
     completions = relationship("TaskCompletion", back_populates="task")
     project = relationship("Project", back_populates="tasks")
     labels = relationship("Label", secondary="task_labels")
+    assignees = relationship("User", secondary="task_assignees")

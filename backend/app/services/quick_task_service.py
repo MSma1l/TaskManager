@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 from app.models.quick_task import QuickTask
 from app.models.project import Project
 from app.models.project_member import ProjectMember
-from app.services import task_service, membership_service, notification_service
+from app.models.user import User
+from app.services import task_service, membership_service, notification_service, office_service
 
 
 VALID_PRIORITIES = {"URGENT", "NORMAL", "LATER"}
@@ -81,16 +82,41 @@ def _clean_attachments(raw) -> list | None:
     return out or None
 
 
+def _fallback_title(attachments: list | None) -> str:
+    """Titlu implicit cand userul trimite doar voce / imagine (fara text).
+
+    Astfel inbox-ul de admin nu ramane gol. Audio are prioritate fata de imagine.
+    """
+    if attachments:
+        types = {a.get("type") for a in attachments if isinstance(a, dict)}
+        if "audio" in types:
+            return "Notă vocală"
+        if "image" in types:
+            return "Imagine"
+    return "Cerere rapidă"
+
+
 # ── Public (fara auth) ────────────────────────────────────────────────────────
 
 def create_public(db: Session, data: dict) -> dict:
     """Creeaza un quick task din formularul public. NU necesita autentificare."""
     requester = (data.get("requesterName") or "").strip()
     title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    attachments = _clean_attachments(data.get("attachments"))
+
     if not requester:
         raise HTTPException(status_code=400, detail="Numele este obligatoriu")
+    # Acceptam submisia daca avem text (titlu/descriere) SAU cel putin un atasament.
+    if not title and not description and not attachments:
+        raise HTTPException(
+            status_code=400,
+            detail="Scrie un mesaj sau ataseaza ceva (imagine / nota vocala)",
+        )
+
+    # Titlul nu poate fi NULL in DB: daca lipseste, derivam un fallback din atasamente.
     if not title:
-        raise HTTPException(status_code=400, detail="Titlul este obligatoriu")
+        title = _fallback_title(attachments)
 
     priority = (data.get("priority") or "NORMAL").strip().upper()
     if priority not in VALID_PRIORITIES:
@@ -99,10 +125,10 @@ def create_public(db: Session, data: dict) -> dict:
     qt = QuickTask(
         requester_name=requester[:150],
         title=title[:300],
-        description=(data.get("description") or "").strip() or None,
+        description=description or None,
         priority=priority,
         status="NEW",
-        attachments=_clean_attachments(data.get("attachments")),
+        attachments=attachments,
     )
     db.add(qt)
     db.commit()
@@ -147,11 +173,17 @@ def assign(
     db: Session,
     user_id: str,
     quick_task_id: str,
-    project_id: str,
+    project_id: str | None,
     assignee_id: str,
+    *,
+    is_global_admin: bool = False,
 ) -> dict:
     """Atribuie un quick task: creeaza un Task real in Backlog-ul proiectului,
-    atribuit persoanei alese. Caller-ul trebuie sa fie ADMIN+ pe proiect."""
+    atribuit persoanei alese.
+
+    `project_id` e OPTIONAL: cand lipseste, taskul intra in proiectul Birou (OFFICE).
+    Pentru proiectele obisnuite, caller-ul trebuie sa fie ADMIN+ pe proiect; pentru
+    Birou e suficient ADMIN global (sau ADMIN+ pe proiectul Birou)."""
     qt = (
         db.query(QuickTask)
         .filter(QuickTask.id == quick_task_id, QuickTask.is_active == True)  # noqa: E712
@@ -162,12 +194,29 @@ def assign(
     if qt.status != "NEW":
         raise HTTPException(status_code=409, detail="Quick task-ul a fost deja procesat")
 
-    # Doar adminii/owner-ii proiectului pot distribui taskuri.
-    membership_service.require_membership(db, project_id, user_id, min_role="ADMIN")
+    # Fara proiect explicit -> proiectul Birou (creat la nevoie).
+    is_office = False
+    if not project_id:
+        office = office_service.ensure_office_project(db, user_id)
+        db.flush()
+        project_id = office.id
+        is_office = True
 
-    # Responsabilul trebuie sa faca parte din proiect, altfel taskul ar fi orfan.
+    # Permisiuni: pentru Birou accepta ADMIN global; altfel ADMIN+ pe proiect.
+    member = membership_service.get_member(db, project_id, user_id)
+    is_project_lead = member is not None and (
+        membership_service.ROLE_RANK.get(member.role, -1) >= membership_service.ROLE_RANK["ADMIN"]
+    )
+    if not (is_project_lead or (is_office and is_global_admin)):
+        raise HTTPException(status_code=403, detail="Permisiuni insuficiente pentru a distribui acest task")
+
+    # Responsabilul trebuie sa faca parte din proiect. Pentru Birou il adaugam automat.
     if membership_service.get_member(db, project_id, assignee_id) is None:
-        raise HTTPException(status_code=400, detail="Responsabilul nu este membru al proiectului")
+        if is_office:
+            office_service.ensure_office_membership(db, assignee_id)
+            db.flush()
+        else:
+            raise HTTPException(status_code=400, detail="Responsabilul nu este membru al proiectului")
 
     # Construim un Task de board (project_id setat -> intra automat in BACKLOG).
     # `create_task` cere cheile categoryId / dayOfWeek; pentru board sunt NULL.
@@ -184,9 +233,17 @@ def assign(
         },
     )
 
-    # create_task nu cunoaste assignee / origin -> le setam dupa creare.
+    # create_task nu cunoaste assignee / origin / story points -> le setam dupa creare.
     task.assignee_id = assignee_id
     task.origin = "QUICK"
+    # Populeaza si lista multi-assignee (task_assignees) ca array-ul `assignees`
+    # din contractul de board sa fie populat pentru noul responsabil.
+    assignee_user = db.query(User).filter(User.id == assignee_id).first()
+    if assignee_user is not None:
+        task.assignees = [assignee_user]
+    # Default story points = 1 pentru taskurile noi (quick task nu vine cu estimare).
+    if task.story_points is None:
+        task.story_points = 1
     qt.task_id = task.id
     qt.project_id = project_id
     qt.assignee_id = assignee_id

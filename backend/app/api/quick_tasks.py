@@ -49,7 +49,8 @@ async def assign_quick_task(
     db: Session = Depends(get_db),
 ):
     return quick_task_service.assign(
-        db, user.id, quick_task_id, data.projectId, data.assigneeId
+        db, user.id, quick_task_id, data.projectId, data.assigneeId,
+        is_global_admin=(user.role == "ADMIN"),
     )
 
 
