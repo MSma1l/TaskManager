@@ -23,25 +23,25 @@ export default function TaskAttachments({ attachments, className }: TaskAttachme
 
   return (
     <div className={className}>
-      <p className="text-xs uppercase tracking-wider text-muted mb-2">
+      <p className="text-sm font-semibold uppercase tracking-wider text-fg mb-2.5">
         {t('attachments.heading')}
       </p>
 
       <div className="space-y-3">
         {images.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {images.map((att, i) => (
               <button
                 key={`img-${i}`}
                 type="button"
                 onClick={() => setLightboxIndex(i)}
                 title={att.caption || t('attachments.image')}
-                className="rounded-lg border border-border overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                className="rounded-lg border border-border overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500/50 hover:border-blue-500/40 transition-colors"
               >
                 <img
                   src={att.data}
                   alt={att.caption || t('attachments.image')}
-                  className="h-20 w-full object-cover"
+                  className="h-28 sm:h-32 w-full object-cover"
                 />
               </button>
             ))}
@@ -49,9 +49,22 @@ export default function TaskAttachments({ attachments, className }: TaskAttachme
         )}
 
         {audios.map((att, i) => (
-          <div key={`aud-${i}`} className="rounded-lg border border-border bg-elevated p-2">
-            <p className="text-xs text-muted mb-1">{att.caption || t('attachments.voiceNote')}</p>
-            <audio controls src={att.data} className="w-full" />
+          <div key={`aud-${i}`} className="rounded-xl border border-border bg-elevated p-3">
+            <div className="flex items-center gap-1.5 mb-1.5 text-muted">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" />
+              </svg>
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                {t('attachments.voiceNote')}
+              </span>
+            </div>
+            {att.caption && (
+              <p className="text-sm text-fg leading-relaxed whitespace-pre-wrap break-words mb-2">
+                {att.caption}
+              </p>
+            )}
+            <audio controls preload="metadata" src={att.data} className="w-full" />
           </div>
         ))}
       </div>

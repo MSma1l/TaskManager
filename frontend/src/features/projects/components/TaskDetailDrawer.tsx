@@ -81,7 +81,7 @@ export default function TaskDetailDrawer({
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md h-full max-h-[100dvh] bg-bg border-l border-border shadow-2xl flex flex-col overflow-hidden animate-[slidein_0.18s_ease-out]">
+      <div className="relative w-full max-w-md sm:max-w-xl lg:max-w-2xl h-full max-h-[100dvh] bg-bg border-l border-border shadow-2xl flex flex-col overflow-hidden animate-[slidein_0.18s_ease-out]">
         {/* Header */}
         <div className="flex items-start gap-2 p-4 border-b border-border flex-shrink-0">
           <div className="flex-1 min-w-0">
