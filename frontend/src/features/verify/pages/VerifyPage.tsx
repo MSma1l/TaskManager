@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
-import { avatarTint } from '../../projects/components/boardConstants';
+import UserAvatar from '../../../shared/components/UserAvatar';
 import { PendingTask, verifyApi } from '../api/verify';
 
 /**
@@ -104,7 +104,6 @@ function VerifyCard({
   const assigneeName = task.assignee
     ? task.assignee.fullName || task.assignee.username
     : null;
-  const initials = assigneeName ? assigneeName.charAt(0).toUpperCase() : null;
 
   return (
     <div className="rounded-2xl bg-surface border border-border p-4 shadow-sm">
@@ -150,13 +149,12 @@ function VerifyCard({
           <span className="text-muted">{t('board.assignee')}:</span>
           {assigneeName ? (
             <span className="flex items-center gap-1.5">
-              <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                  task.assignee?.userId || '',
-                )}`}
-              >
-                {initials}
-              </span>
+              <UserAvatar
+                avatarUrl={task.assignee?.avatarUrl}
+                name={assigneeName}
+                seed={task.assignee?.userId || ''}
+                size={24}
+              />
               {assigneeName}
             </span>
           ) : (

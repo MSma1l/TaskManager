@@ -9,7 +9,8 @@ import { useNow } from '../hooks/useNow';
 import { ProjectMember } from '../api/members';
 import { TaskActivity } from '../api/activity';
 import { TaskComment } from '../api/comments';
-import { avatarTint, nextAction, actionKey, priorityKey } from './boardConstants';
+import { nextAction, actionKey, priorityKey } from './boardConstants';
+import UserAvatar from '../../../shared/components/UserAvatar';
 import { activityLine } from './activityText';
 import { detectMention, insertMention as insertMentionToken } from './mention';
 import { useComments } from '../hooks/useComments';
@@ -216,13 +217,12 @@ export default function TaskDetailDrawer({
                   <span className="flex flex-wrap items-center gap-2 text-fg pt-1">
                     {task.assignees.map((a) => (
                       <span key={a.userId} className="flex items-center gap-1.5">
-                        <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                            a.userId,
-                          )}`}
-                        >
-                          {(a.fullName || a.username).charAt(0).toUpperCase()}
-                        </span>
+                        <UserAvatar
+                          avatarUrl={a.avatarUrl}
+                          name={a.fullName || a.username}
+                          seed={a.userId}
+                          size={24}
+                        />
                         {a.fullName || a.username}
                       </span>
                     ))}
@@ -524,16 +524,14 @@ function CommentsList({
     <div className="flex flex-col gap-3">
       {comments.map((c) => {
         const isMine = !!myUserId && c.userId === myUserId;
-        const initials = (c.fullName || c.username).charAt(0).toUpperCase();
         return (
           <div key={c.id} className="flex gap-2.5">
-            <span
-              className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                c.userId,
-              )}`}
-            >
-              {initials}
-            </span>
+            <UserAvatar
+              avatarUrl={c.avatarUrl}
+              name={c.fullName || c.username}
+              seed={c.userId}
+              size={28}
+            />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold text-fg">{c.fullName || c.username}</span>
@@ -659,13 +657,12 @@ function CommentComposer({
               onClick={() => insertMention(m.username)}
               className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-fg hover:bg-elevated transition-colors"
             >
-              <span
-                className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                  m.userId,
-                )}`}
-              >
-                {(m.fullName || m.username).charAt(0).toUpperCase()}
-              </span>
+              <UserAvatar
+                avatarUrl={m.avatarUrl}
+                name={m.fullName || m.username}
+                seed={m.userId}
+                size={24}
+              />
               <span className="truncate">
                 <span className="font-semibold">@{m.username}</span>
                 {m.fullName && <span className="text-muted"> · {m.fullName}</span>}

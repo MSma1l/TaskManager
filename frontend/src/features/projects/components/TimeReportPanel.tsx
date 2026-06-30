@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { useTimeReport } from '../hooks/useTimeReport';
 import { formatDuration } from './zoneMeta';
-import { avatarTint } from './boardConstants';
+import UserAvatar from '../../../shared/components/UserAvatar';
 
 interface TimeReportPanelProps {
   projectId: string;
@@ -68,13 +68,7 @@ export default function TimeReportPanel({ projectId }: TimeReportPanelProps) {
                   >
                     <td className="px-3 py-2 text-fg">
                       <span className="flex items-center gap-2">
-                        <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarTint(
-                            m.userId,
-                          )}`}
-                        >
-                          {name.charAt(0).toUpperCase()}
-                        </span>
+                        <UserAvatar avatarUrl={m.avatarUrl} name={name} seed={m.userId} size={24} />
                         {name}
                       </span>
                     </td>

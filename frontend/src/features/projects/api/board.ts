@@ -32,6 +32,7 @@ export interface BoardAssignee {
   userId: string;
   username: string;
   fullName: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface Subtask {

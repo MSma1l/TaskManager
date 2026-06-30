@@ -20,6 +20,7 @@ from app.models.bug_report import BugReport, BugReportAttachment, BugReportComme
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.services import membership_service, notification_service
+from app.services.avatar import avatar_url
 
 
 VALID_STATUSES = {"OPEN", "IN_PROGRESS", "PASSED", "FAILED"}
@@ -107,6 +108,7 @@ def _comment_to_dict(comment: BugReportComment, user: User | None) -> dict:
         "userId": comment.user_id,
         "username": user.username if user else None,
         "fullName": user.full_name if user else None,
+        "avatarUrl": avatar_url(user),
         "body": comment.body,
         "createdAt": comment.created_at.isoformat() if comment.created_at else None,
     }

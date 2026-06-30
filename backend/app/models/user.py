@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON, Text
+from sqlalchemy.orm import deferred
 from app.core.database import Base
 from app.models.base import generate_cuid
 
@@ -21,6 +22,13 @@ class User(Base):
     calendar_token = Column(String(64), unique=True, nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
+
+    # Avatar de profil: data URL base64 (data:image/...;base64,...). DEFERRED ca sa
+    # NU se incarce in listari/board (poll la 5s) — doar endpoint-ul de avatar il atinge.
+    avatar = deferred(Column(Text, nullable=True))
+    # Versiune avatar: bumped la fiecare schimbare; 0 = fara avatar. Coloana normala
+    # (incarcata cu randul) folosita pentru cache-busting (?v=) + check ieftin "are avatar".
+    avatar_version = Column(Integer, nullable=False, default=0, server_default="0")
 
     # Securitate: brute-force lockout + revocare token + forțare schimbare parolă
     failed_login_attempts = Column(Integer, nullable=False, default=0)

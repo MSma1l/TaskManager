@@ -2,7 +2,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { BoardAssignee, BoardTask, ColumnType, TransitionAction } from '../api/board';
-import { PRIORITY_DOT, avatarTint, nextAction, actionKey } from './boardConstants';
+import { PRIORITY_DOT, nextAction, actionKey } from './boardConstants';
+import UserAvatar from '../../../shared/components/UserAvatar';
 import { ZONE_META, deadlinePillText, formatDuration } from './zoneMeta';
 import { useNow } from '../hooks/useNow';
 
@@ -238,15 +239,15 @@ export function AssigneeStack({
   return (
     <div className="flex items-center flex-shrink-0">
       {shown.map((a, i) => (
-        <div
+        <UserAvatar
           key={a.userId}
+          avatarUrl={a.avatarUrl}
+          name={a.fullName || a.username || '?'}
+          seed={a.userId}
+          size={24}
           title={a.fullName || a.username || ''}
-          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ring-2 ring-surface ${avatarTint(
-            a.userId,
-          )} ${i > 0 ? '-ml-2' : ''}`}
-        >
-          {(a.fullName || a.username || '?').charAt(0).toUpperCase()}
-        </div>
+          className={`ring-2 ring-surface ${i > 0 ? '-ml-2' : ''}`}
+        />
       ))}
       {extra > 0 && (
         <div className="w-6 h-6 -ml-2 rounded-full flex items-center justify-center text-[10px] font-semibold ring-2 ring-surface bg-surface border border-border text-muted">

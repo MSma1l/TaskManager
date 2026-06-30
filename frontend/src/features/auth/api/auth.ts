@@ -32,6 +32,7 @@ export interface MeResponse {
   lastLoginAt?: string;
   theme?: 'dark' | 'light';
   notificationSettings?: Record<string, unknown> | null;
+  avatarUrl?: string | null;
 }
 
 export const authApi = {
@@ -62,6 +63,18 @@ export const authApi = {
     | ({ kind: 'challenge' } & LoginChallenge)
   > => client.post('/auth/password-login', { username, password }).then((r) => r.data),
 
+  /**
+   * Self-signup without admin approval. Returns a session identical to a
+   * successful password-login (kind=session) — the caller consumes it directly.
+   */
+  signup: (data: {
+    username: string;
+    password: string;
+    fullName: string;
+    email?: string;
+  }): Promise<{ kind: 'session' } & AuthSession> =>
+    client.post('/auth/signup', data).then((r) => r.data),
+
   setAdminPassword: (password: string) =>
     client.put('/auth/admin/password', { password }).then((r) => r.data),
 
@@ -76,6 +89,8 @@ export const authApi = {
     theme?: 'dark' | 'light';
     language?: 'ro' | 'ru';
     notificationSettings?: Record<string, unknown> | null;
+    /** Data-URL base64 (`data:image/...`) pentru poza de profil, sau `''` pentru a o șterge. */
+    avatar?: string | null;
   }): Promise<MeResponse> => client.put('/auth/me', data).then((r) => r.data),
 
   setPin: (pin: string) => client.put('/auth/pin', { pin }).then((r) => r.data),

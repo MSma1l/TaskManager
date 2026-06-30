@@ -4,6 +4,7 @@ import { useT } from '../../../shared/i18n/I18nProvider';
 import { useMembers } from '../hooks/useMembers';
 import { AssignableRole, ProjectRole, ProjectMember } from '../api/members';
 import { friendsApi, Friend } from '../../friends/api/friends';
+import UserAvatar from '../../../shared/components/UserAvatar';
 
 interface ManageMembersModalProps {
   projectId: string;
@@ -132,9 +133,12 @@ export default function ManageMembersModal({ projectId, myRole, onClose }: Manag
                 key={m.userId}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-surface border border-border"
               >
-                <div className="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                  {(m.fullName || m.username).charAt(0).toUpperCase()}
-                </div>
+                <UserAvatar
+                  avatarUrl={m.avatarUrl}
+                  name={m.fullName || m.username}
+                  seed={m.userId}
+                  size={32}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-fg truncate">
                     {m.fullName || m.username}

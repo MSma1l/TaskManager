@@ -10,6 +10,7 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.services import membership_service, time_tracking_service
+from app.services.avatar import avatar_url
 from app.services.project_zone import compute_zone, resolve_zone, days_remaining, VALID_PRIORITIES
 
 
@@ -262,6 +263,7 @@ def board_task_to_dict(
             "userId": uid,
             "username": u.username if u else None,
             "fullName": u.full_name if u else None,
+            "avatarUrl": avatar_url(u),
         }
 
     # Lista completa de responsabili (din relatia many-to-many).

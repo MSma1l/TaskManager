@@ -1,6 +1,6 @@
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { ProjectMember } from '../api/members';
-import { avatarTint } from './boardConstants';
+import UserAvatar from '../../../shared/components/UserAvatar';
 
 interface AssigneePickerProps {
   members: ProjectMember[];
@@ -50,9 +50,7 @@ export default function AssigneePicker({ members, value, onChange, disabled = fa
                 : 'bg-surface border-border text-muted hover:text-fg'
             }`}
           >
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${avatarTint(m.userId)}`}>
-              {label.charAt(0).toUpperCase()}
-            </span>
+            <UserAvatar avatarUrl={m.avatarUrl} name={label} seed={m.userId} size={20} />
             {label}
           </button>
         );

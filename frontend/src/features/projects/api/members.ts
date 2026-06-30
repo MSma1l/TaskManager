@@ -12,6 +12,7 @@ export interface ProjectMember {
   role: ProjectRole;
   isYou: boolean;
   capacityPoints: number;
+  avatarUrl?: string | null;
 }
 
 export interface InviteMemberData {

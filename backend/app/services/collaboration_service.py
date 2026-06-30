@@ -22,6 +22,7 @@ from app.models.task_activity import TaskActivity
 from app.models.task_watcher import TaskWatcher
 from app.models.board_column import BoardColumn
 from app.services import membership_service
+from app.services.avatar import avatar_url
 
 
 MENTION_RE = re.compile(r"@(\w+)")
@@ -70,6 +71,7 @@ def _comment_to_dict(comment: TaskComment, user: User | None) -> dict:
         "userId": comment.user_id,
         "username": user.username if user else None,
         "fullName": user.full_name if user else None,
+        "avatarUrl": avatar_url(user),
         "createdAt": comment.created_at.isoformat() if comment.created_at else None,
         "updatedAt": comment.updated_at.isoformat() if comment.updated_at else None,
     }
@@ -303,6 +305,7 @@ def _activity_list_to_dict(db: Session, rows: list[TaskActivity], enrich: bool =
             "taskId": r.task_id,
             "userId": r.user_id,
             "username": u.username if u else None,
+            "avatarUrl": avatar_url(u),
             "createdAt": r.created_at.isoformat() if r.created_at else None,
         }
         if enrich:
@@ -354,7 +357,7 @@ def list_watchers(db: Session, user_id: str, task_id: str) -> list[dict]:
     result = []
     for r in rows:
         u = users.get(r.user_id)
-        result.append({"userId": r.user_id, "username": u.username if u else None})
+        result.append({"userId": r.user_id, "username": u.username if u else None, "avatarUrl": avatar_url(u)})
     return result
 
 

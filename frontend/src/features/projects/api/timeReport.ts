@@ -13,6 +13,7 @@ export interface TimeReportMember {
   userId: string;
   username: string;
   fullName: string | null;
+  avatarUrl?: string | null;
   totalSeconds: number;
   taskCount: number;
   tasks: TimeReportTask[];

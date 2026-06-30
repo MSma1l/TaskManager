@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi, LoginChallenge, AuthSession } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import PinInput from '../components/PinInput';
@@ -9,7 +9,10 @@ import { useT } from '../../../shared/i18n/I18nProvider';
 import LanguageSwitcher from '../../../shared/i18n/LanguageSwitcher';
 
 type Mode = 'admin' | 'user';
-type Step = 'main' | 'credentials' | 'code' | 'pin' | 'username-only';
+type Step = 'main' | 'credentials' | 'code' | 'pin' | 'username-only' | 'signup';
+
+const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
+type UsernameStatus = 'idle' | 'invalid' | 'checking' | 'available' | 'taken';
 
 interface LoginPageProps {
   mode?: Mode;
@@ -44,6 +47,14 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
   const [tgRegisterLink, setTgRegisterLink] = useState<string | null>(null);
   const [showQR, setShowQR] = useState(false);
   const [showTgLogin, setShowTgLogin] = useState(false);
+
+  // ── Self-signup state ───────────────────────────────────────────────────
+  const [suName, setSuName] = useState('');
+  const [suUsername, setSuUsername] = useState('');
+  const [suPassword, setSuPassword] = useState('');
+  const [suEmail, setSuEmail] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
 
   const isAdmin = isAdminMode;
   const returnTo = params.get('returnTo') || '';
@@ -156,6 +167,70 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
     }
   };
 
+  // ── Self-signup: live username availability ─────────────────────────────
+  useEffect(() => {
+    if (step !== 'signup') return;
+    const u = suUsername.trim().toLowerCase();
+    if (!u) { setUsernameStatus('idle'); return; }
+    if (!USERNAME_RE.test(u)) { setUsernameStatus('invalid'); return; }
+    setUsernameStatus('checking');
+    let cancelled = false;
+    const id = setTimeout(() => {
+      authApi.checkUsername(u)
+        .then((r) => { if (!cancelled) setUsernameStatus(r.available ? 'available' : 'taken'); })
+        .catch(() => { if (!cancelled) setUsernameStatus('idle'); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [suUsername, step]);
+
+  // ── Self-signup submit (no admin approval — account is active immediately)
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const u = suUsername.trim().toLowerCase();
+    const name = suName.trim();
+    if (name.length < 1) return showError(t('login.errNameRequired'));
+    if (!USERNAME_RE.test(u)) return showError(t('login.errUsernameInvalid'));
+    if (usernameStatus === 'taken') return showError(t('login.errUsernameTaken'));
+    if (suPassword.length < 6) return showError(t('login.errPasswordShort'));
+
+    setBusy(true);
+    try {
+      const res = await authApi.signup({
+        username: u,
+        password: suPassword,
+        fullName: name,
+        email: suEmail.trim() || undefined,
+      });
+      // Same consume path as password-login's kind:'session' branch.
+      consumeSession({
+        token: res.token,
+        expiresAt: res.expiresAt,
+        role: res.role,
+        username: res.username,
+        userId: res.userId,
+      });
+      localStorage.setItem('username', u);
+      setSuPassword('');
+      navigate(target, { replace: true });
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail: string = err?.response?.data?.detail || '';
+      if (status === 409) {
+        showError(/mail/i.test(detail) ? t('login.errEmailTaken') : t('login.errUsernameTaken'));
+      } else if (status === 400) {
+        if (/pass/i.test(detail)) showError(t('login.errPasswordShort'));
+        else if (/name/i.test(detail)) showError(t('login.errNameRequired'));
+        else if (/user/i.test(detail)) showError(t('login.errUsernameInvalid'));
+        else showError(detail || t('login.errSignup'));
+      } else {
+        showError(t('login.errSignup'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // ── Username-only path (legacy users without password) ──────────────────
   const handleUsernameOnly = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,6 +340,7 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
           {step === 'main' && t('login.subMain')}
+          {step === 'signup' && t('login.subSignup')}
           {step === 'credentials' && (isAdmin ? t('login.subAdmin') : t('login.subCredentials'))}
           {step === 'username-only' && t('login.subUsernameOnly')}
           {step === 'code' && t('login.subCode')}
@@ -272,83 +348,39 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
         </p>
       </div>
 
-      {/* ── Main entry: Telegram-first hero ───────────────────────── */}
+      {/* ── Main entry: self-signup hero + existing-account methods ─── */}
       {!isAdmin && step === 'main' && !showQR && !showTgLogin && (
         <div className="w-full max-w-xs">
-          {/* Primary: login direct din Telegram (cu aprobare admin) */}
-          {tgRegisterLink ? (
-            <button
-              type="button"
-              onClick={() => { setShowTgLogin(true); setError(null); }}
-              className="block w-full text-left bg-gradient-to-br from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white rounded-2xl p-5 mb-3 transition-all shadow-xl shadow-blue-900/30 active:scale-[0.99]"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-widest text-blue-100/80 font-semibold">{t('login.recommended')}</p>
-                  <p className="font-bold text-base">{t('login.continueTelegram')}</p>
-                </div>
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-              <p className="text-xs text-blue-100/90 leading-relaxed">
-                {t('login.telegramHint')}
-              </p>
-            </button>
-          ) : (
-            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl p-3 mb-3 text-xs">
-              Telegram nu este configurat — admin-ul trebuie sa seteze TELEGRAM_BOT_USERNAME.
-            </div>
-          )}
-
-          {/* Secondary: QR scan */}
+          {/* Primary: creeaza cont nou (fara aprobare) */}
           <button
             type="button"
-            onClick={() => { setShowQR(true); setError(null); }}
-            className="w-full flex items-center gap-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-emerald-600/40 text-white rounded-xl p-4 mb-5 transition-all active:scale-[0.99]"
+            onClick={() => { setStep('signup'); setError(null); }}
+            className="block w-full text-left bg-gradient-to-br from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white rounded-2xl p-5 mb-5 transition-all shadow-xl shadow-blue-900/30 active:scale-[0.99]"
           >
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="3" y="3" width="7" height="7" strokeWidth="2" rx="1" />
-                <rect x="14" y="3" width="7" height="7" strokeWidth="2" rx="1" />
-                <rect x="3" y="14" width="7" height="7" strokeWidth="2" rx="1" />
-                <path strokeLinecap="round" strokeWidth="2" d="M14 14h3M20 14v7M14 17v4M14 21h3M17 17h4" />
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-base">{t('login.createAccount')}</p>
+                <p className="text-xs text-blue-100/90 leading-relaxed">{t('login.subSignup')}</p>
+              </div>
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="font-semibold text-sm">{t('login.scanQR')}</p>
-              <p className="text-[11px] text-slate-400">{t('login.scanQRHint')}</p>
-            </div>
-            <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-            </svg>
           </button>
 
-          {/* Existing users — compact 3-card row, deliberately quieter than
-              the primary Telegram/QR options above */}
+          {/* Existing users — quieter 2-card row */}
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-px bg-slate-800" />
             <span className="text-[10px] uppercase tracking-widest text-slate-500">{t('login.haveAccount')}</span>
             <div className="flex-1 h-px bg-slate-800" />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <MiniCard
-              onClick={() => { setStep('pin'); setError(null); }}
-              accent="amber"
-              label={t('login.pinReLogin')}
-              icon={
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <rect x="5" y="11" width="14" height="10" rx="2" strokeWidth="2" />
-                  <path strokeLinecap="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0v4" />
-                </svg>
-              }
-            />
+          <div className="grid grid-cols-2 gap-2">
             <MiniCard
               onClick={() => { setStep('credentials'); setError(null); }}
               accent="blue"
@@ -360,17 +392,89 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
               }
             />
             <MiniCard
-              onClick={() => { setStep('username-only'); setError(null); }}
-              accent="sky"
-              label={t('login.telegramCodeOnly')}
+              onClick={() => { setStep('pin'); setError(null); }}
+              accent="amber"
+              label={t('login.pinReLogin')}
               icon={
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="5" y="11" width="14" height="10" rx="2" strokeWidth="2" />
+                  <path strokeLinecap="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0v4" />
                 </svg>
               }
             />
           </div>
         </div>
+      )}
+
+      {/* ── Self-signup form (no admin approval) ──────────────────── */}
+      {!isAdmin && step === 'signup' && (
+        <form onSubmit={handleSignup} className="w-full max-w-xs space-y-3">
+          <input
+            type="text"
+            autoFocus
+            autoComplete="name"
+            value={suName}
+            onChange={(e) => setSuName(e.target.value)}
+            placeholder={t('login.signupNamePlaceholder')}
+            className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
+          />
+          <div>
+            <input
+              type="text"
+              autoComplete="username"
+              value={suUsername}
+              onChange={(e) => setSuUsername(e.target.value.toLowerCase())}
+              placeholder={t('login.signupUsername')}
+              className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
+            />
+            <p className="text-[11px] mt-1 px-1">
+              {usernameStatus === 'checking' && <span className="text-slate-400">{t('setup.checking')}</span>}
+              {usernameStatus === 'available' && <span className="text-emerald-400">{t('setup.available')}</span>}
+              {usernameStatus === 'taken' && <span className="text-red-400">{t('login.errUsernameTaken')}</span>}
+              {usernameStatus === 'invalid' && <span className="text-amber-400">{t('login.errUsernameInvalid')}</span>}
+              {usernameStatus === 'idle' && <span className="text-slate-500">{t('setup.usernameRules')}</span>}
+            </p>
+          </div>
+          <div className="relative">
+            <input
+              type={showPw ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={suPassword}
+              onChange={(e) => setSuPassword(e.target.value)}
+              placeholder={t('login.signupPassword')}
+              className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 pr-16 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+            >
+              {showPw ? t('login.hidePassword') : t('login.showPassword')}
+            </button>
+          </div>
+          <input
+            type="email"
+            autoComplete="email"
+            value={suEmail}
+            onChange={(e) => setSuEmail(e.target.value)}
+            placeholder={t('login.signupEmail')}
+            className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 text-white text-lg rounded-xl px-4 py-3 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={busy || usernameStatus === 'taken' || usernameStatus === 'invalid'}
+            className={`w-full ${primaryBtn} text-white font-medium rounded-xl py-3 transition-colors disabled:opacity-60`}
+          >
+            {busy ? t('common.loading') : t('login.signupSubmit')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStep('main'); setError(null); }}
+            className="w-full text-slate-400 hover:text-slate-200 text-sm"
+          >
+            {t('login.signupBack')}
+          </button>
+        </form>
       )}
 
       {/* Login simplu din Telegram (cu aprobare admin) */}
@@ -542,11 +646,15 @@ export default function LoginPage({ mode = 'user' }: LoginPageProps) {
 
       {error && <p className={`${accentColor} text-sm mt-4 text-center max-w-xs`}>{error}</p>}
 
-      {!isAdmin && step === 'main' && !showQR && !showTgLogin && (
+      {!isAdmin && (step === 'credentials' || step === 'pin') && !showQR && (
         <div className="mt-6 text-center">
-          <Link to="/request-access" className="text-sm text-slate-500 hover:text-slate-300">
-            {t('login.helpLink')}
-          </Link>
+          <button
+            type="button"
+            onClick={() => { setStep('signup'); setError(null); }}
+            className="text-sm text-slate-500 hover:text-slate-300"
+          >
+            {t('login.noAccount')}
+          </button>
         </div>
       )}
     </div>

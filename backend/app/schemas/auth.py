@@ -45,6 +45,14 @@ class AdminPasswordLoginRequest(BaseModel):
     password: str
 
 
+class SignupRequest(BaseModel):
+    """Self-signup fără aprobare admin: username + parolă + nume afișat."""
+    username: str
+    password: str
+    fullName: str
+    email: Optional[str] = None
+
+
 class SetPasswordRequest(BaseModel):
     password: str
 
@@ -66,6 +74,7 @@ class MeOut(BaseModel):
     language: str = "ro"
     notificationSettings: Optional[dict] = None
     mustChangePassword: bool = False
+    avatarUrl: Optional[str] = None   # /api/users/{id}/avatar?v={n} sau None (fara avatar)
 
 
 class UpdateMeRequest(BaseModel):
@@ -74,3 +83,5 @@ class UpdateMeRequest(BaseModel):
     theme: Optional[str] = None       # "dark" | "light"
     language: Optional[str] = None    # "ro" | "ru"
     notificationSettings: Optional[dict] = None
+    # avatar: data URL base64 (data:image/...). "" = sterge avatarul. None = neschimbat.
+    avatar: Optional[str] = None

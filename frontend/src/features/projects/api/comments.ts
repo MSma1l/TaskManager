@@ -6,6 +6,7 @@ export interface TaskComment {
   userId: string;
   username: string;
   fullName: string | null;
+  avatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

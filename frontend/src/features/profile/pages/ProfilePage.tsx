@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authApi, MeResponse } from '../../auth/api/auth';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import Tour from '../../../shared/components/tour/Tour';
+import UserAvatar from '../../../shared/components/UserAvatar';
+import { fileToAvatarDataUrl } from '../avatarImage';
 import FriendsCard from '../../friends/components/FriendsCard';
 import PushToggle from '../../notifications/components/PushToggle';
 import PersonalStatsCard from '../../stats/components/PersonalStatsCard';
@@ -29,9 +31,16 @@ export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
   const { logout } = useAuth();
 
+  const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
+
   const [me, setMe] = useState<MeResponse | null>(null);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pin, setPin] = useState('');
   const [notif, setNotif] = useState<NotificationPrefs>(DEFAULT_NOTIF);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -53,6 +62,7 @@ export default function ProfilePage() {
         setMe(data);
         setFullName(data.fullName || '');
         setEmail(data.email || '');
+        setUsernameDraft(data.username);
         if (data.theme && (data.theme === 'dark' || data.theme === 'light')) {
           setTheme(data.theme);
         }
@@ -62,6 +72,81 @@ export default function ProfilePage() {
       .catch((e) => setError(e?.response?.data?.detail || 'Eroare incarcare profil'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Verifica disponibilitatea username-ului (debounced) cand userul tasteaza.
+  useEffect(() => {
+    if (!me) return;
+    const v = usernameDraft.trim();
+    if (v === me.username) { setUsernameStatus('idle'); return; }
+    if (!USERNAME_RE.test(v)) { setUsernameStatus('invalid'); return; }
+    setUsernameStatus('checking');
+    const id = setTimeout(() => {
+      authApi.checkUsername(v)
+        .then((r) => setUsernameStatus(r.available ? 'available' : 'taken'))
+        .catch(() => setUsernameStatus('idle'));
+    }, 400);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usernameDraft, me]);
+
+  const saveUsername = async () => {
+    const v = usernameDraft.trim();
+    if (!me || v === me.username) return;
+    if (!USERNAME_RE.test(v)) {
+      setError('Username invalid: 3-30 caractere din a-z, 0-9, _ si .');
+      return;
+    }
+    setUsernameSaving(true);
+    setError(null);
+    try {
+      const updated = await authApi.updateUsername(v);
+      setMe(updated);
+      setUsernameDraft(updated.username);
+      setUsernameStatus('idle');
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (e: any) {
+      if (e?.response?.status === 409) {
+        setUsernameStatus('taken');
+        setError('Acest username este deja folosit.');
+      } else {
+        setError(e?.response?.data?.detail || 'Eroare la schimbarea username-ului');
+      }
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      const updated = await authApi.updateMe({ avatar: dataUrl });
+      setMe(updated);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      setError('Nu am putut procesa imaginea. Incearca o poza mai mica sau alt format.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarClear = async () => {
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const updated = await authApi.updateMe({ avatar: '' });
+      setMe(updated);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Eroare la stergerea pozei');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   const saveProfile = async () => {
     setError(null);
@@ -156,9 +241,81 @@ export default function ProfilePage() {
 
       {/* Profile frame */}
       <Card title="Profil">
-        <Field label="Nume complet">
+        {/* Poza de profil */}
+        <div className="flex items-center gap-4">
+          <UserAvatar
+            avatarUrl={me?.avatarUrl}
+            name={me?.fullName || me?.username}
+            seed={me?.id}
+            size={56}
+          />
+          <div className="flex flex-col gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarPick}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarBusy}
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-sm"
+              >
+                {avatarBusy ? 'Se incarca...' : 'Schimba poza'}
+              </button>
+              {me?.avatarUrl && (
+                <button
+                  onClick={handleAvatarClear}
+                  disabled={avatarBusy}
+                  className="bg-red-600/15 hover:bg-red-600/25 text-red-500 rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  Sterge poza
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-muted">JPG sau PNG. Se redimensioneaza automat.</p>
+          </div>
+        </div>
+
+        {/* Username de logare */}
+        <Field label="Username (numele de logare)">
+          <input
+            value={usernameDraft}
+            onChange={(e) => setUsernameDraft(e.target.value.toLowerCase())}
+            className={inputCls}
+            placeholder="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </Field>
+        <div className="flex items-center gap-2 -mt-1">
+          {usernameStatus === 'checking' && <span className="text-xs text-muted">Se verifica...</span>}
+          {usernameStatus === 'available' && <span className="text-xs text-emerald-500">Disponibil</span>}
+          {usernameStatus === 'taken' && <span className="text-xs text-red-400">Deja folosit</span>}
+          {usernameStatus === 'invalid' && <span className="text-xs text-amber-400">3–30 caractere: a-z, 0-9, _ si .</span>}
+          <button
+            onClick={saveUsername}
+            disabled={
+              usernameSaving ||
+              usernameStatus === 'taken' ||
+              usernameStatus === 'invalid' ||
+              usernameStatus === 'checking' ||
+              usernameDraft.trim() === me?.username
+            }
+            className="ml-auto bg-surface hover:bg-elevated border border-border text-fg rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {usernameSaving ? 'Se salveaza...' : 'Schimba username'}
+          </button>
+        </div>
+        <p className="text-xs text-muted">Acesta e username-ul cu care te conectezi in aplicatie.</p>
+
+        <Field label="Nume afisat">
           <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
         </Field>
+        <p className="text-xs text-muted -mt-1">Numele vazut de colegi pe taskuri, comentarii si proiecte.</p>
         <Field label="Email">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
         </Field>

@@ -1,5 +1,6 @@
+import base64
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -12,8 +13,13 @@ from app.models.task import Task
 from app.models.base import TaskStatus
 from app.schemas.user import UserCreate, UserUpdate
 from app.services import calendar_service
+from app.services.avatar import avatar_url
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+# Router public separat pentru servirea avatarului — fara dependinta de admin/auth,
+# ca imaginile sa se incarce direct in <img src> (fara header Authorization).
+public_router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 def _user_to_dict(u: User) -> dict:
@@ -29,7 +35,35 @@ def _user_to_dict(u: User) -> dict:
         "hasPin": bool(u.pin_hash),
         "lastLoginAt": u.last_login_at,
         "createdAt": u.created_at,
+        "avatarUrl": avatar_url(u),
     }
+
+
+@public_router.get("/{user_id}/avatar")
+async def get_user_avatar(user_id: str, db: Session = Depends(get_db)):
+    """Serveste avatarul unui user ca imagine binara. Public (fara auth) ca sa se
+    incarce in <img src>. Cache 24h; `?v=` busteaza cache-ul la schimbarea avatarului."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not (user.avatar_version or 0) or not user.avatar:
+        raise HTTPException(status_code=404, detail="Avatar inexistent")
+
+    # Parseaza data URL: data:image/<type>;base64,<payload>
+    raw = user.avatar
+    try:
+        header, payload = raw.split(",", 1)
+        if not header.startswith("data:image/") or ";base64" not in header:
+            raise ValueError("format invalid")
+        media_type = header[len("data:"):].split(";", 1)[0]  # image/png, image/jpeg, ...
+        content = base64.b64decode(payload, validate=True)
+    except Exception:
+        # Data URL malformat → 404 (nu 500)
+        raise HTTPException(status_code=404, detail="Avatar invalid")
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 def _normalize_username(value: str) -> str:

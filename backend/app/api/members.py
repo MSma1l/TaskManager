@@ -7,6 +7,7 @@ from app.models.base import ProjectRole
 from app.models.user import User
 from app.schemas.member import MemberInvite, MemberRoleUpdate
 from app.services import membership_service
+from app.services.avatar import avatar_url
 
 router = APIRouter(prefix="/api/projects/{project_id}/members", tags=["members"])
 
@@ -22,6 +23,7 @@ def member_to_dict(member, user, current_user_id):
         "role": member.role,
         "capacityPoints": member.capacity_points,
         "isYou": member.user_id == current_user_id,
+        "avatarUrl": avatar_url(user),
     }
 
 

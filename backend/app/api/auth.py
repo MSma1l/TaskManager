@@ -17,8 +17,10 @@ from app.schemas.auth import (
     AdminPasswordLoginRequest,
     SetPasswordRequest,
     UsernameUpdateRequest,
+    SignupRequest,
 )
 from app.services import auth_service
+from app.services.avatar import avatar_url
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -37,6 +39,7 @@ def _user_to_me(user: User) -> dict:
         "language": getattr(user, "language", None) or "ro",
         "notificationSettings": user.notification_settings or None,
         "mustChangePassword": bool(getattr(user, "must_change_password", False)),
+        "avatarUrl": avatar_url(user),
     }
 
 
@@ -427,6 +430,103 @@ async def password_login(data: AdminPasswordLoginRequest, db: Session = Depends(
     return {"kind": "session", **session}
 
 
+@router.post("/signup")
+async def signup(data: SignupRequest, db: Session = Depends(get_db)):
+    """Self-signup fără aprobare admin.
+
+    Creează direct un cont USER activ și loghează imediat (întoarce o sesiune
+    în aceeași formă ca password-login `kind=session`). `pin_hash` rămâne None
+    intenționat, ca frontend-ul să forțeze setarea PIN-ului la prima intrare.
+    Adminii sunt notificați (Telegram + in-app), best-effort.
+    """
+    import asyncio
+
+    username = (data.username or "").strip().lower()
+    if not USERNAME_RE.match(username):
+        raise HTTPException(
+            status_code=400,
+            detail="Username invalid (3-30 caractere: litere mici, cifre, _ .)",
+        )
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=409, detail="Username deja existent")
+
+    password = data.password or ""
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
+
+    full_name = (data.fullName or "").strip()[:150]
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Numele este obligatoriu")
+
+    email = (data.email or "").strip()[:150] or None
+    if email and db.query(User).filter(User.email == email, User.is_active == True).first():
+        raise HTTPException(status_code=409, detail="Email deja folosit")
+
+    new_user = User(
+        username=username,
+        full_name=full_name,
+        email=email,
+        password_hash=hash_password(password),
+        role="USER",
+        pin_hash=None,  # intenționat: forțează setarea PIN-ului la prima intrare
+        is_active=True,
+    )
+    db.add(new_user)
+    db.flush()  # obține id-ul
+
+    # Adaugă noul user ca membru al proiectului Birou (același pas ca la aprobare).
+    from app.services import office_service
+    office_service.ensure_office_membership(db, new_user.id)
+
+    # Sesiune emisă cu același helper ca password-login.
+    auth_service.register_successful_login(db, new_user)
+    session = auth_service.issue_session(new_user)
+
+    # Notifică adminii — best-effort, nu strica niciodată signup-ul.
+    try:
+        from app.services import notification_service
+        admins = (
+            db.query(User)
+            .filter(User.role == "ADMIN", User.is_active == True)
+            .all()
+        )
+        for admin in admins:
+            notification_service.create_safe(
+                db,
+                user_id=admin.id,
+                type="NEW_SIGNUP",
+                title=f"Cont nou creat: {username}",
+                body=full_name,
+                link=None,
+                meta={"userId": new_user.id},
+                commit=False,
+            )
+        admin_chats = [a.telegram_chat_id for a in admins if a.telegram_chat_id]
+        if admin_chats:
+            asyncio.create_task(
+                _notify_admins_new_signup(admin_chats, full_name, username)
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"signup admin-notify error: {e}")
+
+    db.commit()
+    return {"kind": "session", **session}
+
+
+async def _notify_admins_new_signup(chat_ids: list[str], full_name: str, username: str):
+    """Best-effort ping Telegram către adminii cu chat legat."""
+    try:
+        from app.telegram.bot import send_message
+        text = f"🆕 Cont nou creat: {full_name} (@{username})"
+        for chat_id in chat_ids:
+            try:
+                await send_message(text, chat_id=chat_id, role="ADMIN")
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to notify admin {chat_id}: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(f"_notify_admins_new_signup error: {e}")
+
+
 @router.put("/password")
 async def set_user_password(
     data: SetPasswordRequest,
@@ -529,6 +629,17 @@ async def update_me(
         user.language = data.language
     if data.notificationSettings is not None:
         user.notification_settings = data.notificationSettings
+    if data.avatar is not None:
+        # "" = sterge avatarul; altfel trebuie sa fie un data URL de imagine, sub plafon.
+        if data.avatar == "":
+            user.avatar = None
+        else:
+            if not data.avatar.startswith("data:image/"):
+                raise HTTPException(status_code=400, detail="Avatarul trebuie sa fie o imagine (data:image/...)")
+            if len(data.avatar) > 400_000:
+                raise HTTPException(status_code=400, detail="Imagine prea mare")
+            user.avatar = data.avatar
+            user.avatar_version = (user.avatar_version or 0) + 1
     db.commit()
     db.refresh(user)
     return _user_to_me(user)

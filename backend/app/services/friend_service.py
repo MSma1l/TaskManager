@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.friendship import Friendship
 from app.models.user import User
+from app.services.avatar import avatar_url
 
 ACTIVE_STATUSES = ("PENDING", "ACCEPTED")
 VALID_RELATIONS = {"friend", "colleague"}
@@ -191,6 +192,7 @@ def list_friends(db: Session, user_id: str) -> list[dict]:
             "id": u.id,
             "username": u.username,
             "fullName": u.full_name,
+            "avatarUrl": avatar_url(u),
             "relation": relation_by_id.get(u.id, "colleague"),
         }
         for u in users
@@ -215,6 +217,7 @@ def _pending_with_users(db: Session, rows: list[Friendship], direction: str) -> 
                 "userId": oid,
                 "username": u.username if u else None,
                 "fullName": u.full_name if u else None,
+                "avatarUrl": avatar_url(u),
                 "relation": fr.relation,
                 "createdAt": fr.created_at.isoformat() if fr.created_at else None,
             }
