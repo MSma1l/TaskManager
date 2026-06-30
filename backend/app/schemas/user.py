@@ -14,6 +14,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    username: Optional[str] = None
     email: Optional[str] = None
     fullName: Optional[str] = None
     phone: Optional[str] = None
@@ -21,6 +22,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     isActive: Optional[bool] = None
     pin: Optional[str] = None
+    password: Optional[str] = None
 
 
 class UserOut(BaseModel):

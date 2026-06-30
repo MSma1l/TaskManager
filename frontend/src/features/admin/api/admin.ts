@@ -23,6 +23,8 @@ export interface CreateUserPayload {
 }
 
 export interface UpdateUserPayload {
+  username?: string;
+  password?: string;
   email?: string | null;
   fullName?: string | null;
   telegramChatId?: string | null;

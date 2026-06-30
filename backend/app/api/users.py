@@ -1,11 +1,12 @@
 import base64
+import re
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user, require_admin, hash_secret, generate_login_code
+from app.core.security import get_current_user, require_admin, hash_secret, hash_password, generate_login_code
 from app.models.user import User, LoginCode
 from app.models.calendar import CalendarEvent
 from app.models.completion import TaskCompletion
@@ -136,6 +137,21 @@ async def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilizator inexistent")
+
+    # Username — admin poate schimba username-ul (ex: user uitat / cont reasignat).
+    if data.username is not None and data.username.strip():
+        candidate = _normalize_username(data.username)
+        if not re.match(r"^[a-z0-9_.]{3,30}$", candidate):
+            raise HTTPException(status_code=400, detail="Username invalid (3-30: litere mici, cifre, _ .)")
+        if db.query(User).filter(User.username == candidate, User.id != user.id).first():
+            raise HTTPException(status_code=409, detail="Username deja existent")
+        user.username = candidate
+
+    # Parola reala (nu PIN) — resetata cu hash_password (nu hash_secret).
+    if data.password is not None and data.password != "":
+        if len(data.password.strip()) < 6:
+            raise HTTPException(status_code=400, detail="Parola minim 6 caractere")
+        user.password_hash = hash_password(data.password.strip())
 
     if data.email is not None:
         user.email = data.email or None

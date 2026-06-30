@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminApi, AdminUser, CreateUserPayload, LinkCodeResponse } from '../api/admin';
+import { adminApi, AdminUser, CreateUserPayload, LinkCodeResponse, UpdateUserPayload } from '../api/admin';
 
 const emptyForm: CreateUserPayload = {
   username: '',
@@ -10,6 +10,16 @@ const emptyForm: CreateUserPayload = {
   pin: '',
 };
 
+interface EditForm {
+  username: string;
+  fullName: string;
+  email: string;
+  role: 'USER' | 'ADMIN';
+  isActive: boolean;
+  password: string;
+  pin: string;
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,6 +28,11 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<CreateUserPayload>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [linkInfo, setLinkInfo] = useState<{ user: AdminUser; data: LinkCodeResponse } | null>(null);
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editOk, setEditOk] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -79,6 +94,88 @@ export default function AdminUsersPage() {
     if (!confirm(`Dezactivezi userul "${u.username}"?`)) return;
     await adminApi.deleteUser(u.id);
     fetchUsers();
+  };
+
+  const openEdit = (u: AdminUser) => {
+    setEditUser(u);
+    setEditForm({
+      username: u.username,
+      fullName: u.fullName || '',
+      email: u.email || '',
+      role: u.role,
+      isActive: u.isActive,
+      password: '',
+      pin: '',
+    });
+    setEditError(null);
+    setEditOk(null);
+  };
+
+  const closeEdit = () => {
+    setEditUser(null);
+    setEditForm(null);
+    setEditError(null);
+    setEditOk(null);
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser || !editForm) return;
+    setEditBusy(true);
+    setEditError(null);
+    setEditOk(null);
+    try {
+      const payload: UpdateUserPayload = {};
+      const nextUsername = editForm.username.trim().toLowerCase();
+      if (nextUsername && nextUsername !== editUser.username) payload.username = nextUsername;
+
+      const nextFullName = editForm.fullName.trim();
+      if (nextFullName !== (editUser.fullName || '')) payload.fullName = nextFullName || null;
+
+      const nextEmail = editForm.email.trim();
+      if (nextEmail !== (editUser.email || '')) payload.email = nextEmail || null;
+
+      if (editForm.role !== editUser.role) payload.role = editForm.role;
+      if (editForm.isActive !== editUser.isActive) payload.isActive = editForm.isActive;
+
+      const nextPassword = editForm.password.trim();
+      if (nextPassword) payload.password = nextPassword;
+
+      const nextPin = editForm.pin.trim();
+      if (nextPin) payload.pin = nextPin;
+
+      if (Object.keys(payload).length === 0) {
+        setEditError('Nimic de salvat — nu ai modificat nimic.');
+        setEditBusy(false);
+        return;
+      }
+
+      await adminApi.updateUser(editUser.id, payload);
+      await fetchUsers();
+      setEditOk('Modificari salvate.');
+      setEditForm((f) => (f ? { ...f, password: '', pin: '' } : f));
+      setEditUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              username: payload.username ?? prev.username,
+              fullName: payload.fullName !== undefined ? payload.fullName : prev.fullName,
+              email: payload.email !== undefined ? payload.email : prev.email,
+              role: payload.role ?? prev.role,
+              isActive: payload.isActive ?? prev.isActive,
+              hasPin: payload.pin ? true : prev.hasPin,
+            }
+          : prev,
+      );
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 409) setEditError('Username deja folosit.');
+      else if (status === 400) setEditError(detail || 'Date invalide (username sau parola).');
+      else setEditError(detail || 'Nu s-au putut salva modificarile.');
+    } finally {
+      setEditBusy(false);
+    }
   };
 
   return (
@@ -172,6 +269,7 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-3 py-2">{u.hasPin ? 'da' : '—'}</td>
                 <td className="px-3 py-2 text-right space-x-2">
+                  <button onClick={() => openEdit(u)} className="text-xs text-blue-400 hover:text-blue-300">Editeaza</button>
                   <button onClick={() => generateLink(u)} className="text-xs text-slate-300 hover:text-white">Cod /link</button>
                   <button onClick={() => removeUser(u)} className="text-xs text-red-400 hover:text-red-300">Dezactiveaza</button>
                 </td>
@@ -180,6 +278,85 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {editUser && editForm && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={closeEdit}>
+          <form
+            onSubmit={saveEdit}
+            className="bg-slate-800 rounded-xl p-5 border border-slate-700 max-w-lg w-full space-y-4 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold">Editeaza user: <span className="font-mono">{editUser.username}</span></h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Nume complet">
+                <input value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Email">
+                <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Rol">
+                <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'USER' | 'ADMIN' })} className={inputCls}>
+                  <option value="USER">USER</option>
+                  <option value="ADMIN">ADMIN</option>
+                </select>
+              </Field>
+              <Field label="Activ">
+                <select value={editForm.isActive ? '1' : '0'} onChange={(e) => setEditForm({ ...editForm, isActive: e.target.value === '1' })} className={inputCls}>
+                  <option value="1">da</option>
+                  <option value="0">nu</option>
+                </select>
+              </Field>
+            </div>
+
+            <div className="border-t border-slate-700 pt-3 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-amber-300">Resetare acces</h4>
+                <p className="text-xs text-slate-400">Foloseste cand userul a uitat datele sau contul trece la alta persoana.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Username (login)">
+                  <input
+                    value={editForm.username}
+                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value.toLowerCase() })}
+                    className={inputCls}
+                  />
+                  <span className="text-[11px] text-slate-500 mt-1 block">3–30 caractere: litere mici, cifre, _ sau .</span>
+                </Field>
+                <Field label="Parola noua">
+                  <input
+                    type="password"
+                    value={editForm.password}
+                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                    placeholder="Lasa gol = neschimbat"
+                    className={inputCls}
+                    autoComplete="new-password"
+                  />
+                </Field>
+                <Field label="PIN nou / Resetare PIN (4–8 cifre)">
+                  <input
+                    value={editForm.pin}
+                    onChange={(e) => setEditForm({ ...editForm, pin: e.target.value })}
+                    placeholder="Lasa gol = neschimbat"
+                    className={inputCls}
+                    inputMode="numeric"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {editError && <p className="text-red-400 text-sm">{editError}</p>}
+            {editOk && <p className="text-emerald-400 text-sm">{editOk}</p>}
+
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={closeEdit} className="px-4 py-2 rounded-lg text-sm bg-slate-700 hover:bg-slate-600">Inchide</button>
+              <button disabled={editBusy} type="submit" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm disabled:opacity-60">
+                {editBusy ? 'Se salveaza...' : 'Salveaza'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {linkInfo && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setLinkInfo(null)}>
