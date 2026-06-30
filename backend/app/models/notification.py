@@ -20,6 +20,7 @@ class Notification(Base):
     body = Column(Text, nullable=True)
     link = Column(String, nullable=True)                   # ruta frontend, ex. /projects/<id>/board
     meta = Column(JSON, nullable=True)                     # {projectId, taskId, actorId}
+    priority = Column(String(20), nullable=False, default="STANDARD", server_default="STANDARD")  # STANDARD | URGENT
     is_read = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     read_at = Column(DateTime, nullable=True)

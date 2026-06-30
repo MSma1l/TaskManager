@@ -1,9 +1,12 @@
+import asyncio
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
-from app.core.security import verify_token, get_current_user
+from app.core.security import verify_token, get_current_user, require_admin
 from app.models.task import Task
 from app.models.reminder import ReminderLog
 from app.models.calendar import CalendarEvent, CalendarReminderLog
@@ -54,6 +57,90 @@ async def notification_mark_read(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Notificare inexistenta")
     return notification_service.to_dict(n)
+
+
+# ── Admin broadcast (compune + trimite notificare catre useri) ───────────────
+
+class AdminBroadcastRequest(BaseModel):
+    userIds: list[str] = []
+    allUsers: bool = False
+    title: str
+    body: Optional[str] = None
+    priority: str = "STANDARD"
+
+
+@router.post("/admin/broadcast")
+async def admin_broadcast(
+    data: AdminBroadcastRequest,
+    actor: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin compune o notificare in-app si o trimite catre useri selectati (sau toti).
+
+    STANDARD = doar in-app. URGENT = in-app (evidentiat de frontend) + mesaj Telegram
+    pentru destinatarii cu chat legat.
+    """
+    title = (data.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Titlul este obligatoriu")
+
+    priority = (data.priority or "STANDARD").strip().upper() or "STANDARD"
+    if priority not in {"STANDARD", "URGENT"}:
+        raise HTTPException(status_code=400, detail="Prioritate invalida (STANDARD sau URGENT)")
+
+    body = (data.body or "").strip() or None
+
+    # Rezolva destinatarii (mereu useri activi).
+    if data.allUsers:
+        recipients = (
+            db.query(User)
+            .filter(User.is_active == True, User.id != actor.id)  # noqa: E712
+            .all()
+        )
+    else:
+        ids = list({uid for uid in (data.userIds or []) if uid})
+        recipients = (
+            db.query(User)
+            .filter(User.id.in_(ids), User.is_active == True)  # noqa: E712
+            .all()
+            if ids else []
+        )
+
+    if not recipients:
+        raise HTTPException(status_code=400, detail="Selecteaza cel putin un destinatar")
+
+    recipient_ids = [u.id for u in recipients]
+    sent = notification_service.broadcast(
+        db,
+        user_ids=recipient_ids,
+        title=title,
+        body=body,
+        priority=priority,
+        type="ADMIN_BROADCAST",
+    )
+
+    # URGENT: ping Telegram pentru destinatarii cu chat legat (best-effort).
+    if priority == "URGENT":
+        chat_ids = [u.telegram_chat_id for u in recipients if u.telegram_chat_id]
+        if chat_ids:
+            text = f"🔴 URGENT: {title}"
+            if body:
+                text += f"\n\n{body}"
+
+            async def _send_urgent(targets: list[str], msg: str):
+                try:
+                    from app.telegram.bot import send_message
+                    for cid in targets:
+                        try:
+                            await send_message(msg, chat_id=cid, role="USER")
+                        except Exception as e:  # noqa: BLE001
+                            print(f"[broadcast] telegram send error chat={cid}: {e}")
+                except Exception as e:  # noqa: BLE001
+                    print(f"[broadcast] urgent telegram error: {e}")
+
+            asyncio.create_task(_send_urgent(chat_ids, text))
+
+    return {"sent": sent}
 
 
 @router.get("/pending")

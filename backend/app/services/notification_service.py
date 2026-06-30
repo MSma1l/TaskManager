@@ -22,17 +22,56 @@ def create(
     body: Optional[str] = None,
     link: Optional[str] = None,
     meta: Optional[dict] = None,
+    priority: str = "STANDARD",
     commit: bool = True,
 ) -> Notification:
     n = Notification(
         user_id=user_id, type=type, title=title, body=body, link=link, meta=meta,
-        is_read=False, created_at=datetime.utcnow(),
+        priority=priority, is_read=False, created_at=datetime.utcnow(),
     )
     db.add(n)
     if commit:
         db.commit()
         db.refresh(n)
     return n
+
+
+def broadcast(
+    db: Session,
+    *,
+    user_ids: list[str],
+    title: str,
+    body: Optional[str] = None,
+    priority: str = "STANDARD",
+    type: str = "ADMIN_BROADCAST",
+    link: Optional[str] = None,
+    meta: Optional[dict] = None,
+) -> int:
+    """Creeaza aceeasi notificare in-app pentru fiecare destinatar distinct.
+
+    Telegram-ul (pentru URGENT) e tratat in endpoint, nu aici. Returneaza numarul
+    de notificari create.
+    """
+    created = 0
+    seen: set[str] = set()
+    for uid in user_ids:
+        if not uid or uid in seen:
+            continue
+        seen.add(uid)
+        create(
+            db,
+            user_id=uid,
+            type=type,
+            title=title,
+            body=body,
+            link=link,
+            meta=meta,
+            priority=priority,
+            commit=False,
+        )
+        created += 1
+    db.commit()
+    return created
 
 
 def create_safe(db: Session, **kwargs) -> Optional[Notification]:
@@ -93,6 +132,7 @@ def to_dict(n: Notification) -> dict:
         "body": n.body,
         "link": n.link,
         "meta": n.meta,
+        "priority": n.priority or "STANDARD",
         "isRead": n.is_read,
         "createdAt": n.created_at.isoformat() if n.created_at else None,
         "readAt": n.read_at.isoformat() if n.read_at else None,
