@@ -507,6 +507,13 @@ const ro = {
     pinnedTooltip: 'Fixat manual — apasă pentru auto',
     pinnedAria: 'Desfă fixarea zonei',
   },
+  deadlineDrop: {
+    title: 'Termen pentru {zone}',
+    prompt: 'Pune un termen ca să fixezi cardul în zonă, sau doar fixează-l fără termen.',
+    setDeadline: 'Pune termen',
+    pinOnly: 'Doar fixează, fără termen',
+    cancel: 'Anulează',
+  },
   taskTimer: {
     title: 'Cronometru',
     start: 'Pornește',
@@ -1281,6 +1288,13 @@ const ru = {
     empty: 'Нет проектов',
     pinnedTooltip: 'Закреплено вручную — нажмите для авто',
     pinnedAria: 'Открепить зону',
+  },
+  deadlineDrop: {
+    title: 'Срок для {zone}',
+    prompt: 'Установите срок, чтобы карточка попала в зону, или просто закрепите её без срока.',
+    setDeadline: 'Установить срок',
+    pinOnly: 'Только закрепить, без срока',
+    cancel: 'Отмена',
   },
   taskTimer: {
     title: 'Таймер',

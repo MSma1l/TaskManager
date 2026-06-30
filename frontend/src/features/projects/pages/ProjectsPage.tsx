@@ -22,6 +22,15 @@ import AddProjectModal from '../components/AddProjectModal';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { Project, ProjectStatus, ProjectZone, UpdateProjectData } from '../api/projects';
 import { ZONE_META, ZONE_ORDER } from '../components/zoneMeta';
+import DeadlineDropDialog from '../components/DeadlineDropDialog';
+import { zoneSuggestedDeadlineIso } from '../components/deadlineUtils';
+
+interface PendingDrop {
+  movedId: string;
+  targetZone: ProjectZone;
+  orderedIds: string[];
+  suggestedIso: string;
+}
 
 type StatusFilter = 'ACTIVE' | 'ON_HOLD' | 'ARCHIVED' | 'ALL';
 type Translate = (key: string) => string;
@@ -286,11 +295,11 @@ function ProjectZoneRow({
 export default function ProjectsPage() {
   const t = useT();
   const [filter, setFilter] = useState<StatusFilter>('ACTIVE');
-  const { projects, loading, setProjects, createProject, updateProject, reorderZone } = useProjects(
-    FILTER_TO_STATUSES[filter],
-  );
+  const { projects, loading, setProjects, createProject, updateProject, reorderZone, refetch } =
+    useProjects(FILTER_TO_STATUSES[filter]);
   const [showAdd, setShowAdd] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
   const navigate = useNavigate();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -329,24 +338,64 @@ export default function ProjectsPage() {
     const orderedIds = [...destIds];
     orderedIds.splice(insertAt, 0, movedId);
 
-    const repin = sourceZone !== targetZone;
+    // Optimistic local update; the hook refetches to settle. `pinOverride`
+    // lets BACKLOG drops clear the pin so the move is deterministic.
+    const applyOptimistic = (pinOverride?: ProjectZone | null) =>
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id === movedId)
+            return {
+              ...p,
+              zone: targetZone,
+              pinnedZone: pinOverride !== undefined ? pinOverride : p.pinnedZone,
+              zoneOrder: orderedIds.indexOf(p.id),
+            };
+          if (orderedIds.includes(p.id)) return { ...p, zoneOrder: orderedIds.indexOf(p.id) };
+          return p;
+        }),
+      );
 
-    // Optimistic local update; the hook refetches to settle.
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === movedId)
-          return {
-            ...p,
-            zone: targetZone,
-            pinnedZone: repin ? targetZone : p.pinnedZone,
-            zoneOrder: orderedIds.indexOf(p.id),
-          };
-        if (orderedIds.includes(p.id)) return { ...p, zoneOrder: orderedIds.indexOf(p.id) };
-        return p;
-      }),
-    );
+    // 1) Same zone → position-only reorder, no pin, no popup.
+    if (sourceZone === targetZone) {
+      applyOptimistic();
+      reorderZone({ movedId, targetZone, orderedIds, repin: false });
+      return;
+    }
 
-    reorderZone({ movedId, targetZone, orderedIds, repin });
+    // 2) Cross-zone into BACKLOG → no popup, clear deadline + pin.
+    if (targetZone === 'BACKLOG') {
+      applyOptimistic(null);
+      updateProject(movedId, { deadline: null, priority: 'BACKLOG', pinnedZone: null });
+      reorderZone({ movedId, targetZone: 'BACKLOG', orderedIds, repin: false });
+      return;
+    }
+
+    // 3) Cross-zone into URGENT / MEDIUM / NORMAL → optimistic move + dialog.
+    applyOptimistic();
+    setPendingDrop({ movedId, targetZone, orderedIds, suggestedIso: zoneSuggestedDeadlineIso(targetZone) });
+  };
+
+  // Dialog: confirm with a real deadline (zone follows the deadline).
+  const handleDropSetDeadline = (iso: string) => {
+    if (!pendingDrop) return;
+    const { movedId, targetZone, orderedIds } = pendingDrop;
+    updateProject(movedId, { deadline: iso, pinnedZone: null });
+    reorderZone({ movedId, targetZone, orderedIds, repin: false });
+    setPendingDrop(null);
+  };
+
+  // Dialog: pin to the zone without a deadline.
+  const handleDropPinOnly = () => {
+    if (!pendingDrop) return;
+    const { movedId, targetZone, orderedIds } = pendingDrop;
+    reorderZone({ movedId, targetZone, orderedIds, repin: true });
+    setPendingDrop(null);
+  };
+
+  // Dialog: cancel → revert the optimistic move from the server.
+  const handleDropCancel = () => {
+    setPendingDrop(null);
+    refetch(false);
   };
 
   const handleUnpin = (id: string) => updateProject(id, { pinnedZone: null });
@@ -431,6 +480,16 @@ export default function ProjectsPage() {
       )}
 
       {showAdd && <AddProjectModal onClose={() => setShowAdd(false)} onSubmit={createProject} />}
+
+      {pendingDrop && (
+        <DeadlineDropDialog
+          zone={pendingDrop.targetZone}
+          suggestedIso={pendingDrop.suggestedIso}
+          onSetDeadline={handleDropSetDeadline}
+          onPinOnly={handleDropPinOnly}
+          onCancel={handleDropCancel}
+        />
+      )}
     </div>
   );
 }

@@ -21,6 +21,8 @@ import { useBoard } from '../hooks/useBoard';
 import { BoardTask } from '../api/board';
 import { ProjectZone } from '../api/projects';
 import { ZONE_META, ZONE_ORDER, deadlinePillText, formatDuration } from './zoneMeta';
+import DeadlineDropDialog from './DeadlineDropDialog';
+import { zoneSuggestedDeadlineIso } from './deadlineUtils';
 import { AssigneeStack } from './BoardCard';
 
 interface TaskZonesPanelProps {
@@ -30,6 +32,13 @@ interface TaskZonesPanelProps {
 }
 
 type Translate = (key: string) => string;
+
+interface PendingDrop {
+  movedId: string;
+  targetZone: ProjectZone;
+  orderedIds: string[];
+  suggestedIso: string;
+}
 
 const isZoneId = (id: string): id is ProjectZone => (ZONE_ORDER as string[]).includes(id);
 
@@ -212,8 +221,9 @@ function TaskZoneRow({
  */
 export default function TaskZonesPanel({ projectId, onOpenBoard }: TaskZonesPanelProps) {
   const t = useT();
-  const { board, loading, setBoard, updateTask, reorderZone } = useBoard(projectId);
+  const { board, loading, setBoard, updateTask, reorderZone, refetch } = useBoard(projectId);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -263,37 +273,78 @@ export default function TaskZonesPanel({ projectId, onOpenBoard }: TaskZonesPane
     const orderedIds = [...destIds];
     orderedIds.splice(insertAt, 0, movedId);
 
-    const repin = sourceZone !== targetZone;
-
     // Optimistic local update across all columns; the hook refetches to settle.
-    setBoard((prev) =>
-      prev
-        ? {
-            ...prev,
-            columns: prev.columns.map((c) => ({
-              ...c,
-              tasks: c.tasks.map((tk) => {
-                if (tk.id === movedId)
-                  return {
-                    ...tk,
-                    zone: targetZone,
-                    pinnedZone: repin ? targetZone : tk.pinnedZone,
-                    zoneOrder: orderedIds.indexOf(tk.id),
-                  };
-                if (orderedIds.includes(tk.id)) return { ...tk, zoneOrder: orderedIds.indexOf(tk.id) };
-                return tk;
-              }),
-            })),
-          }
-        : prev,
-    );
+    // `pinOverride` lets BACKLOG drops clear the pin so the move is deterministic.
+    const applyOptimistic = (pinOverride?: ProjectZone | null) =>
+      setBoard((prev) =>
+        prev
+          ? {
+              ...prev,
+              columns: prev.columns.map((c) => ({
+                ...c,
+                tasks: c.tasks.map((tk) => {
+                  if (tk.id === movedId)
+                    return {
+                      ...tk,
+                      zone: targetZone,
+                      pinnedZone: pinOverride !== undefined ? pinOverride : tk.pinnedZone,
+                      zoneOrder: orderedIds.indexOf(tk.id),
+                    };
+                  if (orderedIds.includes(tk.id)) return { ...tk, zoneOrder: orderedIds.indexOf(tk.id) };
+                  return tk;
+                }),
+              })),
+            }
+          : prev,
+      );
 
-    reorderZone({ movedId, targetZone, orderedIds, repin });
+    // 1) Same zone → position-only reorder, no pin, no popup.
+    if (sourceZone === targetZone) {
+      applyOptimistic();
+      reorderZone({ movedId, targetZone, orderedIds, repin: false });
+      return;
+    }
+
+    // 2) Cross-zone into BACKLOG → no popup, clear deadline + pin.
+    if (targetZone === 'BACKLOG') {
+      applyOptimistic(null);
+      updateTask(movedId, { dueDate: null, zoneOverride: 'BACKLOG', pinnedZone: null });
+      reorderZone({ movedId, targetZone: 'BACKLOG', orderedIds, repin: false });
+      return;
+    }
+
+    // 3) Cross-zone into URGENT / MEDIUM / NORMAL → optimistic move + dialog.
+    applyOptimistic();
+    setPendingDrop({ movedId, targetZone, orderedIds, suggestedIso: zoneSuggestedDeadlineIso(targetZone) });
+  };
+
+  // Dialog: confirm with a real deadline (zone follows the deadline).
+  const handleDropSetDeadline = (iso: string) => {
+    if (!pendingDrop) return;
+    const { movedId, targetZone, orderedIds } = pendingDrop;
+    updateTask(movedId, { dueDate: iso, pinnedZone: null });
+    reorderZone({ movedId, targetZone, orderedIds, repin: false });
+    setPendingDrop(null);
+  };
+
+  // Dialog: pin to the zone without a deadline.
+  const handleDropPinOnly = () => {
+    if (!pendingDrop) return;
+    const { movedId, targetZone, orderedIds } = pendingDrop;
+    reorderZone({ movedId, targetZone, orderedIds, repin: true });
+    setPendingDrop(null);
+  };
+
+  // Dialog: cancel → revert the optimistic move from the server.
+  const handleDropCancel = () => {
+    setPendingDrop(null);
+    refetch();
   };
 
   const handleUnpin = (id: string) => updateTask(id, { pinnedZone: null });
 
   return (
+    <>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
@@ -322,5 +373,16 @@ export default function TaskZonesPanel({ projectId, onOpenBoard }: TaskZonesPane
         ) : null}
       </DragOverlay>
     </DndContext>
+
+    {pendingDrop && (
+      <DeadlineDropDialog
+        zone={pendingDrop.targetZone}
+        suggestedIso={pendingDrop.suggestedIso}
+        onSetDeadline={handleDropSetDeadline}
+        onPinOnly={handleDropPinOnly}
+        onCancel={handleDropCancel}
+      />
+    )}
+    </>
   );
 }

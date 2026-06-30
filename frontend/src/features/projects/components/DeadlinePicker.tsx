@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { ProjectPriority } from '../api/projects';
-
-type Unit = 'days' | 'weeks';
+import {
+  DeadlineUnit as Unit,
+  wholeDaysFromToday,
+  offsetToISO,
+  isoToInputValue,
+  inputValueToISO,
+} from './deadlineUtils';
 
 interface DeadlinePickerProps {
   /** Current deadline as ISO string, or null when "în așteptare" (BACKLOG). */
@@ -11,44 +16,6 @@ interface DeadlinePickerProps {
   priority: ProjectPriority | null;
   /** Emits the new (deadline, priority) pair. */
   onChange: (deadline: string | null, priority: ProjectPriority | null) => void;
-}
-
-/** Whole calendar days between today (local midnight) and the given ISO date. */
-function wholeDaysFromToday(iso: string): number {
-  const target = new Date(iso);
-  if (isNaN(target.getTime())) return 0;
-  const now = new Date();
-  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const t1 = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
-  return Math.round((t1 - t0) / 86400000);
-}
-
-/** ISO datetime for today + N (days|weeks), anchored at local noon to dodge TZ day-shift. */
-function offsetToISO(qty: number, unit: Unit): string {
-  const days = unit === 'weeks' ? qty * 7 : qty;
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() + days);
-  return d.toISOString();
-}
-
-/** ISO string → yyyy-mm-dd for a native date input. */
-function isoToInputValue(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** yyyy-mm-dd → ISO datetime (local noon), or null when empty. */
-function inputValueToISO(val: string): string | null {
-  if (!val) return null;
-  const [y, m, d] = val.split('-').map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d, 12, 0, 0).toISOString();
 }
 
 const PRIORITIES: { value: ProjectPriority; classes: string }[] = [
