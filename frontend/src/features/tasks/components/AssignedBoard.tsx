@@ -3,9 +3,10 @@ import { useT } from '../../../shared/i18n/I18nProvider';
 import { useAssignedBoard } from '../hooks/useAssignedBoard';
 import { AssignedBoardTask, AssignedZone } from '../api/assigned';
 import { BoardCardBody } from '../../projects/components/BoardCard';
+import { BoardPriority } from '../../projects/api/board';
 import AssignedTaskDrawer from './AssignedTaskDrawer';
 
-type SortMode = 'zone' | 'project';
+type SortMode = 'zone' | 'project' | 'priority';
 
 const ZONE_LABEL_KEY: Record<AssignedZone, string> = {
   BACKLOG: 'assigned.zoneBacklog',
@@ -13,6 +14,15 @@ const ZONE_LABEL_KEY: Record<AssignedZone, string> = {
   IN_PROGRESS: 'assigned.zoneInProgress',
   DONE: 'assigned.zoneDone',
   APPROVED: 'assigned.zoneApproved',
+};
+
+/** Ordinea prioritatilor (descrescator) si etichetele lor in gruparea „pe prioritate". */
+const PRIORITY_ORDER: BoardPriority[] = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'];
+const PRIORITY_LABEL_KEY: Record<BoardPriority, string> = {
+  LOW: 'board.priorityLow',
+  MEDIUM: 'board.priorityMedium',
+  HIGH: 'board.priorityHigh',
+  URGENT: 'board.priorityUrgent',
 };
 
 /** Card cu badge proiect + coloană, click → drawer. */
@@ -61,6 +71,17 @@ export default function AssignedBoard() {
     return Array.from(byProject.values());
   }, [data]);
 
+  // Grupare „pe prioritate": toate task-urile din zone, grupate descrescator
+  // dupa prioritatea task-ului (URGENT → HIGH → MEDIUM → LOW), fara grupuri goale.
+  const priorityGroups = useMemo(() => {
+    if (!data) return [];
+    const flat = data.zones.flatMap((z) => z.tasks);
+    return PRIORITY_ORDER.map((prio) => ({
+      prio,
+      tasks: flat.filter((tk) => tk.priority === prio),
+    })).filter((g) => g.tasks.length > 0);
+  }, [data]);
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -104,6 +125,14 @@ export default function AssignedBoard() {
           >
             {t('assigned.sortByProject')}
           </button>
+          <button
+            onClick={() => setSortMode('priority')}
+            className={`px-3 py-2 transition-colors ${
+              sortMode === 'priority' ? 'bg-blue-600/20 text-blue-300' : 'text-muted hover:text-fg'
+            }`}
+          >
+            {t('assigned.sortByPriority')}
+          </button>
         </div>
       </div>
 
@@ -128,6 +157,24 @@ export default function AssignedBoard() {
               </div>
             </div>
           ))}
+        </div>
+      ) : sortMode === 'priority' ? (
+        <div className="flex flex-col gap-5">
+          {priorityGroups.map((g) => (
+            <div key={g.prio}>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
+                {t(PRIORITY_LABEL_KEY[g.prio])} <span className="text-muted/70">{g.tasks.length}</span>
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {g.tasks.map((tk) => (
+                  <AssignedCard key={tk.id} task={tk} onClick={() => setDetail(tk)} />
+                ))}
+              </div>
+            </div>
+          ))}
+          {priorityGroups.length === 0 && (
+            <p className="text-sm text-muted text-center py-10">{t('board.noAssigned')}</p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-5">
