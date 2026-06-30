@@ -7,6 +7,7 @@ export interface AppNotification {
   body?: string | null;
   link?: string | null;
   meta?: Record<string, unknown> | null;
+  priority?: 'STANDARD' | 'URGENT';
   isRead: boolean;
   createdAt?: string | null;
   readAt?: string | null;

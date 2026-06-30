@@ -25,18 +25,10 @@
 }
 
 /* ── Layout vars ───────────────────────────────────────────────────────── */
-/* Spatiu rezervat in partea de sus a continutului ca primele iteme/headere
-   sa nu fie acoperite de clopotelul de notificari (fixed top-right). Pe mobil
-   bara de sus nu exista, deci avem nevoie de aceasta marja; pe desktop (>=md)
-   sidebar-ul lasa loc, deci o resetam la 0. */
+/* Notificarile au fost mutate in sidebar / bara de jos. Pastram variabila la 0
+   pentru compatibilitate cu calc-urile existente (ex: TodayPage). */
 :root {
-  --app-bell-clearance: 3.5rem;
-}
-
-@media (min-width: 768px) {
-  :root {
-    --app-bell-clearance: 0px;
-  }
+  --app-bell-clearance: 0px;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */

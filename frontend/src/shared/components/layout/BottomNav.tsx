@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useT } from '../../i18n/I18nProvider';
+import NotificationsCenter from '../../../features/notifications/components/NotificationsCenter';
 
 interface NavItem {
   to: string;
@@ -101,6 +102,9 @@ export default function BottomNav() {
             </NavLink>
           </li>
         ))}
+        <li className="flex-1">
+          <NotificationsCenter variant="bottomnav" />
+        </li>
       </ul>
     </nav>
   );

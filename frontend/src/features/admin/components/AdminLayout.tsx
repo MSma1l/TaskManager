@@ -57,6 +57,7 @@ export default function AdminLayout() {
               </span>
             )}
           </NavLink>
+          <NavLink to="/admin_task_manager/notify" className={linkClass}>Notificări</NavLink>
           <NavLink to="/admin_task_manager/stats" className={linkClass}>Statistici</NavLink>
           <NavLink to="/" className={linkClass} end>App utilizator</NavLink>
         </nav>

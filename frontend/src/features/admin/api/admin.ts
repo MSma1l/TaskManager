@@ -85,6 +85,16 @@ export const adminApi = {
     client.post(`/access-requests/${id}/approve`, data).then((r) => r.data),
   rejectAccessRequest: (id: string, reason?: string) =>
     client.post(`/access-requests/${id}/reject`, { reason }).then((r) => r.data),
+
+  // Admin broadcast — trimite o notificare catre useri selectati sau toti
+  sendNotification: (body: {
+    userIds: string[];
+    allUsers: boolean;
+    title: string;
+    body?: string;
+    priority: 'STANDARD' | 'URGENT';
+  }): Promise<{ sent: number }> =>
+    client.post('/notifications/admin/broadcast', body).then((r) => r.data),
 };
 
 export interface AccessRequestRow {

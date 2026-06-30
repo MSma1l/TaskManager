@@ -6,7 +6,6 @@ import { useNotifications } from '../../hooks/useNotifications';
 import Tour from '../tour/Tour';
 import { authApi, MeResponse } from '../../../features/auth/api/auth';
 import ForcedSetupModal from '../../../features/auth/components/ForcedSetupModal';
-import NotificationBell from '../../../features/notifications/components/NotificationBell';
 import CommandPalette from '../search/CommandPalette';
 import QuickAddFab from '../quickadd/QuickAddFab';
 
@@ -40,17 +39,13 @@ export default function AppLayout() {
       className="min-h-screen bg-bg text-fg md:pl-60"
       style={{
         // Reserve enough space for the BottomNav (mobile) + iPhone home indicator.
-        // Pe desktop bara de jos e ascunsa, dar pastram safe-area-ul.
-        // Pe mobil adaugam ~3.5rem in plus ca headerele/primele iteme sa nu fie
-        // acoperite de clopotelul de notificari (fixed top-right, z-40). Pe
-        // desktop sidebar-ul lasa loc, deci nu mai e nevoie de spatiu extra.
-        paddingTop:
-          'calc(env(safe-area-inset-top, 0px) + var(--app-bell-clearance, 0px))',
+        // Notificarile au fost mutate in sidebar / bara de jos, deci nu mai e
+        // nevoie de marja suplimentara sus pentru clopotelul flotant.
+        paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
       }}
     >
       <Sidebar />
-      <NotificationBell />
       <CommandPalette />
       <QuickAddFab />
       <Outlet />

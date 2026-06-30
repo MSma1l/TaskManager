@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useT } from '../../i18n/I18nProvider';
 import { useQuickTaskCount } from '../../../features/quicktasks/hooks/useQuickTaskCount';
+import NotificationsCenter from '../../../features/notifications/components/NotificationsCenter';
 
 interface NavItem {
   to: string;
@@ -121,11 +122,14 @@ export default function Sidebar() {
         <h1 className="text-lg font-bold tracking-tight text-fg">Task Manager</h1>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 pb-6 flex flex-col gap-5">
-        {SECTIONS.map((section) => (
-          <div key={section.titleKey} className="flex flex-col gap-1">
+        {SECTIONS.map((section, idx) => {
+          const isLast = idx === SECTIONS.length - 1;
+          return (
+          <div key={section.titleKey} className={`flex flex-col gap-1 ${isLast ? 'mt-auto' : ''}`}>
             <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/70">
               {t(section.titleKey)}
             </p>
+            {isLast && <NotificationsCenter variant="sidebar" />}
             {section.items.map((item) => {
               const badge = item.to === '/quick-tasks' ? quickCount : 0;
               return (
@@ -141,7 +145,8 @@ export default function Sidebar() {
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
     </aside>
   );

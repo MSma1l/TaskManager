@@ -31,6 +31,7 @@ const AdminDashboardPage = lazy(() => import('../features/admin/pages/AdminDashb
 const AdminUsersPage = lazy(() => import('../features/admin/pages/AdminUsersPage'));
 const AdminStatsPage = lazy(() => import('../features/admin/pages/AdminStatsPage'));
 const AdminRequestsPage = lazy(() => import('../features/admin/pages/AdminRequestsPage'));
+const AdminNotifyPage = lazy(() => import('../features/admin/pages/AdminNotifyPage'));
 
 function PageFallback() {
   return (
@@ -80,6 +81,7 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="requests" element={<AdminRequestsPage />} />
+          <Route path="notify" element={<AdminNotifyPage />} />
           <Route path="stats" element={<AdminStatsPage />} />
         </Route>
 
