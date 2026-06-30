@@ -4,6 +4,11 @@ import { ProjectRole } from './members';
 
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'ARCHIVED';
 
+/** Priority zone — manual choice, only used when the project has no deadline. */
+export type ProjectPriority = 'URGENT' | 'MEDIUM' | 'NORMAL' | 'BACKLOG';
+/** Computed zone the project lands in. Always present (server-side). */
+export type ProjectZone = 'URGENT' | 'MEDIUM' | 'NORMAL' | 'BACKLOG';
+
 export interface Project {
   id: string;
   name: string;
@@ -20,6 +25,14 @@ export interface Project {
   role?: ProjectRole;
   /** Number of members on this project. */
   memberCount?: number;
+  /** ISO8601 deadline, or null when the project has no termen (BACKLOG). */
+  deadline: string | null;
+  /** Manual priority zone — only meaningful when `deadline` is null. */
+  priority: ProjectPriority | null;
+  /** Zone computed server-side from deadline (or priority when no deadline). Always present. */
+  zone: ProjectZone;
+  /** Whole days until deadline; negative if overdue, null when no deadline. */
+  daysRemaining: number | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -34,6 +47,10 @@ export interface CreateProjectData {
   githubUrl?: string;
   color?: string;
   key?: string;
+  /** ISO string, or null to leave without a termen (BACKLOG). */
+  deadline?: string | null;
+  /** Manual zone when there is no deadline. */
+  priority?: ProjectPriority | null;
 }
 
 export interface UpdateProjectData {
@@ -45,6 +62,10 @@ export interface UpdateProjectData {
   isActive?: boolean;
   status?: ProjectStatus;
   showOnToday?: boolean;
+  /** ISO string, or null to clear the termen (→ BACKLOG). */
+  deadline?: string | null;
+  /** Manual zone when there is no deadline. */
+  priority?: ProjectPriority | null;
 }
 
 export const projectsApi = {

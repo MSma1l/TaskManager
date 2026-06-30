@@ -25,6 +25,7 @@ class BoardTaskCreate(BaseModel):
     priority: Optional[str] = "MEDIUM"
     labelIds: list[str] = []
     dueDate: Optional[str] = None
+    zoneOverride: Optional[str] = None
     estimateMinutes: Optional[int] = None
     storyPoints: Optional[int] = None
 
@@ -35,6 +36,7 @@ class BoardTaskUpdate(BaseModel):
     priority: Optional[str] = None
     labelIds: Optional[list[str]] = None
     dueDate: Optional[str] = None
+    zoneOverride: Optional[str] = None
     estimateMinutes: Optional[int] = None
     storyPoints: Optional[int] = None
 

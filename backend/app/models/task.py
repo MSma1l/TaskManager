@@ -26,6 +26,13 @@ class Task(Base):
 
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
 
+    # ── Zone de prioritate (board) ──────────────────────────────────
+    # Override manual de zona, distinct de `priority` (care e LOW/MEDIUM/HIGH/URGENT).
+    # Valori: URGENT|MEDIUM|NORMAL|BACKLOG. Folosit cand nu exista deadline (due_date).
+    zone_override = Column(String(20), nullable=True)
+    # Ultima zona calculata (bookkeeping pentru detectarea tranzitiilor de scheduler).
+    last_zone = Column(String(20), nullable=True)
+
     # ── Board (Kanban) ──────────────────────────────────────────────
     board_column_id = Column(String, ForeignKey("board_columns.id"), nullable=True, index=True)
     board_order = Column(Integer, nullable=True)

@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -6,11 +7,13 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import project_service, membership_service
+from app.services.project_zone import compute_zone, days_remaining
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 def project_to_dict(project, task_count: int = 0, role: str = None, member_count: int = 0):
+    now = datetime.utcnow()
     return {
         "id": project.id,
         "name": project.name,
@@ -21,6 +24,11 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
         "isActive": project.is_active,
         "status": project.status,
         "showOnToday": project.show_on_today,
+        "deadline": project.deadline.isoformat() if project.deadline else None,
+        "priority": project.priority,
+        # Zona de prioritate, mereu prezenta (calculata din deadline/priority).
+        "zone": compute_zone(project.deadline, project.priority, now),
+        "daysRemaining": days_remaining(project.deadline, now),
         "taskCount": task_count,
         "role": role,
         "memberCount": member_count,

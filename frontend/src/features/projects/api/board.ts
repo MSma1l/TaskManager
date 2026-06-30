@@ -1,5 +1,6 @@
 import client from '../../../shared/api/client';
 import { Attachment } from '../../../shared/api/attachment';
+import { ProjectZone, ProjectPriority } from './projects';
 
 export type BoardPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
@@ -39,6 +40,15 @@ export interface Subtask {
   done: boolean;
 }
 
+/** A timer currently running on a task, one per (task, user) pair. */
+export interface RunningTimer {
+  userId: string;
+  username: string;
+  fullName: string | null;
+  /** ISO8601 timestamp when this timer was started. */
+  startedAt: string;
+}
+
 export interface BoardTask {
   id: string;
   title: string;
@@ -62,6 +72,16 @@ export interface BoardTask {
   subtasks: Subtask[];
   /** Imagini / note vocale atașate (data-URL base64). Poate fi `[]`. */
   attachments?: Attachment[];
+  /** Zona de prioritate computată server-side (din termen sau override). Mereu prezentă. */
+  zone: ProjectZone;
+  /** Override manual de zonă — relevant doar când nu există termen. */
+  zoneOverride: ProjectPriority | null;
+  /** Zile întregi până la termen; negativ dacă depășit, null fără termen. */
+  daysRemaining: number | null;
+  /** Timp acumulat din sesiuni oprite (NU include cronometrul curent în desfășurare). */
+  timeSpentSeconds: number;
+  /** Cronometre care rulează acum pe acest task (unul per utilizator). */
+  runningTimers: RunningTimer[];
 }
 
 export interface BoardColumn {
@@ -111,9 +131,12 @@ export interface UpdateBoardTaskData {
   description?: string;
   priority?: BoardPriority;
   labelIds?: string[];
-  dueDate?: string;
+  /** ISO string, sau null pentru a șterge termenul (→ zona din override). */
+  dueDate?: string | null;
   estimateMinutes?: number;
   storyPoints?: number;
+  /** Override manual de zonă — folosit când nu există termen. */
+  zoneOverride?: ProjectPriority | null;
 }
 
 export interface TransitionData {
@@ -171,6 +194,16 @@ export const boardApi = {
   transition: (projectId: string, taskId: string, data: TransitionData) =>
     client
       .post<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/transition`, data)
+      .then((r) => r.data),
+
+  // ── Cronometru (time tracking) ──
+  startTimer: (projectId: string, taskId: string) =>
+    client
+      .post<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/timer/start`)
+      .then((r) => r.data),
+  stopTimer: (projectId: string, taskId: string) =>
+    client
+      .post<BoardTask>(`/projects/${projectId}/board/tasks/${taskId}/timer/stop`)
       .then((r) => r.data),
 
   listLabels: (projectId: string) =>

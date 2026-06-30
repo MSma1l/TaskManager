@@ -1,10 +1,29 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session, joinedload
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
 from app.services import membership_service
+from app.services.project_zone import compute_zone, VALID_PRIORITIES
+
+
+def _to_naive_utc(dt):
+    """Normalizeaza un datetime la naive UTC (consistent cu restul codebase-ului).
+    Daca vine cu timezone, il converteste la UTC si scoate tzinfo. None ramane None."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _clean_priority(value):
+    """Valideaza override-ul de prioritate; None daca lipseste / e invalid."""
+    if not value:
+        return None
+    v = str(value).strip().upper()
+    return v if v in VALID_PRIORITIES else None
 
 
 def get_all_projects(db: Session, user_id: str, statuses: list[str] | None = None):
@@ -61,6 +80,8 @@ def _derive_key(name: str) -> str:
 def create_project(db: Session, user_id: str, data: dict) -> Project:
     raw_key = (data.get("key") or "").strip()
     key = raw_key.upper()[:10] if raw_key else _derive_key(data["name"])
+    deadline = _to_naive_utc(data.get("deadline"))
+    priority = _clean_priority(data.get("priority"))
     project = Project(
         user_id=user_id,
         name=data["name"],
@@ -69,6 +90,10 @@ def create_project(db: Session, user_id: str, data: dict) -> Project:
         color=data.get("color", "#3b82f6"),
         key=key,
         task_counter=0,
+        deadline=deadline,
+        priority=priority,
+        # Bookkeeping: zona initiala calculata, pentru detectarea tranzitiilor.
+        last_zone=compute_zone(deadline, priority, datetime.utcnow()),
     )
     db.add(project)
     db.flush()  # ensure project.id is populated before linking the owner membership
@@ -114,6 +139,20 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
             project.status = data["status"]
     if "showOnToday" in data and data["showOnToday"] is not None:
         project.show_on_today = data["showOnToday"]
+
+    # Deadline / prioritate: aplica doar cheile prezente (exclude_unset). Trimiterea
+    # explicita a `deadline: null` sterge deadline-ul ("pe asteptare").
+    zone_dirty = False
+    if "deadline" in data:
+        project.deadline = _to_naive_utc(data["deadline"])
+        zone_dirty = True
+    if "priority" in data:
+        project.priority = _clean_priority(data["priority"])
+        zone_dirty = True
+
+    # La schimbare de deadline/prioritate, recalculeaza si stocheaza zona curenta.
+    if zone_dirty:
+        project.last_zone = compute_zone(project.deadline, project.priority, datetime.utcnow())
 
     project.updated_at = datetime.utcnow()
     db.commit()

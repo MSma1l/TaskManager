@@ -1,19 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../../../shared/i18n/I18nProvider';
-import { ProjectWithTasks, projectsApi, UpdateProjectData } from '../api/projects';
+import { ProjectWithTasks, projectsApi, UpdateProjectData, ProjectPriority } from '../api/projects';
 import MembersBar from '../components/MembersBar';
+import DeadlinePicker from '../components/DeadlinePicker';
 import BoardPage from './BoardPage';
 import SprintsPanel from '../components/SprintsPanel';
 import PerformancePanel from '../components/PerformancePanel';
 import ActivityPanel from '../components/ActivityPanel';
+import TaskZonesPanel from '../components/TaskZonesPanel';
+import TimeReportPanel from '../components/TimeReportPanel';
 import QaPanel from '../../qa/components/QaPanel';
 
 // Board e tab-ul DEFAULT la deschiderea unui proiect. Tab-urile "Lista" si
 // "Backlog" au fost eliminate — Board-ul afiseaza direct toate task-urile
 // (inclusiv backlog) pentru toti participantii. Tab-ul "qa" e deep-linkabil
 // via /projects/:id/qa (folosit de notificarile de bug report).
-type ProjectTab = 'board' | 'sprints' | 'performance' | 'activity' | 'qa';
+type ProjectTab = 'board' | 'priorities' | 'sprints' | 'timeReport' | 'performance' | 'activity' | 'qa';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -33,6 +36,8 @@ export default function ProjectDetailPage() {
   const [editColor, setEditColor] = useState('');
   const [editKey, setEditKey] = useState('');
   const [editShowOnToday, setEditShowOnToday] = useState(false);
+  const [editDeadline, setEditDeadline] = useState<string | null>(null);
+  const [editPriority, setEditPriority] = useState<ProjectPriority | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchProject = useCallback(async () => {
@@ -61,6 +66,8 @@ export default function ProjectDetailPage() {
       githubUrl: editGithub.trim() || undefined,
       color: editColor,
       key: editKey.trim() || undefined,
+      deadline: editDeadline,
+      priority: editPriority,
     };
     if (canManage) data.showOnToday = editShowOnToday;
     await projectsApi.update(projectId, data);
@@ -82,6 +89,8 @@ export default function ProjectDetailPage() {
     setEditColor(project.color);
     setEditKey(project.key || '');
     setEditShowOnToday(project.showOnToday);
+    setEditDeadline(project.deadline);
+    setEditPriority(project.priority);
     setShowEdit(true);
   };
 
@@ -95,11 +104,16 @@ export default function ProjectDetailPage() {
 
   if (!project) return null;
 
+  const isOwner = project.role === 'OWNER';
+
   const TABS: { key: ProjectTab; label: string }[] = [
     { key: 'board', label: t('board.board') },
+    { key: 'priorities', label: t('pm.priorities') },
     { key: 'sprints', label: t('pm.sprints') },
     { key: 'qa', label: t('qa.tab') },
     { key: 'performance', label: t('pm.performance') },
+    // Raportul de timp e vizibil DOAR pentru OWNER.
+    ...(isOwner ? [{ key: 'timeReport' as ProjectTab, label: t('pm.timeReport') }] : []),
     { key: 'activity', label: t('collab.activityFeed') },
   ];
 
@@ -177,12 +191,16 @@ export default function ProjectDetailPage() {
 
       {tab === 'board' ? (
         projectId && <BoardPage projectId={projectId} myRole={project.role} />
+      ) : tab === 'priorities' ? (
+        projectId && <TaskZonesPanel projectId={projectId} onOpenBoard={() => setTab('board')} />
       ) : tab === 'sprints' ? (
         projectId && <SprintsPanel projectId={projectId} myRole={project.role} />
       ) : tab === 'qa' ? (
         projectId && <QaPanel projectId={projectId} myRole={project.role} />
       ) : tab === 'performance' ? (
         projectId && <PerformancePanel projectId={projectId} />
+      ) : tab === 'timeReport' ? (
+        projectId && isOwner && <TimeReportPanel projectId={projectId} />
       ) : (
         projectId && <ActivityPanel projectId={projectId} />
       )}
@@ -244,6 +262,15 @@ export default function ProjectDetailPage() {
                   ))}
                 </div>
               </div>
+
+              <DeadlinePicker
+                deadline={editDeadline}
+                priority={editPriority}
+                onChange={(d, p) => {
+                  setEditDeadline(d);
+                  setEditPriority(p);
+                }}
+              />
 
               {canManage && (
                 <label className="flex items-start gap-3 cursor-pointer select-none">

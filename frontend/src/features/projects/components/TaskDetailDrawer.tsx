@@ -3,6 +3,9 @@ import { useI18n } from '../../../shared/i18n/I18nProvider';
 import { relativeTime } from '../../../shared/utils/dates';
 import { BoardTask, TransitionAction, ColumnType, UpdateBoardTaskData } from '../api/board';
 import SubtaskChecklist from './SubtaskChecklist';
+import DeadlinePicker from './DeadlinePicker';
+import { ZONE_META, deadlinePillText, formatDuration } from './zoneMeta';
+import { useNow } from '../hooks/useNow';
 import { ProjectMember } from '../api/members';
 import { TaskActivity } from '../api/activity';
 import { TaskComment } from '../api/comments';
@@ -34,6 +37,10 @@ interface TaskDetailDrawerProps {
   onAddSubtask?: (taskId: string, title: string) => Promise<unknown> | void;
   onToggleSubtask?: (taskId: string, subtaskId: string, done: boolean) => Promise<unknown> | void;
   onRemoveSubtask?: (taskId: string, subtaskId: string) => Promise<unknown> | void;
+  /** Pornește cronometrul curentului utilizator pe acest task. */
+  onStartTimer?: (taskId: string) => Promise<unknown> | void;
+  /** Oprește cronometrul curentului utilizator pe acest task. */
+  onStopTimer?: (taskId: string) => Promise<unknown> | void;
 }
 
 type Tab = 'comments' | 'activity';
@@ -53,6 +60,8 @@ export default function TaskDetailDrawer({
   onAddSubtask,
   onToggleSubtask,
   onRemoveSubtask,
+  onStartTimer,
+  onStopTimer,
 }: TaskDetailDrawerProps) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('comments');
@@ -74,6 +83,29 @@ export default function TaskDetailDrawer({
   }
 
   const assigneeIds = task.assignees.map((a) => a.userId);
+
+  // ── Timer (time tracking) ────────────────────────────────────────────────────
+  const [timerBusy, setTimerBusy] = useState(false);
+  const myTimer = myUserId ? task.runningTimers.find((r) => r.userId === myUserId) : undefined;
+  const iAmRunning = !!myTimer;
+  // Tick only while MY timer runs, so the live total advances each second.
+  const now = useNow(iAmRunning);
+  const myElapsed = myTimer
+    ? Math.max(0, Math.floor((now - new Date(myTimer.startedAt).getTime()) / 1000))
+    : 0;
+  const totalSeconds = task.timeSpentSeconds + myElapsed;
+  const canTrack = !!onStartTimer && !!onStopTimer;
+
+  const handleTimerToggle = async () => {
+    if (!canTrack || timerBusy) return;
+    setTimerBusy(true);
+    try {
+      if (iAmRunning) await onStopTimer!(task.id);
+      else await onStartTimer!(task.id);
+    } finally {
+      setTimerBusy(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -237,11 +269,18 @@ export default function TaskDetailDrawer({
                 <p className="text-xs text-amber-400/90 -mt-1">{t('pm.storyPointsRequired')}</p>
               )}
 
-              {/* Due date */}
-              {task.dueDate && (
+              {/* Termen / zonă — read-only când userul nu poate edita
+                  (varianta editabilă e DeadlinePicker-ul de mai jos). */}
+              {!onUpdate && (
                 <div className="flex items-center gap-2">
-                  <span className="text-muted w-24 flex-shrink-0">{t('collab.dueDate')}</span>
-                  <span className="text-fg">{task.dueDate}</span>
+                  <span className="text-muted w-24 flex-shrink-0">{t('projects.deadlineSection')}</span>
+                  <span
+                    className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      (ZONE_META[task.zone] ?? ZONE_META.BACKLOG).pill
+                    }`}
+                  >
+                    {deadlinePillText(t, task.daysRemaining, task.dueDate)}
+                  </span>
                 </div>
               )}
 
@@ -251,6 +290,58 @@ export default function TaskDetailDrawer({
                 <span className="text-fg">{watchers.length}</span>
               </div>
             </div>
+
+            {/* Termen + zonă editabile (DeadlinePicker — reutilizat de la proiecte) */}
+            {onUpdate && (
+              <DeadlinePicker
+                deadline={task.dueDate}
+                priority={task.zoneOverride}
+                onChange={(d, z) => onUpdate(task.id, { dueDate: d, zoneOverride: z })}
+              />
+            )}
+
+            {/* Cronometru (time tracking) */}
+            {canTrack && (
+              <div className="rounded-xl border border-border bg-input/40 p-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-fg/90 block">{t('taskTimer.title')}</span>
+                    <span className="text-lg font-bold text-fg tabular-nums">
+                      {formatDuration(totalSeconds)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTimerToggle}
+                    disabled={timerBusy}
+                    title={iAmRunning ? t('taskTimer.pause') : t('taskTimer.start')}
+                    aria-label={iAmRunning ? t('taskTimer.pause') : t('taskTimer.start')}
+                    className={`flex items-center gap-2 px-4 h-10 flex-shrink-0 rounded-xl border text-sm font-semibold transition-colors disabled:opacity-50 ${
+                      iAmRunning
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30'
+                        : 'bg-green-600/20 border-green-500/40 text-green-300 hover:bg-green-600/30'
+                    }`}
+                  >
+                    <span className="text-base leading-none">{iAmRunning ? '⏸' : '▶'}</span>
+                    {iAmRunning ? t('taskTimer.pause') : t('taskTimer.start')}
+                  </button>
+                </div>
+
+                {task.runningTimers.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-green-300/90">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                    </span>
+                    <span className="min-w-0 truncate">
+                      {t('taskTimer.workingNow').replace('{n}', String(task.runningTimers.length))}
+                      {': '}
+                      {task.runningTimers.map((r) => r.fullName || r.username).join(', ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Labels */}
             {task.labels.length > 0 && (

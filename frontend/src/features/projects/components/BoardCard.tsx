@@ -3,6 +3,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { useT } from '../../../shared/i18n/I18nProvider';
 import { BoardAssignee, BoardTask, ColumnType, TransitionAction } from '../api/board';
 import { PRIORITY_DOT, avatarTint, nextAction, actionKey } from './boardConstants';
+import { ZONE_META, deadlinePillText, formatDuration } from './zoneMeta';
+import { useNow } from '../hooks/useNow';
 
 interface WorkflowCtx {
   columnType: ColumnType | null;
@@ -31,6 +33,14 @@ export function BoardCardBody({
   workflow?: WorkflowCtx;
 }) {
   const t = useT();
+
+  const hasRunning = (task.runningTimers?.length ?? 0) > 0;
+  const now = useNow(hasRunning);
+  const earliestStart = hasRunning
+    ? Math.min(...task.runningTimers.map((r) => new Date(r.startedAt).getTime()))
+    : 0;
+  const runningElapsed = hasRunning ? Math.max(0, Math.floor((now - earliestStart) / 1000)) : 0;
+  const zoneMeta = ZONE_META[task.zone] ?? ZONE_META.BACKLOG;
 
   // Decide whether to render a workflow button on this card.
   let action: TransitionAction | null = null;
@@ -114,6 +124,29 @@ export function BoardCardBody({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               {t(DOW_KEYS[task.dayOfWeek] || '')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Deadline / zone pill + running-timer indicator */}
+      {(task.dueDate || hasRunning) && (
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          {task.dueDate && (
+            <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${zoneMeta.pill}`}>
+              {deadlinePillText(t, task.daysRemaining, task.dueDate)}
+            </span>
+          )}
+          {hasRunning && (
+            <span
+              title={t('taskTimer.running')}
+              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-500/15 text-green-300"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+              </span>
+              {formatDuration(runningElapsed)}
             </span>
           )}
         </div>

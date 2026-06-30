@@ -156,6 +156,19 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     return task;
   };
 
+  // ── Cronometru (time tracking) ─────────────────────────────────────────────
+  const startTimer = async (taskId: string) => {
+    const task = await boardApi.startTimer(projectId, taskId);
+    await fetchBoard(false);
+    return task;
+  };
+
+  const stopTimer = async (taskId: string) => {
+    const task = await boardApi.stopTimer(projectId, taskId);
+    await fetchBoard(false);
+    return task;
+  };
+
   return {
     board,
     loading,
@@ -176,5 +189,7 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     addSubtask,
     updateSubtask,
     removeSubtask,
+    startTimer,
+    stopTimer,
   };
 }

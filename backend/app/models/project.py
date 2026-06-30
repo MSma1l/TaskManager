@@ -25,6 +25,12 @@ class Project(Base):
     # Daca True, taskurile proiectului apar pe board-ul comun "Astazi" (Today).
     # Adminul/owner-ul proiectului controleaza acest flag.
     show_on_today = Column(Boolean, nullable=False, server_default="false")
+    # Termenul limita al proiectului (optional). Determina zona de prioritate.
+    deadline = Column(DateTime, nullable=True)
+    # Override manual de zona cand nu exista deadline: URGENT|MEDIUM|NORMAL|BACKLOG.
+    priority = Column(String(20), nullable=True)
+    # Ultima zona calculata (bookkeeping) — scheduler-ul detecteaza tranzitiile fata de ea.
+    last_zone = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

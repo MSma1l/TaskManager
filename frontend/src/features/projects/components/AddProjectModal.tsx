@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useT } from '../../../shared/i18n/I18nProvider';
-import { CreateProjectData } from '../api/projects';
+import { CreateProjectData, ProjectPriority } from '../api/projects';
+import DeadlinePicker from './DeadlinePicker';
 
 /** Build an uppercase A-Z key suggestion from a free-text project name. */
 function suggestKey(name: string): string {
@@ -31,6 +32,8 @@ export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalPr
   const [githubUrl, setGithubUrl] = useState('');
   const [color, setColor] = useState(COLORS[0]);
   const [key, setKey] = useState('');
+  const [deadline, setDeadline] = useState<string | null>(null);
+  const [priority, setPriority] = useState<ProjectPriority | null>(null);
   /** Once the user edits the key manually, stop auto-suggesting from the name. */
   const [keyTouched, setKeyTouched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,6 +64,8 @@ export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalPr
         githubUrl: githubUrl.trim() || undefined,
         color,
         key: key.trim() || undefined,
+        deadline,
+        priority,
       });
       onClose();
     } catch {
@@ -147,6 +152,15 @@ export default function AddProjectModal({ onClose, onSubmit }: AddProjectModalPr
               ))}
             </div>
           </div>
+
+          <DeadlinePicker
+            deadline={deadline}
+            priority={priority}
+            onChange={(d, p) => {
+              setDeadline(d);
+              setPriority(p);
+            }}
+          />
 
           <div className="flex gap-3 mt-1">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 font-semibold transition-colors">

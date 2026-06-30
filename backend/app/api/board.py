@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,8 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.project import Project
+from app.services import time_tracking_service
+from app.services.project_zone import compute_zone, days_remaining
 from app.schemas.board import (
     ColumnCreate,
     ColumnUpdate,
@@ -22,6 +26,10 @@ from app.services import board_service
 
 router = APIRouter(prefix="/api/projects/{project_id}/board", tags=["board"])
 
+# Router separat pentru endpoint-uri project-scoped care NU stau sub /board
+# (ex: raportul de timp). Prefixul ramane exact /api/projects/{project_id}.
+project_router = APIRouter(prefix="/api/projects/{project_id}", tags=["board"])
+
 
 # ── serializers (camelCase) ─────────────────────────────────────────
 
@@ -33,9 +41,18 @@ def label_to_dict(label):
     }
 
 
-def board_task_to_dict(task, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None):
+def board_task_to_dict(
+    task,
+    users: dict | None = None,
+    project_key: str | None = None,
+    comment_counts: dict | None = None,
+    time_spent: dict | None = None,
+    running_timers: dict | None = None,
+):
     users = users or {}
     comment_counts = comment_counts or {}
+    time_spent = time_spent or {}
+    running_timers = running_timers or {}
 
     def _resolve(uid: str) -> dict:
         u = users.get(uid)
@@ -62,6 +79,7 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         if project_key and task.task_number is not None
         else None
     )
+    now = datetime.utcnow()
     return {
         "id": task.id,
         "title": task.title,
@@ -75,6 +93,9 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "taskNumber": task.task_number,
         "taskKey": task_key,
         "dueDate": task.due_date.isoformat() if task.due_date else None,
+        "zone": compute_zone(task.due_date, task.zone_override, now),
+        "zoneOverride": task.zone_override,
+        "daysRemaining": days_remaining(task.due_date, now),
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
         "approvalStatus": task.approval_status,
@@ -85,10 +106,14 @@ def board_task_to_dict(task, users: dict | None = None, project_key: str | None 
         "commentCount": comment_counts.get(task.id, 0),
         "subtasks": list(task.subtasks or []),
         "attachments": list(task.attachments or []),
+        # Time tracking: timpul cumulat din pontajele oprite (timerele active sunt
+        # excluse — frontend-ul adauga timpul live din runningTimers).
+        "timeSpentSeconds": time_spent.get(task.id, 0),
+        "runningTimers": running_timers.get(task.id, []),
     }
 
 
-def column_to_dict(column, tasks=None, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None):
+def column_to_dict(column, tasks=None, users: dict | None = None, project_key: str | None = None, comment_counts: dict | None = None, time_spent: dict | None = None, running_timers: dict | None = None):
     return {
         "id": column.id,
         "name": column.name,
@@ -96,7 +121,7 @@ def column_to_dict(column, tasks=None, users: dict | None = None, project_key: s
         "color": column.color,
         "isDoneColumn": column.is_done_column,
         "columnType": column.column_type,
-        "tasks": [board_task_to_dict(t, users, project_key, comment_counts) for t in (tasks or [])],
+        "tasks": [board_task_to_dict(t, users, project_key, comment_counts, time_spent, running_timers) for t in (tasks or [])],
     }
 
 
@@ -114,9 +139,11 @@ async def get_board(
     tasks_by_column = board["tasks_by_column"]
     project_key = board["project_key"]
     comment_counts = board["comment_counts"]
+    time_spent = board["time_spent"]
+    running_timers = board["running_timers"]
     return {
         "columns": [
-            column_to_dict(c, tasks_by_column.get(c.id, []), users, project_key, comment_counts)
+            column_to_dict(c, tasks_by_column.get(c.id, []), users, project_key, comment_counts, time_spent, running_timers)
             for c in board["columns"]
         ],
         "labels": [label_to_dict(l) for l in board["labels"]],
@@ -178,7 +205,10 @@ def _task_with_assignee(db: Session, task, project_id: str | None = None):
         row = db.query(Project.key).filter(Project.id == pid).first()
         project_key = row[0] if row else None
     comment_counts = {task.id: board_service._comment_count(db, task.id)}
-    return board_task_to_dict(task, users, project_key, comment_counts)
+    # Time tracking pentru acest singur task (cumul + timere active).
+    time_spent = time_tracking_service.time_spent_map(db, [task.id])
+    running_timers = time_tracking_service.running_timers_map(db, [task.id])
+    return board_task_to_dict(task, users, project_key, comment_counts, time_spent, running_timers)
 
 
 @router.post("/tasks")
@@ -259,6 +289,46 @@ async def transition_task(
         reminder_time=data.reminderTime,
     )
     return _task_with_assignee(db, task, project_id)
+
+
+# ── time tracking (pontaje) ─────────────────────────────────────────
+
+@router.post("/tasks/{task_id}/timer/start")
+async def start_timer(
+    project_id: str,
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Porneste timer-ul curentului user pe task (opreste orice timer activ al lui).
+    Intoarce dict-ul board al task-ului actualizat (cu timeSpentSeconds + runningTimers)."""
+    time_tracking_service.start_timer(db, project_id, task_id, user.id)
+    task = board_service._get_board_task(db, project_id, task_id)
+    return _task_with_assignee(db, task, project_id)
+
+
+@router.post("/tasks/{task_id}/timer/stop")
+async def stop_timer(
+    project_id: str,
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Opreste (pauza) timer-ul curentului user pe task. No-op daca nu exista.
+    Intoarce dict-ul board al task-ului actualizat."""
+    time_tracking_service.stop_timer(db, project_id, task_id, user.id)
+    task = board_service._get_board_task(db, project_id, task_id)
+    return _task_with_assignee(db, task, project_id)
+
+
+@project_router.get("/time-report")
+async def time_report(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Raport de timp per membru pentru proiect (doar OWNER)."""
+    return time_tracking_service.get_time_report(db, project_id, user.id)
 
 
 # ── etichete (labels) ───────────────────────────────────────────────

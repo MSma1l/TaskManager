@@ -9,9 +9,13 @@ from app.models.completion import TaskCompletion
 from app.models.reminder import ReminderLog
 from app.models.session import TelegramSession
 from app.models.calendar import CalendarEvent, CalendarReminderLog
+from app.models.project import Project
+from app.models.project_reminder_log import ProjectReminderLog
+from app.models.task_reminder_log import TaskReminderLog
 from app.models.user import User
 from app.models.base import TaskStatus
-from app.services import task_service, stats_service, calendar_service, completion_service, push_service
+from app.services import task_service, stats_service, calendar_service, completion_service, push_service, membership_service, notification_service
+from app.services.project_zone import compute_zone, days_remaining
 
 scheduler = AsyncIOScheduler()
 
@@ -742,6 +746,264 @@ def notify_quick_tasks():
         db.close()
 
 
+# ── Zone de prioritate proiecte (tranzitii + countdown URGENT) ────────────────
+
+
+def _zone_transition_message(name: str, new_zone: str, dr: int | None) -> str:
+    """Mesaj RO pentru tranzitia unui proiect intr-o zona noua. `dr` = zile ramase
+    (None cand zona vine din override manual, fara deadline)."""
+    days = f" ({dr} zile)" if dr is not None else ""
+    if new_zone == "URGENT":
+        if dr is not None:
+            return f"🔴 Proiectul «{name}» a intrat în zona URGENT — deadline peste {dr} zile."
+        return f"🔴 Proiectul «{name}» a intrat în zona URGENT."
+    if new_zone == "MEDIUM":
+        return f"🟠 Proiectul «{name}» a trecut în zona Curând{days}."
+    if new_zone == "NORMAL":
+        return f"🟢 Proiectul «{name}» e în zona Planificat{days}."
+    # BACKLOG
+    return f"🟣 Proiectul «{name}» a fost mutat în Idei / În așteptare."
+
+
+def _urgent_countdown_message(name: str, deadline: datetime, now: datetime) -> str:
+    """Mesaj RO de countdown zilnic pentru un proiect URGENT cu deadline setat."""
+    dr = days_remaining(deadline, now)
+    if dr is not None and dr < 0:
+        return f"⚠️ «{name}» — deadline depășit cu {abs(dr)} zile!"
+    if dr is not None and dr >= 1:
+        return f"🔴 «{name}» — mai sunt {dr} zile până la deadline."
+    # Sub o zi: arata orele ramase (nu coboram sub 0).
+    hours = max(0, int(round((deadline - now).total_seconds() / 3600)))
+    return f"🔴 «{name}» — mai sunt {hours} ore până la deadline."
+
+
+def check_project_zones():
+    """La fiecare minut: pentru fiecare proiect activ recalculeaza zona de prioritate.
+
+    1) Tranzitie de zona: daca zona s-a schimbat (si last_zone nu e None), anunta pe
+       Telegram fiecare membru al proiectului (respecta toggle Telegram + DND).
+    2) Countdown zilnic URGENT: pentru proiectele in zona URGENT cu deadline, trimite
+       o data pe zi fiecarui membru un countdown (dedup prin project_reminder_logs).
+
+    Prima atribuire de zona (last_zone is None) se face silentios, fara mesaj, ca sa
+    nu spamam la rollout.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today_iso = now.date().isoformat()
+
+        projects = db.query(Project).filter(Project.is_active == True).all()
+
+        for project in projects:
+            new_zone = compute_zone(project.deadline, project.priority, now)
+            dr = days_remaining(project.deadline, now)
+
+            members = membership_service.list_members(db, project.id)
+
+            # 1) Tranzitie de zona
+            if project.last_zone is None:
+                # Prima atribuire — seteaza silentios, fara notificare.
+                project.last_zone = new_zone
+            elif new_zone != project.last_zone:
+                text = _zone_transition_message(project.name, new_zone, dr)
+                for member in members:
+                    user_obj = _get_user(db, member.user_id)
+                    if not user_obj:
+                        continue
+                    # In-app (clopotel) — pentru fiecare membru, indiferent de Telegram/DND.
+                    notification_service.create_safe(
+                        db, user_id=user_obj.id, type="PROJECT_ZONE_CHANGED",
+                        title=text, link=f"/projects/{project.id}",
+                        meta={"projectId": project.id, "zone": new_zone},
+                        commit=False,
+                    )
+                    # Telegram — doar daca are chat legat si nu e in DND / toggle off.
+                    if not user_obj.telegram_chat_id or not _telegram_allowed(user_obj, now):
+                        continue
+                    asyncio.create_task(_send_telegram(
+                        text, chat_id=user_obj.telegram_chat_id, role=user_obj.role,
+                    ))
+                project.last_zone = new_zone
+
+            # 2) Countdown zilnic pentru URGENT cu deadline
+            if new_zone == "URGENT" and project.deadline is not None:
+                msg = _urgent_countdown_message(project.name, project.deadline, now)
+                for member in members:
+                    user_obj = _get_user(db, member.user_id)
+                    if not user_obj:
+                        continue
+                    # Dedup: o singura data pe zi per (proiect, user) — acopera ambele
+                    # canale (in-app + Telegram) ca sa nu dublam countdown-ul.
+                    already = (
+                        db.query(ProjectReminderLog)
+                        .filter(
+                            ProjectReminderLog.project_id == project.id,
+                            ProjectReminderLog.user_id == user_obj.id,
+                            ProjectReminderLog.kind == "URGENT_DAILY",
+                            ProjectReminderLog.sent_date == today_iso,
+                        )
+                        .first()
+                    )
+                    if already:
+                        continue
+                    # In-app (clopotel) — intotdeauna, indiferent de Telegram/DND.
+                    notification_service.create_safe(
+                        db, user_id=user_obj.id, type="PROJECT_DEADLINE_URGENT",
+                        title=msg, link=f"/projects/{project.id}",
+                        meta={"projectId": project.id},
+                        commit=False,
+                    )
+                    # Telegram — doar daca are chat legat si nu e in DND / toggle off.
+                    if user_obj.telegram_chat_id and _telegram_allowed(user_obj, now):
+                        asyncio.create_task(_send_telegram(
+                            msg, chat_id=user_obj.telegram_chat_id, role=user_obj.role,
+                        ))
+                    db.add(ProjectReminderLog(
+                        project_id=project.id,
+                        user_id=user_obj.id,
+                        kind="URGENT_DAILY",
+                        sent_date=today_iso,
+                    ))
+
+        db.commit()
+    except Exception as e:
+        print(f"Project zone check error: {e}")
+    finally:
+        db.close()
+
+
+# ── Zone de prioritate taskuri board (tranzitii + countdown URGENT) ───────────
+
+
+def _task_zone_transition_message(title: str, new_zone: str, dr: int | None) -> str:
+    """Mesaj RO pentru tranzitia unui task de board intr-o zona noua."""
+    days = f" ({dr} zile)" if dr is not None else ""
+    if new_zone == "URGENT":
+        if dr is not None:
+            return f"🔴 Taskul «{title}» a intrat în URGENT — deadline peste {dr} zile."
+        return f"🔴 Taskul «{title}» a intrat în zona URGENT."
+    if new_zone == "MEDIUM":
+        return f"🟠 Taskul «{title}» a trecut în zona Curând{days}."
+    if new_zone == "NORMAL":
+        return f"🟢 Taskul «{title}» e în zona Planificat{days}."
+    # BACKLOG
+    return f"🟣 Taskul «{title}» a fost mutat în Idei / În așteptare."
+
+
+def _task_urgent_countdown_message(title: str, deadline: datetime, now: datetime) -> str:
+    """Mesaj RO de countdown zilnic pentru un task URGENT cu deadline setat."""
+    dr = days_remaining(deadline, now)
+    if dr is not None and dr < 0:
+        return f"⚠️ Taskul «{title}» — deadline depășit cu {abs(dr)} zile!"
+    if dr is not None and dr >= 1:
+        return f"🔴 Taskul «{title}» — mai sunt {dr} zile până la deadline."
+    # Sub o zi: arata orele ramase (nu coboram sub 0).
+    hours = max(0, int(round((deadline - now).total_seconds() / 3600)))
+    return f"🔴 Taskul «{title}» — mai sunt {hours} ore până la deadline."
+
+
+def check_task_zones():
+    """La fiecare minut: pentru fiecare task de board activ cu deadline (due_date)
+    recalculeaza zona de prioritate.
+
+    1) Tranzitie de zona: daca zona s-a schimbat (si last_zone nu e None), anunta
+       fiecare RESPONSABIL (task.assignees — nu toti membrii) in-app + Telegram.
+    2) Countdown zilnic URGENT: pentru taskurile URGENT cu deadline, o data pe zi
+       fiecarui responsabil (dedup prin task_reminder_logs).
+
+    Prima atribuire de zona (last_zone is None) se face silentios. Totul wrap-uit
+    intr-un try/except ca o eroare sa nu strice loop-ul de scheduler.
+    """
+    db = SessionLocal()
+    try:
+        from sqlalchemy.orm import joinedload
+
+        now = datetime.utcnow()
+        today_iso = now.date().isoformat()
+
+        # Doar taskuri de board active cu deadline setat (tranzitiile sunt relevante
+        # doar cand exista due_date — zona pe override pur nu se schimba in timp).
+        tasks = (
+            db.query(Task)
+            .filter(
+                Task.is_active == True,
+                Task.board_column_id.isnot(None),
+                Task.due_date.isnot(None),
+            )
+            .options(joinedload(Task.assignees))
+            .all()
+        )
+
+        for task in tasks:
+            new_zone = compute_zone(task.due_date, task.zone_override, now)
+            dr = days_remaining(task.due_date, now)
+            assignees = task.assignees or []
+
+            # 1) Tranzitie de zona
+            if task.last_zone is None:
+                task.last_zone = new_zone
+            elif new_zone != task.last_zone:
+                text = _task_zone_transition_message(task.title, new_zone, dr)
+                for user_obj in assignees:
+                    if not user_obj:
+                        continue
+                    notification_service.create_safe(
+                        db, user_id=user_obj.id, type="TASK_ZONE_CHANGED",
+                        title=text, link=f"/projects/{task.project_id}/board",
+                        meta={"taskId": task.id, "projectId": task.project_id, "zone": new_zone},
+                        commit=False,
+                    )
+                    if not user_obj.telegram_chat_id or not _telegram_allowed(user_obj, now):
+                        continue
+                    asyncio.create_task(_send_telegram(
+                        text, chat_id=user_obj.telegram_chat_id, role=user_obj.role,
+                    ))
+                task.last_zone = new_zone
+
+            # 2) Countdown zilnic pentru URGENT cu deadline
+            if new_zone == "URGENT" and task.due_date is not None:
+                msg = _task_urgent_countdown_message(task.title, task.due_date, now)
+                for user_obj in assignees:
+                    if not user_obj:
+                        continue
+                    already = (
+                        db.query(TaskReminderLog)
+                        .filter(
+                            TaskReminderLog.task_id == task.id,
+                            TaskReminderLog.user_id == user_obj.id,
+                            TaskReminderLog.kind == "URGENT_DAILY",
+                            TaskReminderLog.sent_date == today_iso,
+                        )
+                        .first()
+                    )
+                    if already:
+                        continue
+                    notification_service.create_safe(
+                        db, user_id=user_obj.id, type="TASK_DEADLINE_URGENT",
+                        title=msg, link=f"/projects/{task.project_id}/board",
+                        meta={"taskId": task.id, "projectId": task.project_id},
+                        commit=False,
+                    )
+                    if user_obj.telegram_chat_id and _telegram_allowed(user_obj, now):
+                        asyncio.create_task(_send_telegram(
+                            msg, chat_id=user_obj.telegram_chat_id, role=user_obj.role,
+                        ))
+                    db.add(TaskReminderLog(
+                        task_id=task.id,
+                        project_id=task.project_id,
+                        user_id=user_obj.id,
+                        kind="URGENT_DAILY",
+                        sent_date=today_iso,
+                    ))
+
+        db.commit()
+    except Exception as e:
+        print(f"Task zone check error: {e}")
+    finally:
+        db.close()
+
+
 def cleanup_sessions():
     """Expire telegram sessions older than 10 minutes."""
     db = SessionLocal()
@@ -772,6 +1034,10 @@ def start_scheduler():
     scheduler.add_job(send_daily_digest, 'cron', hour=settings.DAILY_DIGEST_HOUR, minute=0, id='daily_digest')
     # Every minute - notifica adminii despre quick task-uri noi
     scheduler.add_job(notify_quick_tasks, 'cron', minute='*', id='notify_quick_tasks')
+    # Every minute - zone de prioritate proiecte (tranzitii + countdown URGENT)
+    scheduler.add_job(check_project_zones, 'cron', minute='*', id='check_project_zones')
+    # Every minute - zone de prioritate taskuri board (tranzitii + countdown URGENT)
+    scheduler.add_job(check_task_zones, 'cron', minute='*', id='check_task_zones')
     # Every minute - cleanup expired sessions
     scheduler.add_job(cleanup_sessions, 'cron', minute='*', id='cleanup_sessions')
 

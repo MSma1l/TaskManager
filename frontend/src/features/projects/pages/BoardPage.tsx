@@ -57,6 +57,8 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
     addSubtask,
     updateSubtask,
     removeSubtask,
+    startTimer,
+    stopTimer,
   } = useBoard(projectId, sprintFilter || undefined);
   const { members } = useMembers(projectId);
 
@@ -426,6 +428,8 @@ export default function BoardPage({ projectId: propProjectId, myRole }: BoardPag
           onAddSubtask={canManage ? addSubtask : undefined}
           onToggleSubtask={canManage ? (taskId, sid, done) => updateSubtask(taskId, sid, { done }) : undefined}
           onRemoveSubtask={canManage ? removeSubtask : undefined}
+          onStartTimer={startTimer}
+          onStopTimer={stopTimer}
         />
       )}
 

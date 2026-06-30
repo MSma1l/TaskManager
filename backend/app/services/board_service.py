@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -9,7 +9,25 @@ from app.models.label import Label, TaskLabel
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
-from app.services import membership_service
+from app.services import membership_service, time_tracking_service
+from app.services.project_zone import compute_zone, days_remaining, VALID_PRIORITIES
+
+
+def _to_naive_utc(dt):
+    """Normalizeaza un datetime la naive UTC (la fel ca in project_service)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _clean_zone_override(value):
+    """Valideaza override-ul manual de zona; None daca lipseste / e invalid."""
+    if not value:
+        return None
+    v = str(value).strip().upper()
+    return v if v in VALID_PRIORITIES else None
 
 
 # Coloanele implicite (RO) create automat pentru orice proiect fara coloane.
@@ -270,6 +288,7 @@ def board_task_to_dict(
         else None
     )
 
+    now = datetime.utcnow()
     return {
         "id": task.id,
         "title": task.title,
@@ -283,6 +302,9 @@ def board_task_to_dict(
         "taskNumber": task.task_number,
         "taskKey": task_key,
         "dueDate": task.due_date.isoformat() if task.due_date else None,
+        "zone": compute_zone(task.due_date, task.zone_override, now),
+        "zoneOverride": task.zone_override,
+        "daysRemaining": days_remaining(task.due_date, now),
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
         "approvalStatus": task.approval_status,
@@ -293,6 +315,10 @@ def board_task_to_dict(
         "commentCount": comment_count if comment_count is not None else _comment_count(db, task.id),
         "subtasks": list(task.subtasks or []),
         "attachments": list(task.attachments or []),
+        # Time tracking: in acest serializer standalone (sprint/ai) nu pre-agregam,
+        # deci timpul e 0 / fara timere active. Board-ul real (api/board) le calculeaza.
+        "timeSpentSeconds": 0,
+        "runningTimers": [],
     }
 
 
@@ -381,6 +407,10 @@ def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None 
         .all()
     )
 
+    # Time tracking: pre-agregare intr-un minim de query-uri (evita N+1).
+    time_spent = time_tracking_service.time_spent_map(db, task_ids)
+    running_timers = time_tracking_service.running_timers_map(db, task_ids)
+
     return {
         "columns": columns,
         "tasks_by_column": tasks_by_column,
@@ -388,6 +418,8 @@ def get_board(db: Session, user_id: str, project_id: str, sprint_id: str | None 
         "labels": labels,
         "project_key": project.key,
         "comment_counts": comment_counts,
+        "time_spent": time_spent,
+        "running_timers": running_timers,
     }
 
 
@@ -512,6 +544,11 @@ def create_task(db: Session, user_id: str, project_id: str, data: dict) -> Task:
     if story_points is None:
         story_points = 1
 
+    # Zona de prioritate: deadline (due_date) + override manual optional. Calculam
+    # last_zone initial pentru ca scheduler-ul sa detecteze tranzitiile ulterioare.
+    due_date = _to_naive_utc(_parse_dt(data.get("dueDate")))
+    zone_override = _clean_zone_override(data.get("zoneOverride"))
+
     task = Task(
         user_id=user_id,
         title=data["title"],
@@ -524,7 +561,9 @@ def create_task(db: Session, user_id: str, project_id: str, data: dict) -> Task:
         board_order=_max_order(db, column.id) + 1,
         assignee_id=assignee_ids[0] if assignee_ids else None,
         task_number=project.task_counter,
-        due_date=_parse_dt(data.get("dueDate")),
+        due_date=due_date,
+        zone_override=zone_override,
+        last_zone=compute_zone(due_date, zone_override, datetime.utcnow()),
         estimated_minutes=data.get("estimateMinutes"),
         story_points=story_points,
         is_active=True,
@@ -556,8 +595,20 @@ def update_task(db: Session, user_id: str, project_id: str, task_id: str, data: 
         task.priority = data["priority"]
     if data.get("labelIds") is not None:
         _set_labels(db, task, project_id, data["labelIds"])
+
+    # Deadline / override de zona: aplica doar cheile prezente (exclude_unset).
+    # `dueDate: null` sau `zoneOverride: null` sterge valoarea respectiva.
+    zone_dirty = False
     if "dueDate" in data:
-        task.due_date = _parse_dt(data["dueDate"])
+        task.due_date = _to_naive_utc(_parse_dt(data["dueDate"]))
+        zone_dirty = True
+    if "zoneOverride" in data:
+        task.zone_override = _clean_zone_override(data["zoneOverride"])
+        zone_dirty = True
+    # La schimbare de deadline/override, recalculeaza si stocheaza zona curenta.
+    if zone_dirty:
+        task.last_zone = compute_zone(task.due_date, task.zone_override, datetime.utcnow())
+
     if "estimateMinutes" in data:
         task.estimated_minutes = data["estimateMinutes"]
     if "storyPoints" in data:

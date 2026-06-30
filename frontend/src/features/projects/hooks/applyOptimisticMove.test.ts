@@ -24,6 +24,11 @@ function task(id: string, columnId: string): BoardTask {
     sprintId: null,
     approvalStatus: null,
     subtasks: [],
+    zone: 'BACKLOG',
+    zoneOverride: null,
+    daysRemaining: null,
+    timeSpentSeconds: 0,
+    runningTimers: [],
   };
 }
 
