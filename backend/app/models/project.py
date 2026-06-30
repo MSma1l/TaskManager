@@ -31,6 +31,10 @@ class Project(Base):
     priority = Column(String(20), nullable=True)
     # Ultima zona calculata (bookkeeping) — scheduler-ul detecteaza tranzitiile fata de ea.
     last_zone = Column(String(20), nullable=True)
+    # Pin manual de zona: invinge deadline-ul (URGENT|MEDIUM|NORMAL|BACKLOG). NULL = neprins.
+    pinned_zone = Column(String(20), nullable=True)
+    # Pozitia in zona (drag & drop intra-zona). NULL = nesetat.
+    zone_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

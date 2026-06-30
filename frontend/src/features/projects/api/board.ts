@@ -76,6 +76,10 @@ export interface BoardTask {
   zone: ProjectZone;
   /** Override manual de zonă — relevant doar când nu există termen. */
   zoneOverride: ProjectPriority | null;
+  /** Zonă fixată manual prin drag & drop. Când e setată, înlocuiește zona din termen. */
+  pinnedZone: ProjectZone | null;
+  /** Poziție manuală în interiorul zonei; null = neordonat (la coadă). */
+  zoneOrder: number | null;
   /** Zile întregi până la termen; negativ dacă depășit, null fără termen. */
   daysRemaining: number | null;
   /** Timp acumulat din sesiuni oprite (NU include cronometrul curent în desfășurare). */
@@ -137,6 +141,20 @@ export interface UpdateBoardTaskData {
   storyPoints?: number;
   /** Override manual de zonă — folosit când nu există termen. */
   zoneOverride?: ProjectPriority | null;
+  /** Fixează la o zonă (override termen) sau null pentru a desface (revine la auto). */
+  pinnedZone?: ProjectZone | null;
+}
+
+/** Body pentru reordonarea / fixarea cardurilor de task prin drag & drop între zone. */
+export interface ReorderZoneData {
+  /** Id-ul taskului tras. */
+  movedId: string;
+  /** Zona destinație în care a ajuns cardul. */
+  targetZone: ProjectZone | null;
+  /** Lista completă ordonată de id-uri din zona destinație după mutare. */
+  orderedIds: string[];
+  /** True când cardul și-a schimbat zona → îl fixăm la `targetZone`. */
+  repin: boolean;
 }
 
 export interface TransitionData {
@@ -186,6 +204,10 @@ export const boardApi = {
   moveTask: (projectId: string, taskId: string, toColumnId: string, toIndex: number) =>
     client
       .post(`/projects/${projectId}/board/tasks/${taskId}/move`, { toColumnId, toIndex })
+      .then((r) => r.data),
+  reorderZone: (projectId: string, body: ReorderZoneData) =>
+    client
+      .post(`/projects/${projectId}/board/zones/reorder`, body)
       .then((r) => r.data),
   assignTask: (projectId: string, taskId: string, assigneeIds: string[]) =>
     client

@@ -26,3 +26,13 @@ class ProjectUpdate(BaseModel):
     # exclude_unset=True, deci cheia ajunge la service doar daca a fost trimisa.
     deadline: Optional[datetime] = None
     priority: Optional[str] = None
+    # Pin manual de zona (URGENT|MEDIUM|NORMAL|BACKLOG); `null` = scoate pin-ul (unpin).
+    pinnedZone: Optional[str] = None
+
+
+class ZoneReorder(BaseModel):
+    """Reordonare intra-zona (drag & drop) + optional re-pin pe zona tinta."""
+    movedId: str
+    targetZone: Optional[str] = None
+    orderedIds: list[str] = []
+    repin: bool = False

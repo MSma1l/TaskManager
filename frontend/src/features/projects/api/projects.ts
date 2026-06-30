@@ -31,6 +31,10 @@ export interface Project {
   priority: ProjectPriority | null;
   /** Zone computed server-side from deadline (or priority when no deadline). Always present. */
   zone: ProjectZone;
+  /** Manually pinned zone (drag & drop). When set, overrides the deadline-computed zone. */
+  pinnedZone: ProjectZone | null;
+  /** Manual ordering position inside its zone; null = unordered (sorts last). */
+  zoneOrder: number | null;
   /** Whole days until deadline; negative if overdue, null when no deadline. */
   daysRemaining: number | null;
   createdAt: string | null;
@@ -66,6 +70,20 @@ export interface UpdateProjectData {
   deadline?: string | null;
   /** Manual zone when there is no deadline. */
   priority?: ProjectPriority | null;
+  /** Pin to a zone (override deadline), or null to unpin (revert to auto zone). */
+  pinnedZone?: ProjectZone | null;
+}
+
+/** Body for drag & drop zone reorder / repin of project cards. */
+export interface ReorderZoneData {
+  /** Id of the dragged project. */
+  movedId: string;
+  /** Destination zone the card now lives in. */
+  targetZone: ProjectZone | null;
+  /** Full ordered list of project ids in the destination zone after the move. */
+  orderedIds: string[];
+  /** True when the card changed zone → pin it to `targetZone`. */
+  repin: boolean;
 }
 
 export const projectsApi = {
@@ -79,4 +97,6 @@ export const projectsApi = {
   create: (data: CreateProjectData) => client.post<Project>('/projects', data).then((r) => r.data),
   update: (id: string, data: UpdateProjectData) => client.put<Project>(`/projects/${id}`, data).then((r) => r.data),
   delete: (id: string) => client.delete(`/projects/${id}`),
+  reorderZone: (body: ReorderZoneData) =>
+    client.post<{ ok: true }>('/projects/zones/reorder', body).then((r) => r.data),
 };

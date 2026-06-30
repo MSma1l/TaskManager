@@ -37,8 +37,18 @@ class BoardTaskUpdate(BaseModel):
     labelIds: Optional[list[str]] = None
     dueDate: Optional[str] = None
     zoneOverride: Optional[str] = None
+    # Pin manual de zona (URGENT|MEDIUM|NORMAL|BACKLOG); `null` = scoate pin-ul (unpin).
+    pinnedZone: Optional[str] = None
     estimateMinutes: Optional[int] = None
     storyPoints: Optional[int] = None
+
+
+class ZoneReorder(BaseModel):
+    """Reordonare intra-zona pe board (drag & drop) + optional re-pin pe zona tinta."""
+    movedId: str
+    targetZone: Optional[str] = None
+    orderedIds: list[str] = []
+    repin: bool = False
 
 
 class TaskTransition(BaseModel):

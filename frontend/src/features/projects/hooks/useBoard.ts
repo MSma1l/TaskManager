@@ -7,6 +7,7 @@ import {
   UpdateBoardTaskData,
   CreateLabelData,
   TransitionData,
+  ReorderZoneData,
   boardApi,
 } from '../api/board';
 import { applyOptimisticMove } from './applyOptimisticMove';
@@ -121,6 +122,16 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     isDraggingRef.current = dragging;
   };
 
+  /** Drag & drop reorder / repin of task cards between priority zones. */
+  const reorderZone = async (body: ReorderZoneData) => {
+    try {
+      await boardApi.reorderZone(projectId, body);
+    } finally {
+      isDraggingRef.current = false;
+      await fetchBoard(false);
+    }
+  };
+
   // ── Labels ───────────────────────────────────────────────────────────────
   const createLabel = async (data: CreateLabelData) => {
     const label = await boardApi.createLabel(projectId, data);
@@ -182,6 +193,7 @@ export function useBoard(projectId: string, sprintFilter?: string) {
     updateTask,
     deleteTask,
     moveTask,
+    reorderZone,
     assignTask,
     transitionTask,
     createLabel,

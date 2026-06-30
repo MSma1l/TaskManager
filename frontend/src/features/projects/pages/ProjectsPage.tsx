@@ -1,12 +1,30 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  closestCorners,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useProjects } from '../hooks/useProjects';
 import AddProjectModal from '../components/AddProjectModal';
 import { useT } from '../../../shared/i18n/I18nProvider';
-import { Project, ProjectStatus, ProjectZone } from '../api/projects';
+import { Project, ProjectStatus, ProjectZone, UpdateProjectData } from '../api/projects';
 import { ZONE_META, ZONE_ORDER } from '../components/zoneMeta';
 
 type StatusFilter = 'ACTIVE' | 'ON_HOLD' | 'ARCHIVED' | 'ALL';
+type Translate = (key: string) => string;
 
 const FILTER_TO_STATUSES: Record<StatusFilter, ProjectStatus[] | undefined> = {
   ACTIVE: ['ACTIVE'],
@@ -21,50 +39,83 @@ const STATUS_META: Record<ProjectStatus, { icon: string; classes: string; key: s
   ARCHIVED: { icon: '🔒', classes: 'bg-slate-500/15 text-muted', key: 'projectStatus.archived' },
 };
 
-export default function ProjectsPage() {
-  const t = useT();
-  const [filter, setFilter] = useState<StatusFilter>('ACTIVE');
-  const { projects, loading, createProject, updateProject } = useProjects(FILTER_TO_STATUSES[filter]);
-  const [showAdd, setShowAdd] = useState(false);
-  const navigate = useNavigate();
+const isZoneId = (id: string): id is ProjectZone => (ZONE_ORDER as string[]).includes(id);
 
-  const canEditStatus = (role?: string) => role === 'OWNER' || role === 'ADMIN';
+/** Stable sort by `zoneOrder` (nulls last, original order preserved for ties). */
+function sortByZoneOrder<T extends { zoneOrder: number | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    if (a.zoneOrder == null && b.zoneOrder == null) return 0;
+    if (a.zoneOrder == null) return 1;
+    if (b.zoneOrder == null) return -1;
+    return a.zoneOrder - b.zoneOrder;
+  });
+}
 
-  /** Short deadline pill text for a card, given the zone meta is applied for color. */
-  const deadlineText = (p: Project): string => {
-    if (p.daysRemaining === null) return t('projects.deadlineNone');
-    if (p.daysRemaining < 0) return t('projects.deadlineOverdue').replace('{n}', String(Math.abs(p.daysRemaining)));
-    if (p.daysRemaining === 0) return t('projects.deadlineToday');
-    return t('projects.deadlineDays').replace('{n}', String(p.daysRemaining));
+const canEditStatus = (role?: string) => role === 'OWNER' || role === 'ADMIN';
+
+/** Presentational card body — shared by the sortable card and the drag overlay. */
+function ProjectCardBody({
+  project,
+  t,
+  onStatusChange,
+  onUnpin,
+}: {
+  project: Project;
+  t: Translate;
+  onStatusChange: (id: string, data: UpdateProjectData) => void;
+  onUnpin: (id: string) => void;
+}) {
+  const meta = STATUS_META[project.status] ?? STATUS_META.ACTIVE;
+  const zoneMeta = ZONE_META[project.zone] ?? ZONE_META.BACKLOG;
+  const dimmed = project.status === 'ARCHIVED';
+
+  const deadlineText = (): string => {
+    if (project.daysRemaining === null) return t('projects.deadlineNone');
+    if (project.daysRemaining < 0)
+      return t('projects.deadlineOverdue').replace('{n}', String(Math.abs(project.daysRemaining)));
+    if (project.daysRemaining === 0) return t('projects.deadlineToday');
+    return t('projects.deadlineDays').replace('{n}', String(project.daysRemaining));
   };
 
-  const renderCard = (project: Project) => {
-    const meta = STATUS_META[project.status] ?? STATUS_META.ACTIVE;
-    const zoneMeta = ZONE_META[project.zone] ?? ZONE_META.BACKLOG;
-    const dimmed = project.status === 'ARCHIVED';
-    return (
-      <div
-        key={project.id}
-        onClick={() => navigate(`/projects/${project.id}`)}
-        className={`min-w-[280px] max-w-[300px] shrink-0 p-5 rounded-2xl bg-slate-800/60 border border-slate-700/40 ${zoneMeta.cardHover} hover:bg-slate-800/80 cursor-pointer transition-all duration-200 group ${dimmed ? 'opacity-60 grayscale-[0.4]' : ''}`}
-      >
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
-            <h3 className="font-bold text-lg group-hover:text-blue-300 transition-colors truncate">{project.name}</h3>
-            {project.key && (
-              <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 flex-shrink-0">
-                {project.key}
-              </span>
-            )}
-          </div>
+  return (
+    <div
+      className={`min-w-[280px] max-w-[300px] p-5 rounded-2xl bg-slate-800/60 ${zoneMeta.cardBg} border border-slate-700/40 ${zoneMeta.cardHover} hover:bg-slate-800/80 transition-all duration-200 group ${dimmed ? 'opacity-60 grayscale-[0.4]' : ''}`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
+          <h3 className="font-bold text-lg group-hover:text-blue-300 transition-colors truncate">{project.name}</h3>
+          {project.key && (
+            <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 flex-shrink-0">
+              {project.key}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {project.pinnedZone && (
+            <button
+              type="button"
+              title={t('projectZone.pinnedTooltip')}
+              aria-label={t('projectZone.pinnedAria')}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onUnpin(project.id);
+              }}
+              className="text-sm leading-none hover:scale-110 transition-transform"
+            >
+              📌
+            </button>
+          )}
           {project.githubUrl && (
             <a
               href={project.githubUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
-              className="text-muted hover:text-fg transition-colors flex-shrink-0"
+              className="text-muted hover:text-fg transition-colors"
               title="GitHub"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -73,88 +124,233 @@ export default function ProjectsPage() {
             </a>
           )}
         </div>
+      </div>
 
-        {/* Deadline indicator */}
-        <div className="mb-3">
-          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${zoneMeta.pill}`}>
-            {deadlineText(project)}
+      {/* Deadline indicator */}
+      <div className="mb-3">
+        <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${zoneMeta.pill}`}>
+          {deadlineText()}
+        </span>
+      </div>
+
+      {project.description && <p className="text-sm text-muted mb-3 line-clamp-2">{project.description}</p>}
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {canEditStatus(project.role) ? (
+          <select
+            value={project.status}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              onStatusChange(project.id, { status: e.target.value as ProjectStatus });
+            }}
+            className={`text-xs font-medium px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${meta.classes}`}
+            title={t('projectStatus.change')}
+          >
+            <option value="ACTIVE">{`${STATUS_META.ACTIVE.icon} ${t(STATUS_META.ACTIVE.key)}`}</option>
+            <option value="ON_HOLD">{`${STATUS_META.ON_HOLD.icon} ${t(STATUS_META.ON_HOLD.key)}`}</option>
+            <option value="ARCHIVED">{`${STATUS_META.ARCHIVED.icon} ${t(STATUS_META.ARCHIVED.key)}`}</option>
+          </select>
+        ) : (
+          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${meta.classes}`}>
+            {meta.icon} {t(meta.key)}
           </span>
-        </div>
-
-        {project.description && <p className="text-sm text-muted mb-3 line-clamp-2">{project.description}</p>}
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {canEditStatus(project.role) ? (
-            <select
-              value={project.status}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                updateProject(project.id, { status: e.target.value as ProjectStatus });
-              }}
-              className={`text-xs font-medium px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${meta.classes}`}
-              title={t('projectStatus.change')}
-            >
-              <option value="ACTIVE">{`${STATUS_META.ACTIVE.icon} ${t(STATUS_META.ACTIVE.key)}`}</option>
-              <option value="ON_HOLD">{`${STATUS_META.ON_HOLD.icon} ${t(STATUS_META.ON_HOLD.key)}`}</option>
-              <option value="ARCHIVED">{`${STATUS_META.ARCHIVED.icon} ${t(STATUS_META.ARCHIVED.key)}`}</option>
-            </select>
-          ) : (
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${meta.classes}`}>
-              {meta.icon} {t(meta.key)}
-            </span>
-          )}
+        )}
+        <span className="text-xs text-muted bg-slate-700/60 px-2.5 py-1 rounded-full">
+          {project.taskCount} {t('projects.taskCount')}
+        </span>
+        {typeof project.memberCount === 'number' && (
           <span className="text-xs text-muted bg-slate-700/60 px-2.5 py-1 rounded-full">
-            {project.taskCount} {t('projects.taskCount')}
+            {project.memberCount} {t('members.memberCount')}
           </span>
-          {typeof project.memberCount === 'number' && (
-            <span className="text-xs text-muted bg-slate-700/60 px-2.5 py-1 rounded-full">
-              {project.memberCount} {t('members.memberCount')}
-            </span>
-          )}
-          {project.role && (
-            <span className="text-xs text-blue-400 bg-blue-600/15 px-2.5 py-1 rounded-full">
-              {t(`members.role${project.role.charAt(0) + project.role.slice(1).toLowerCase()}`)}
-            </span>
-          )}
+        )}
+        {project.role && (
+          <span className="text-xs text-blue-400 bg-blue-600/15 px-2.5 py-1 rounded-full">
+            {t(`members.role${project.role.charAt(0) + project.role.slice(1).toLowerCase()}`)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Sortable wrapper: drag listeners + click-to-navigate (drag is suppressed past the activation distance). */
+function SortableProjectCard({
+  project,
+  t,
+  onNavigate,
+  onStatusChange,
+  onUnpin,
+}: {
+  project: Project;
+  t: Translate;
+  onNavigate: (id: string) => void;
+  onStatusChange: (id: string, data: UpdateProjectData) => void;
+  onUnpin: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: project.id,
+    data: { type: 'project', zone: project.zone },
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onNavigate(project.id)}
+      className="shrink-0 snap-start cursor-grab active:cursor-grabbing touch-none"
+    >
+      <ProjectCardBody project={project} t={t} onStatusChange={onStatusChange} onUnpin={onUnpin} />
+    </div>
+  );
+}
+
+/** Droppable zone row; stays a valid drop target even when empty. */
+function ProjectZoneRow({
+  zone,
+  items,
+  t,
+  onNavigate,
+  onStatusChange,
+  onUnpin,
+}: {
+  zone: ProjectZone;
+  items: Project[];
+  t: Translate;
+  onNavigate: (id: string) => void;
+  onStatusChange: (id: string, data: UpdateProjectData) => void;
+  onUnpin: (id: string) => void;
+}) {
+  const zoneMeta = ZONE_META[zone];
+  const { setNodeRef, isOver } = useDroppable({ id: zone, data: { type: 'zone', zone } });
+
+  return (
+    <section>
+      {/* Zone header */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`w-1.5 h-10 rounded-full ${zoneMeta.accent}`} />
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${zoneMeta.badge}`}>
+          {zoneMeta.icon}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className={`text-base font-bold ${zoneMeta.headerText}`}>{t(zoneMeta.labelKey)}</h2>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${zoneMeta.badge}`}>{items.length}</span>
+          </div>
+          <p className="text-xs text-muted">{t(zoneMeta.subtitleKey)}</p>
         </div>
       </div>
-    );
-  };
 
-  const renderZone = (zone: ProjectZone) => {
-    const zoneMeta = ZONE_META[zone];
-    const items = projects.filter((p) => p.zone === zone);
-    return (
-      <section key={zone}>
-        {/* Zone header */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className={`w-1.5 h-10 rounded-full ${zoneMeta.accent}`} />
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${zoneMeta.badge}`}>
-            {zoneMeta.icon}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className={`text-base font-bold ${zoneMeta.headerText}`}>{t(zoneMeta.labelKey)}</h2>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${zoneMeta.badge}`}>{items.length}</span>
-            </div>
-            <p className="text-xs text-muted">{t(zoneMeta.subtitleKey)}</p>
-          </div>
-        </div>
-
-        {/* Horizontal scroll row */}
+      {/* Droppable row — kept mounted even when empty so cards can be dropped in */}
+      <SortableContext items={items.map((p) => p.id)} strategy={horizontalListSortingStrategy}>
         {items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-700/50 px-5 py-6 text-sm text-muted">
+          <div
+            ref={setNodeRef}
+            className={`rounded-2xl border border-dashed px-5 py-6 text-sm text-muted transition-colors ${
+              isOver ? 'border-blue-500/50 bg-blue-500/5' : 'border-slate-700/50'
+            }`}
+          >
             {t('projectZone.empty')}
           </div>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x scroll-pl-1 [scrollbar-width:thin]">
-            {items.map(renderCard)}
+          <div
+            ref={setNodeRef}
+            className={`flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x scroll-pl-1 rounded-2xl [scrollbar-width:thin] transition-colors ${
+              isOver ? 'bg-blue-500/5' : ''
+            }`}
+          >
+            {items.map((project) => (
+              <SortableProjectCard
+                key={project.id}
+                project={project}
+                t={t}
+                onNavigate={onNavigate}
+                onStatusChange={onStatusChange}
+                onUnpin={onUnpin}
+              />
+            ))}
           </div>
         )}
-      </section>
+      </SortableContext>
+    </section>
+  );
+}
+
+export default function ProjectsPage() {
+  const t = useT();
+  const [filter, setFilter] = useState<StatusFilter>('ACTIVE');
+  const { projects, loading, setProjects, createProject, updateProject, reorderZone } = useProjects(
+    FILTER_TO_STATUSES[filter],
+  );
+  const [showAdd, setShowAdd] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Projects grouped by displayed zone, each pre-sorted by zoneOrder.
+  const zoneItems = useMemo(() => {
+    const map: Record<ProjectZone, Project[]> = { URGENT: [], MEDIUM: [], NORMAL: [], BACKLOG: [] };
+    for (const p of projects) (map[p.zone] ?? map.BACKLOG).push(p);
+    for (const z of ZONE_ORDER) map[z] = sortByZoneOrder(map[z]);
+    return map;
+  }, [projects]);
+
+  const activeProject = activeId ? projects.find((p) => p.id === activeId) ?? null : null;
+
+  const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = e;
+    if (!over) return;
+    const movedId = String(active.id);
+    const overId = String(over.id);
+    if (movedId === overId) return;
+
+    const moved = projects.find((p) => p.id === movedId);
+    if (!moved) return;
+    const sourceZone = moved.zone;
+    const targetZone: ProjectZone = isZoneId(overId)
+      ? overId
+      : projects.find((p) => p.id === overId)?.zone ?? sourceZone;
+
+    // New ordered id list for the destination zone after the move.
+    const destIds = zoneItems[targetZone].map((p) => p.id).filter((id) => id !== movedId);
+    let insertAt = isZoneId(overId) ? destIds.length : destIds.indexOf(overId);
+    if (insertAt < 0) insertAt = destIds.length;
+    const orderedIds = [...destIds];
+    orderedIds.splice(insertAt, 0, movedId);
+
+    const repin = sourceZone !== targetZone;
+
+    // Optimistic local update; the hook refetches to settle.
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id === movedId)
+          return {
+            ...p,
+            zone: targetZone,
+            pinnedZone: repin ? targetZone : p.pinnedZone,
+            zoneOrder: orderedIds.indexOf(p.id),
+          };
+        if (orderedIds.includes(p.id)) return { ...p, zoneOrder: orderedIds.indexOf(p.id) };
+        return p;
+      }),
     );
+
+    reorderZone({ movedId, targetZone, orderedIds, repin });
   };
+
+  const handleUnpin = (id: string) => updateProject(id, { pinnedZone: null });
+  const handleStatusChange = (id: string, data: UpdateProjectData) => updateProject(id, data);
 
   return (
     <div className="px-4 pt-5 max-w-[1600px] mx-auto">
@@ -198,7 +394,40 @@ export default function ProjectsPage() {
           <p className="text-sm text-muted">{t('projects.noProjectsHint')}</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-7">{ZONE_ORDER.map(renderZone)}</div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setActiveId(null)}
+        >
+          <div className="flex flex-col gap-7">
+            {ZONE_ORDER.map((zone) => (
+              <ProjectZoneRow
+                key={zone}
+                zone={zone}
+                items={zoneItems[zone]}
+                t={t}
+                onNavigate={(id) => navigate(`/projects/${id}`)}
+                onStatusChange={handleStatusChange}
+                onUnpin={handleUnpin}
+              />
+            ))}
+          </div>
+
+          <DragOverlay>
+            {activeProject ? (
+              <div className="rotate-1">
+                <ProjectCardBody
+                  project={activeProject}
+                  t={t}
+                  onStatusChange={handleStatusChange}
+                  onUnpin={handleUnpin}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {showAdd && <AddProjectModal onClose={() => setShowAdd(false)} onSubmit={createProject} />}

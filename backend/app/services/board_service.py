@@ -10,7 +10,7 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.services import membership_service, time_tracking_service
-from app.services.project_zone import compute_zone, days_remaining, VALID_PRIORITIES
+from app.services.project_zone import compute_zone, resolve_zone, days_remaining, VALID_PRIORITIES
 
 
 def _to_naive_utc(dt):
@@ -302,8 +302,10 @@ def board_task_to_dict(
         "taskNumber": task.task_number,
         "taskKey": task_key,
         "dueDate": task.due_date.isoformat() if task.due_date else None,
-        "zone": compute_zone(task.due_date, task.zone_override, now),
+        "zone": resolve_zone(task.pinned_zone, task.due_date, task.zone_override, now),
         "zoneOverride": task.zone_override,
+        "pinnedZone": task.pinned_zone,
+        "zoneOrder": task.zone_order,
         "daysRemaining": days_remaining(task.due_date, now),
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
@@ -596,8 +598,8 @@ def update_task(db: Session, user_id: str, project_id: str, task_id: str, data: 
     if data.get("labelIds") is not None:
         _set_labels(db, task, project_id, data["labelIds"])
 
-    # Deadline / override de zona: aplica doar cheile prezente (exclude_unset).
-    # `dueDate: null` sau `zoneOverride: null` sterge valoarea respectiva.
+    # Deadline / override / pin de zona: aplica doar cheile prezente (exclude_unset).
+    # `dueDate: null`, `zoneOverride: null` sau `pinnedZone: null` sterg valoarea.
     zone_dirty = False
     if "dueDate" in data:
         task.due_date = _to_naive_utc(_parse_dt(data["dueDate"]))
@@ -605,9 +607,14 @@ def update_task(db: Session, user_id: str, project_id: str, task_id: str, data: 
     if "zoneOverride" in data:
         task.zone_override = _clean_zone_override(data["zoneOverride"])
         zone_dirty = True
-    # La schimbare de deadline/override, recalculeaza si stocheaza zona curenta.
+    if "pinnedZone" in data:
+        task.pinned_zone = _clean_zone_override(data["pinnedZone"])
+        zone_dirty = True
+    # La schimbare de deadline/override/pin, recalculeaza si stocheaza zona curenta.
     if zone_dirty:
-        task.last_zone = compute_zone(task.due_date, task.zone_override, datetime.utcnow())
+        task.last_zone = resolve_zone(
+            task.pinned_zone, task.due_date, task.zone_override, datetime.utcnow()
+        )
 
     if "estimateMinutes" in data:
         task.estimated_minutes = data["estimateMinutes"]
@@ -688,6 +695,54 @@ def move_task(db: Session, user_id: str, project_id: str, task_id: str, to_colum
     _log(db, task, user_id, "MOVED", {"fromColumnId": source_column_id, "toColumnId": target_column.id})
 
     db.commit()
+
+
+def reorder_zone(
+    db: Session,
+    user_id: str,
+    project_id: str,
+    moved_id: str,
+    target_zone: str | None,
+    ordered_ids: list[str],
+    repin: bool,
+) -> Task:
+    """Reordoneaza taskurile de board intr-o zona (drag & drop) si optional
+    re-pin-uieste taskul mutat pe zona tinta.
+
+    - Acelasi min_role ca `move_task` (MEMBER).
+    - `repin=True`: seteaza pinned_zone = target_zone (validat; None = unpin) si
+      recalculeaza last_zone.
+    - Pentru fiecare id din `ordered_ids` care apartine acestui proiect, seteaza
+      zone_order = indexul lui in lista.
+
+    Intoarce dict-ul de board al taskului mutat (via _get_board_task).
+    """
+    membership_service.require_membership(db, project_id, user_id, min_role="MEMBER")
+    moved = _get_board_task(db, project_id, moved_id)
+
+    if repin:
+        moved.pinned_zone = _clean_zone_override(target_zone)
+        moved.last_zone = resolve_zone(
+            moved.pinned_zone, moved.due_date, moved.zone_override, datetime.utcnow()
+        )
+        moved.updated_at = datetime.utcnow()
+
+    for index, tid in enumerate(ordered_ids or []):
+        task = (
+            db.query(Task)
+            .filter(
+                Task.id == tid,
+                Task.project_id == project_id,
+                Task.is_active == True,  # noqa: E712
+            )
+            .first()
+        )
+        if task is None:
+            continue
+        task.zone_order = index
+
+    db.commit()
+    return _get_board_task(db, project_id, moved_id)
 
 
 def assign_task(db: Session, user_id: str, project_id: str, task_id: str, assignee_ids: list[str]) -> Task:

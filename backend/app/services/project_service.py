@@ -5,7 +5,7 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
 from app.services import membership_service
-from app.services.project_zone import compute_zone, VALID_PRIORITIES
+from app.services.project_zone import compute_zone, resolve_zone, VALID_PRIORITIES
 
 
 def _to_naive_utc(dt):
@@ -33,7 +33,11 @@ def get_all_projects(db: Session, user_id: str, statuses: list[str] | None = Non
     query = db.query(Project).filter(Project.is_active == True, Project.id.in_(ids))
     if statuses:
         query = query.filter(Project.status.in_(statuses))
-    return query.order_by(Project.created_at.desc()).all()
+    # Ordine: pozitia in zona (nulls last), apoi cele mai noi. Frontend-ul re-sorteaza
+    # in cadrul fiecarei zone, dar emitem o ordine stabila de baza.
+    return query.order_by(
+        Project.zone_order.asc().nullslast(), Project.created_at.desc()
+    ).all()
 
 
 def get_project(db: Session, user_id: str, project_id: str):
@@ -140,8 +144,9 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
     if "showOnToday" in data and data["showOnToday"] is not None:
         project.show_on_today = data["showOnToday"]
 
-    # Deadline / prioritate: aplica doar cheile prezente (exclude_unset). Trimiterea
-    # explicita a `deadline: null` sterge deadline-ul ("pe asteptare").
+    # Deadline / prioritate / pin: aplica doar cheile prezente (exclude_unset).
+    # Trimiterea explicita a `deadline: null` sterge deadline-ul ("pe asteptare");
+    # `pinnedZone: null` scoate pin-ul manual (unpin).
     zone_dirty = False
     if "deadline" in data:
         project.deadline = _to_naive_utc(data["deadline"])
@@ -149,15 +154,71 @@ def update_project(db: Session, user_id: str, project_id: str, data: dict) -> Pr
     if "priority" in data:
         project.priority = _clean_priority(data["priority"])
         zone_dirty = True
+    if "pinnedZone" in data:
+        project.pinned_zone = _clean_priority(data["pinnedZone"])
+        zone_dirty = True
 
-    # La schimbare de deadline/prioritate, recalculeaza si stocheaza zona curenta.
+    # La schimbare de deadline/prioritate/pin, recalculeaza si stocheaza zona curenta.
     if zone_dirty:
-        project.last_zone = compute_zone(project.deadline, project.priority, datetime.utcnow())
+        project.last_zone = resolve_zone(
+            project.pinned_zone, project.deadline, project.priority, datetime.utcnow()
+        )
 
     project.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(project)
     return project
+
+
+def reorder_zone(
+    db: Session,
+    user_id: str,
+    moved_id: str,
+    target_zone: str | None,
+    ordered_ids: list[str],
+    repin: bool,
+) -> None:
+    """Reordoneaza proiectele intr-o zona (drag & drop) si optional re-pin-uieste
+    proiectul mutat pe zona tinta.
+
+    - Necesita ADMIN pe proiectul mutat (`moved_id`).
+    - `repin=True`: seteaza pinned_zone = target_zone (validat; None = unpin) si
+      recalculeaza last_zone.
+    - Pentru fiecare id din `ordered_ids` la care userul are acces (e membru),
+      seteaza zone_order = indexul lui in lista.
+    """
+    membership_service.require_membership(db, moved_id, user_id, min_role="ADMIN")
+
+    moved = (
+        db.query(Project)
+        .filter(Project.id == moved_id, Project.is_active == True)  # noqa: E712
+        .first()
+    )
+    if not moved:
+        return
+
+    if repin:
+        moved.pinned_zone = _clean_priority(target_zone)
+        moved.last_zone = resolve_zone(
+            moved.pinned_zone, moved.deadline, moved.priority, datetime.utcnow()
+        )
+        moved.updated_at = datetime.utcnow()
+
+    # Proiectele la care userul are acces (e membru), ca sa nu rescriem ordinea altora.
+    accessible = set(membership_service.get_accessible_project_ids(db, user_id))
+    for index, pid in enumerate(ordered_ids or []):
+        if pid not in accessible:
+            continue
+        project = (
+            db.query(Project)
+            .filter(Project.id == pid, Project.is_active == True)  # noqa: E712
+            .first()
+        )
+        if project is None:
+            continue
+        project.zone_order = index
+
+    db.commit()
 
 
 def delete_project(db: Session, user_id: str, project_id: str) -> bool:

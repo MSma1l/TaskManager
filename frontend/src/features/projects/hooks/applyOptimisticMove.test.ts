@@ -26,6 +26,8 @@ function task(id: string, columnId: string): BoardTask {
     subtasks: [],
     zone: 'BACKLOG',
     zoneOverride: null,
+    pinnedZone: null,
+    zoneOrder: null,
     daysRemaining: null,
     timeSpentSeconds: 0,
     runningTimers: [],

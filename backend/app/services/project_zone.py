@@ -46,3 +46,10 @@ def compute_zone(deadline, priority, now: datetime | None = None) -> str:
     if priority in VALID_PRIORITIES:
         return priority
     return "BACKLOG"
+
+
+def resolve_zone(pinned_zone, deadline, manual_priority, now: datetime | None = None) -> str:
+    """Zona efectiva: pin-ul manual invinge totul; altfel se calculeaza din deadline."""
+    if pinned_zone in VALID_PRIORITIES:
+        return pinned_zone
+    return compute_zone(deadline, manual_priority, now)

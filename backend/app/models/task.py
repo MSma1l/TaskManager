@@ -32,6 +32,10 @@ class Task(Base):
     zone_override = Column(String(20), nullable=True)
     # Ultima zona calculata (bookkeeping pentru detectarea tranzitiilor de scheduler).
     last_zone = Column(String(20), nullable=True)
+    # Pin manual de zona: invinge deadline-ul (URGENT|MEDIUM|NORMAL|BACKLOG). NULL = neprins.
+    pinned_zone = Column(String(20), nullable=True)
+    # Pozitia in zona (drag & drop intra-zona). NULL = nesetat.
+    zone_order = Column(Integer, nullable=True)
 
     # ── Board (Kanban) ──────────────────────────────────────────────
     board_column_id = Column(String, ForeignKey("board_columns.id"), nullable=True, index=True)

@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.project import Project
 from app.services import time_tracking_service
-from app.services.project_zone import compute_zone, days_remaining
+from app.services.project_zone import resolve_zone, days_remaining
 from app.schemas.board import (
     ColumnCreate,
     ColumnUpdate,
@@ -21,6 +21,7 @@ from app.schemas.board import (
     SubtaskCreate,
     SubtaskUpdate,
     SubtaskReorder,
+    ZoneReorder,
 )
 from app.services import board_service
 
@@ -93,8 +94,10 @@ def board_task_to_dict(
         "taskNumber": task.task_number,
         "taskKey": task_key,
         "dueDate": task.due_date.isoformat() if task.due_date else None,
-        "zone": compute_zone(task.due_date, task.zone_override, now),
+        "zone": resolve_zone(task.pinned_zone, task.due_date, task.zone_override, now),
         "zoneOverride": task.zone_override,
+        "pinnedZone": task.pinned_zone,
+        "zoneOrder": task.zone_order,
         "daysRemaining": days_remaining(task.due_date, now),
         "estimateMinutes": task.estimated_minutes,
         "storyPoints": task.story_points,
@@ -257,6 +260,22 @@ async def move_task(
 ):
     board_service.move_task(db, user.id, project_id, task_id, data.toColumnId, data.toIndex)
     return {"message": "Task mutat"}
+
+
+@router.post("/zones/reorder")
+async def reorder_zones(
+    project_id: str,
+    data: ZoneReorder,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reordoneaza taskurile de board intr-o zona (drag & drop) si, optional, re-pin
+    pe zona tinta. Acelasi min_role ca mutarea (MEMBER). Intoarce dict-ul de board
+    al taskului mutat."""
+    task = board_service.reorder_zone(
+        db, user.id, project_id, data.movedId, data.targetZone, data.orderedIds, data.repin,
+    )
+    return _task_with_assignee(db, task, project_id)
 
 
 @router.put("/tasks/{task_id}/assign")

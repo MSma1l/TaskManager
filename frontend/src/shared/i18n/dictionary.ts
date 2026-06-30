@@ -504,6 +504,8 @@ const ro = {
     backlogLabel: 'Backlog',
     backlogSubtitle: 'Fără deadline · Idei',
     empty: 'Niciun proiect',
+    pinnedTooltip: 'Fixat manual — apasă pentru auto',
+    pinnedAria: 'Desfă fixarea zonei',
   },
   taskTimer: {
     title: 'Cronometru',
@@ -1277,6 +1279,8 @@ const ru = {
     backlogLabel: 'Backlog',
     backlogSubtitle: 'Без дедлайна · Идеи',
     empty: 'Нет проектов',
+    pinnedTooltip: 'Закреплено вручную — нажмите для авто',
+    pinnedAria: 'Открепить зону',
   },
   taskTimer: {
     title: 'Таймер',

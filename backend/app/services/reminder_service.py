@@ -15,7 +15,7 @@ from app.models.task_reminder_log import TaskReminderLog
 from app.models.user import User
 from app.models.base import TaskStatus
 from app.services import task_service, stats_service, calendar_service, completion_service, push_service, membership_service, notification_service
-from app.services.project_zone import compute_zone, days_remaining
+from app.services.project_zone import resolve_zone, days_remaining
 
 scheduler = AsyncIOScheduler()
 
@@ -796,7 +796,8 @@ def check_project_zones():
         projects = db.query(Project).filter(Project.is_active == True).all()
 
         for project in projects:
-            new_zone = compute_zone(project.deadline, project.priority, now)
+            # Zona efectiva: pin manual invinge deadline-ul (nu genera tranzitii false).
+            new_zone = resolve_zone(project.pinned_zone, project.deadline, project.priority, now)
             dr = days_remaining(project.deadline, now)
 
             members = membership_service.list_members(db, project.id)
@@ -936,7 +937,8 @@ def check_task_zones():
         )
 
         for task in tasks:
-            new_zone = compute_zone(task.due_date, task.zone_override, now)
+            # Zona efectiva: pin manual invinge deadline-ul (nu genera tranzitii false).
+            new_zone = resolve_zone(task.pinned_zone, task.due_date, task.zone_override, now)
             dr = days_remaining(task.due_date, now)
             assignees = task.assignees or []
 

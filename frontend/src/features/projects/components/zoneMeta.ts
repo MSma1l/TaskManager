@@ -16,6 +16,8 @@ export interface ZoneMeta {
   pill: string;
   /** Card hover ring tint. */
   cardHover: string;
+  /** Subtle background tint in the zone color, layered on the card surface. */
+  cardBg: string;
 }
 
 /**
@@ -34,6 +36,7 @@ export const ZONE_META: Record<ProjectZone, ZoneMeta> = {
     badge: 'bg-red-500/20 text-red-300',
     pill: 'bg-red-500/15 text-red-300',
     cardHover: 'hover:border-red-500/40',
+    cardBg: 'bg-red-500/[0.06]',
   },
   MEDIUM: {
     labelKey: 'projectZone.mediumLabel',
@@ -44,6 +47,7 @@ export const ZONE_META: Record<ProjectZone, ZoneMeta> = {
     badge: 'bg-amber-500/20 text-amber-300',
     pill: 'bg-amber-500/15 text-amber-300',
     cardHover: 'hover:border-amber-500/40',
+    cardBg: 'bg-amber-500/[0.06]',
   },
   NORMAL: {
     labelKey: 'projectZone.normalLabel',
@@ -54,6 +58,7 @@ export const ZONE_META: Record<ProjectZone, ZoneMeta> = {
     badge: 'bg-emerald-500/20 text-emerald-300',
     pill: 'bg-emerald-500/15 text-emerald-300',
     cardHover: 'hover:border-emerald-500/40',
+    cardBg: 'bg-emerald-500/[0.06]',
   },
   BACKLOG: {
     labelKey: 'projectZone.backlogLabel',
@@ -64,6 +69,7 @@ export const ZONE_META: Record<ProjectZone, ZoneMeta> = {
     badge: 'bg-violet-500/20 text-violet-300',
     pill: 'bg-violet-500/15 text-violet-300',
     cardHover: 'hover:border-violet-500/40',
+    cardBg: 'bg-violet-500/[0.06]',
   },
 };
 

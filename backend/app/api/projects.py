@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.schemas.project import ProjectCreate, ProjectUpdate, ZoneReorder
 from app.services import project_service, membership_service
-from app.services.project_zone import compute_zone, days_remaining
+from app.services.project_zone import resolve_zone, days_remaining
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -26,8 +26,10 @@ def project_to_dict(project, task_count: int = 0, role: str = None, member_count
         "showOnToday": project.show_on_today,
         "deadline": project.deadline.isoformat() if project.deadline else None,
         "priority": project.priority,
-        # Zona de prioritate, mereu prezenta (calculata din deadline/priority).
-        "zone": compute_zone(project.deadline, project.priority, now),
+        # Zona de prioritate efectiva: pin manual invinge deadline-ul; altfel din deadline/priority.
+        "zone": resolve_zone(project.pinned_zone, project.deadline, project.priority, now),
+        "pinnedZone": project.pinned_zone,
+        "zoneOrder": project.zone_order,
         "daysRemaining": days_remaining(project.deadline, now),
         "taskCount": task_count,
         "role": role,
@@ -105,6 +107,20 @@ async def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project_to_dict(project)
+
+
+@router.post("/zones/reorder")
+async def reorder_zones(
+    data: ZoneReorder,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reordoneaza proiectele intr-o zona (drag & drop) si, optional, re-pin pe zona
+    tinta. Necesita ADMIN pe proiectul mutat. Intoarce {"ok": true}."""
+    project_service.reorder_zone(
+        db, user.id, data.movedId, data.targetZone, data.orderedIds, data.repin,
+    )
+    return {"ok": True}
 
 
 @router.post("/{project_id}/finalize")
